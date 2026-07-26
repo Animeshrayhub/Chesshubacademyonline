@@ -153,7 +153,12 @@ const LICHESS_DAILY_URL = 'https://lichess.org/api/puzzle/daily';
  * Falls back to offline cached puzzles (strictly capped at 10) in case of API failure.
  */
 async function fetchLichessDailyPuzzle(): Promise<PuzzleData> {
-  const getFallbackPuzzle = (): PuzzleData => {
+  const getFallbackPuzzle = async (): Promise<PuzzleData> => {
+    try {
+      const { fetchLocalPuzzle } = await import('./local');
+      const localP = await fetchLocalPuzzle();
+      if (localP) return localP;
+    } catch {}
     const cappedFallbacks = OFFLINE_FALLBACK_PUZZLES.slice(0, 10);
     const day = new Date().getDate();
     return cappedFallbacks[day % cappedFallbacks.length];
@@ -172,7 +177,7 @@ async function fetchLichessDailyPuzzle(): Promise<PuzzleData> {
 
     if (!res.ok) {
       console.warn(`Lichess API returned status ${res.status}. Loading offline fallback puzzle.`);
-      return getFallbackPuzzle();
+      return await getFallbackPuzzle();
     }
 
     const data: LichessPuzzleResponse = await res.json();
@@ -223,7 +228,7 @@ async function fetchLichessDailyPuzzle(): Promise<PuzzleData> {
     };
   } catch (err) {
     console.error('Failed to fetch from Lichess daily puzzle API, loading fallback:', err);
-    return getFallbackPuzzle();
+    return await getFallbackPuzzle();
   }
 }
 

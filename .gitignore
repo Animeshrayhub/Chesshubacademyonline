@@ -33,3 +33,9 @@ next-env.d.ts
 *.pem
 .idea
 .vscode
+
+# Lichess puzzle database (large binary — do not commit)
+lichess_db_puzzle.csv.zst
+
+# Generated puzzle JSON files (run `npm run extract-puzzles` to regenerate)
+/public/puzzles/

@@ -16,6 +16,7 @@ export {
 } from './types';
 
 export { lichessAdapter, fetchLichessDailyPuzzle } from './lichess';
+export { localPuzzleAdapter, fetchLocalPuzzle, normalizeLocalPuzzle } from './local';
 
 export {
   savePuzzleResult,
@@ -25,3 +26,4 @@ export {
 } from './results';
 
 export { analyzePuzzleThemes } from './classifier';
+

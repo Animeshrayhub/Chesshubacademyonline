@@ -1,6 +1,7 @@
 import { createSupabaseAdmin } from '../supabase/admin';
 import { assertAdmin } from '../permissions';
 import { createZoomMeeting, syncClassRecordingToDrive } from '../zoom';
+import { createClassMeeting, type VideoProvider } from '../video';
 import {
   BaseError,
   DatabaseError,
@@ -13,6 +14,7 @@ import {
 
 export type ClassStatus = 'SCHEDULED' | 'LIVE' | 'COMPLETED' | 'RECORDING_AVAILABLE' | 'CANCELLED';
 export type ClassType = 'PRIVATE' | 'BUDDY' | 'GROUP';
+export type { VideoProvider };
 
 export interface DbClass {
   id: string;
@@ -25,6 +27,7 @@ export interface DbClass {
   zoom_meeting_id: string | null;
   zoom_start_url: string | null;
   zoom_join_url: string | null;
+  video_provider?: VideoProvider;
   session_notes: string | null;
   created_at: string;
   updated_at: string;
@@ -52,6 +55,8 @@ export interface CreateClassInput {
   durationMinutes: number;
   classType: ClassType;
   status?: ClassStatus;
+  videoProvider?: VideoProvider;
+  customUrl?: string;
   zoomJoinUrl?: string;
   zoomStartUrl?: string;
   studentUserIds?: string[]; // multiple students mapping
@@ -62,6 +67,8 @@ export interface UpdateClassInput {
   durationMinutes?: number;
   classType?: ClassType;
   status?: ClassStatus;
+  videoProvider?: VideoProvider;
+  customUrl?: string;
   zoomJoinUrl?: string;
   zoomStartUrl?: string;
   coachUserId?: string;
@@ -192,24 +199,27 @@ export async function createClass(data: CreateClassInput): Promise<Result<DbClas
       return { success: false, error: new NotFoundError('Coach profile not found') };
     }
 
-    // Generate Zoom Meeting details using Zoom API
-    const zoomRes = await createZoomMeeting(
+    // Generate Meeting details (Jitsi by default, Zoom if selected, Google Meet / Custom if link provided)
+    const videoRes = await createClassMeeting(
       undefined,
       `${data.classType} Chess Class`,
       data.scheduledStart,
-      data.durationMinutes
+      data.durationMinutes,
+      data.videoProvider || 'JITSI',
+      data.zoomJoinUrl || data.customUrl
     );
 
-    if (!zoomRes.success || !zoomRes.data) {
-      return {
-        success: false,
-        error: new InternalServerError(zoomRes.error?.message || 'Zoom meeting creation failed via Zoom API.'),
-      };
-    }
+    const videoData = videoRes.data || {
+      meetingId: `jitsi_${Date.now()}`,
+      joinUrl: `https://meet.jit.si/ChessHub-Class-${Date.now()}`,
+      startUrl: `https://meet.jit.si/ChessHub-Class-${Date.now()}`,
+      provider: 'JITSI' as VideoProvider,
+    };
 
-    const zoomData = zoomRes.data;
+    const finalJoinUrl = data.zoomJoinUrl || videoData.joinUrl;
+    const finalStartUrl = data.zoomStartUrl || videoData.startUrl;
 
-    // Insert class with Zoom details
+    // Insert class with meeting details
     const { data: inserted, error } = await admin
       .from('classes')
       .insert({
@@ -218,9 +228,9 @@ export async function createClass(data: CreateClassInput): Promise<Result<DbClas
         duration_minutes: data.durationMinutes,
         class_type: data.classType,
         status: data.status ?? 'SCHEDULED',
-        zoom_meeting_id: zoomData.meetingId,
-        zoom_join_url: zoomData.joinUrl,
-        zoom_start_url: zoomData.startUrl,
+        zoom_meeting_id: videoData.meetingId,
+        zoom_join_url: finalJoinUrl,
+        zoom_start_url: finalStartUrl,
       })
       .select()
       .single();
@@ -280,6 +290,23 @@ export async function updateClass(id: string, data: UpdateClassInput): Promise<R
     if (data.durationMinutes !== undefined) updates.duration_minutes = data.durationMinutes;
     if (data.classType !== undefined) updates.class_type = data.classType;
     if (data.status !== undefined) updates.status = data.status;
+
+    // Handle Video Provider switching if requested
+    if (data.videoProvider) {
+      const safeId = id.replace(/[^a-zA-Z0-9]/g, '');
+      if (data.videoProvider === 'JITSI') {
+        const jitsiUrl = `https://meet.jit.si/ChessHub-${safeId}`;
+        updates.zoom_join_url = jitsiUrl;
+        updates.zoom_start_url = jitsiUrl;
+        updates.zoom_meeting_id = `jitsi_${safeId}`;
+      } else if (data.videoProvider === 'GOOGLE_MEET' && data.customUrl) {
+        const meetUrl = data.customUrl.startsWith('http') ? data.customUrl : `https://${data.customUrl}`;
+        updates.zoom_join_url = meetUrl;
+        updates.zoom_start_url = meetUrl;
+        updates.zoom_meeting_id = `meet_${safeId}`;
+      }
+    }
+
     if (data.zoomJoinUrl !== undefined) updates.zoom_join_url = data.zoomJoinUrl;
     if (data.zoomStartUrl !== undefined) updates.zoom_start_url = data.zoomStartUrl;
 

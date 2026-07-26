@@ -9,7 +9,7 @@ import Pagination from '@/components/dashboard/ui/Pagination';
 import ConfirmationModal from '@/components/dashboard/ui/ConfirmationModal';
 import Input from '@/components/ui/Input';
 import type { AdminCoachRow, AdminStudentRow } from '@/types/dashboard';
-import type { AdminClassRow, CreateClassInput, ClassStatus, ClassType } from '@/lib/classes';
+import type { AdminClassRow, CreateClassInput, ClassStatus, ClassType, VideoProvider } from '@/lib/classes';
 import { createClassAction, updateClassAction, deleteClassAction } from '@/actions/classes';
 import { createZoomMeetingAction, syncClassRecordingToDriveAction } from '@/actions/zoom';
 import Modal from '@/components/ui/Modal';
@@ -53,6 +53,7 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
     durationMinutes: 60,
     classType: 'GROUP' as ClassType,
     status: 'SCHEDULED' as ClassStatus,
+    videoProvider: 'JITSI' as VideoProvider,
     zoomJoinUrl: '',
     zoomStartUrl: '',
     studentUserIds: [] as string[],
@@ -80,6 +81,7 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
       durationMinutes: 60,
       classType: 'GROUP',
       status: 'SCHEDULED',
+      videoProvider: 'JITSI',
       zoomJoinUrl: '',
       zoomStartUrl: '',
       studentUserIds: [],
@@ -100,13 +102,21 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
         (cls.coach?.id && c.profile?.id === cls.coach.id) ||
         (c.first_name === cls.coach?.first_name && c.last_name === cls.coach?.last_name)
     );
+    const joinUrl = cls.zoom_join_url ?? '';
+    const detectedProvider: VideoProvider = joinUrl.includes('jit.si')
+      ? 'JITSI'
+      : joinUrl.includes('meet.google.com')
+      ? 'GOOGLE_MEET'
+      : cls.video_provider || (joinUrl ? 'CUSTOM' : 'JITSI');
+
     setFormData({
       coachUserId: coachUser?.id ?? '',
       scheduledStart: cls.scheduled_start ? cls.scheduled_start.slice(0, 16) : '',
       durationMinutes: cls.duration_minutes,
       classType: cls.class_type,
       status: cls.status,
-      zoomJoinUrl: cls.zoom_join_url ?? '',
+      videoProvider: detectedProvider,
+      zoomJoinUrl: joinUrl,
       zoomStartUrl: cls.zoom_start_url ?? '',
       studentUserIds: cls.students ? cls.students.map((s) => s.id) : [],
     });
@@ -149,6 +159,7 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
       durationMinutes: formData.durationMinutes,
       classType: formData.classType,
       status: formData.status,
+      videoProvider: formData.videoProvider,
       zoomJoinUrl: formData.zoomJoinUrl || undefined,
       zoomStartUrl: formData.zoomStartUrl || undefined,
       studentUserIds: formData.studentUserIds,
@@ -188,11 +199,16 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
     { key: 'start', label: 'Scheduled Start' },
     { key: 'duration', label: 'Duration' },
     { key: 'type', label: 'Type' },
+    { key: 'platform', label: 'Video Provider' },
     { key: 'status', label: 'Status' },
     { key: 'actions', label: 'Actions', width: 'w-10' },
   ];
 
   const rows = paginated.map((cls) => {
+    const joinUrl = cls.zoom_join_url || '';
+    const isJitsi = joinUrl.includes('jit.si');
+    const isMeet = joinUrl.includes('meet.google.com');
+
     const actions: TableActionItem[] = [
       {
         label: 'Enter Classroom',
@@ -208,7 +224,22 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
       },
     ];
 
-    if (!cls.zoom_join_url) {
+    if (!isJitsi) {
+      actions.push({
+        label: 'Switch to Jitsi (Free)',
+        iconKey: 'refresh',
+        onClick: () => {
+          startTransition(async () => {
+            const res = await updateClassAction(cls.id, { videoProvider: 'JITSI' });
+            if (!res.success) {
+              alert(res.error?.message || 'Failed to switch to Jitsi.');
+            }
+          });
+        },
+      });
+    }
+
+    if (!cls.zoom_join_url || isJitsi) {
       actions.push({
         label: 'Generate Zoom Meeting',
         iconKey: 'video',
@@ -216,7 +247,7 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
           startTransition(async () => {
             const res = await createZoomMeetingAction(cls.id);
             if (!res.success) {
-              alert(res.error?.message || 'Failed to generate Zoom meeting.');
+              alert(res.error?.message || 'Failed to generate Zoom meeting. Make sure Zoom API credentials are active.');
             }
           });
         },
@@ -225,7 +256,7 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
 
     if (cls.status === 'LIVE' || cls.status === 'COMPLETED') {
       actions.push({
-        label: 'Sync Zoom to Drive',
+        label: 'Sync Recording to Drive',
         iconKey: 'refresh',
         onClick: () => {
           startTransition(async () => {
@@ -233,7 +264,7 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
             if (!res.success) {
               alert(res.error?.message || 'Failed to sync recording to Google Drive.');
             } else {
-              alert('Successfully synced Zoom recording to Google Drive!');
+              alert('Successfully synced recording to Google Drive!');
             }
           });
         },
@@ -256,6 +287,24 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
           minute: '2-digit',
         })
       : '—';
+
+    const platformBadge = isJitsi ? (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-green-50 text-green-700 border border-green-200">
+        🟢 Jitsi (Free)
+      </span>
+    ) : isMeet ? (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+        🟡 Google Meet
+      </span>
+    ) : joinUrl ? (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+        🔵 Zoom API
+      </span>
+    ) : (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+        🟢 Jitsi (Default)
+      </span>
+    );
 
     return {
       coach: cls.coach ? (
@@ -291,6 +340,7 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
           {cls.class_type}
         </span>
       ),
+      platform: platformBadge,
       status: (
         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLORS[cls.status]}`}>
           {STATUS_LABELS[cls.status]}
@@ -469,30 +519,88 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
               </select>
             </div>
 
+            {/* Video Server Platform Selector */}
+            <div className="pt-2 border-t border-border/60">
+              <label className="block text-xs font-bold text-text-primary mb-1.5">
+                📹 Live Video Classroom Provider
+              </label>
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                <button
+                  type="button"
+                  onClick={() => setFormData((p) => ({ ...p, videoProvider: 'JITSI' }))}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                    formData.videoProvider === 'JITSI'
+                      ? 'border-green-500 bg-green-50/60 ring-2 ring-green-500/20'
+                      : 'border-border bg-slate-50 hover:bg-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-green-700">🟢 Jitsi Meet</span>
+                    <span className="text-[9px] bg-green-200 text-green-800 font-bold px-1.5 py-0.5 rounded">FREE</span>
+                  </div>
+                  <p className="text-[10px] text-text-secondary leading-tight">Unlimited time, zero setup, embedded.</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFormData((p) => ({ ...p, videoProvider: 'ZOOM' }))}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                    formData.videoProvider === 'ZOOM'
+                      ? 'border-blue-500 bg-blue-50/60 ring-2 ring-blue-500/20'
+                      : 'border-border bg-slate-50 hover:bg-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-blue-700">🔵 Zoom API</span>
+                    <span className="text-[9px] bg-blue-200 text-blue-800 font-bold px-1.5 py-0.5 rounded">SDK</span>
+                  </div>
+                  <p className="text-[10px] text-text-secondary leading-tight">Zoom meeting API integration.</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFormData((p) => ({ ...p, videoProvider: 'GOOGLE_MEET' }))}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                    formData.videoProvider === 'GOOGLE_MEET' || formData.videoProvider === 'CUSTOM'
+                      ? 'border-amber-500 bg-amber-50/60 ring-2 ring-amber-500/20'
+                      : 'border-border bg-slate-50 hover:bg-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-amber-700">🟡 Google Meet</span>
+                    <span className="text-[9px] bg-amber-200 text-amber-800 font-bold px-1.5 py-0.5 rounded">LINK</span>
+                  </div>
+                  <p className="text-[10px] text-text-secondary leading-tight">Custom Google Meet / external link.</p>
+                </button>
+              </div>
+            </div>
+
             {/* Admin Custom Meeting URLs */}
-            <div className="space-y-3 pt-1 border-t border-border/60">
+            <div className="space-y-3">
               <div>
                 <Input
                   id="zoom-join-url"
-                  label="Meeting Join Link (Student & Coach Embedded Video Link)"
-                  placeholder="https://zoom.us/j/123456789?pwd=... or custom embed link"
+                  label={formData.videoProvider === 'JITSI' ? 'Jitsi Room Link (Auto-generated if empty)' : formData.videoProvider === 'ZOOM' ? 'Zoom Join Link (Auto-generated via Zoom API if empty)' : 'Google Meet / Custom Meeting Link'}
+                  placeholder={formData.videoProvider === 'JITSI' ? 'Auto-generated Jitsi Link' : formData.videoProvider === 'ZOOM' ? 'https://zoom.us/j/...' : 'https://meet.google.com/xyz-abc-def'}
                   value={formData.zoomJoinUrl}
                   onChange={(e) => setFormData((p) => ({ ...p, zoomJoinUrl: e.target.value }))}
                 />
                 <p className="text-[10px] text-text-secondary mt-1">
-                  💡 Admin decides the meeting link. Embedded directly inside the classroom so students stay on the website!
+                  💡 {formData.videoProvider === 'JITSI' ? 'Embedded directly in classroom. 100% Free & Unlimited!' : formData.videoProvider === 'ZOOM' ? 'Zoom SDK embed with instant Jitsi fallback if Zoom API is unconfigured.' : 'Google Meet / Custom link launched for students & coaches.'}
                 </p>
               </div>
 
-              <div>
-                <Input
-                  id="zoom-start-url"
-                  label="Host Start Link (Admin/Coach Start Link - optional)"
-                  placeholder="https://zoom.us/s/123456789?zak=... (Optional)"
-                  value={formData.zoomStartUrl}
-                  onChange={(e) => setFormData((p) => ({ ...p, zoomStartUrl: e.target.value }))}
-                />
-              </div>
+              {formData.videoProvider === 'ZOOM' && (
+                <div>
+                  <Input
+                    id="zoom-start-url"
+                    label="Host Start Link (Admin/Coach Start Link - optional)"
+                    placeholder="https://zoom.us/s/123456789?zak=... (Optional)"
+                    value={formData.zoomStartUrl}
+                    onChange={(e) => setFormData((p) => ({ ...p, zoomStartUrl: e.target.value }))}
+                  />
+                </div>
+              )}
             </div>
 
 

@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "extract-puzzles": "node scripts/extract-puzzles.mjs"
   },
   "keywords": [],
   "author": "",
@@ -25,6 +26,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@mongodb-js/zstd": "^7.0.0",
     "@types/node": "^26.1.1",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
