@@ -140,3 +140,24 @@ export async function deleteAnnouncement(id: string): Promise<Result<{ id: strin
     };
   }
 }
+
+/**
+ * Fetches the latest published announcement for students/coaches.
+ */
+export async function getLatestPublishedAnnouncement(): Promise<DbAnnouncement | null> {
+  try {
+    const admin = createSupabaseAdmin();
+    const { data } = await admin
+      .from('announcements')
+      .select('*')
+      .eq('is_published', true)
+      .order('published_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (data) return data;
+    return null;
+  } catch {
+    return null;
+  }
+}

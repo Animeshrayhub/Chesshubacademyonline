@@ -20,6 +20,7 @@ import LichessTournamentManager from '@/components/dashboard/ui/LichessTournamen
 import PuzzleRushSurvival from '@/components/dashboard/ui/PuzzleRushSurvival';
 import AIOpeningAssistant from '@/components/dashboard/ui/AIOpeningAssistant';
 import AcademyHallOfFame from '@/components/dashboard/ui/AcademyHallOfFame';
+import { getLatestPublishedAnnouncement } from '@/lib/announcements';
 
 
 
@@ -27,9 +28,10 @@ export const dynamic = 'force-dynamic';
 
 export default async function StudentOverviewPage() {
   const user = await getCurrentUser();
-  const [statsRes, homeworkRes] = await Promise.all([
+  const [statsRes, homeworkRes, activeAnnouncement] = await Promise.all([
     getStudentDashboardStats(),
     getStudentHomework(),
+    getLatestPublishedAnnouncement(),
   ]);
 
   const stats = statsRes.success && statsRes.data ? statsRes.data : {
@@ -130,7 +132,7 @@ export default async function StudentOverviewPage() {
 
   const assignments = homeworkRes.success && homeworkRes.data ? homeworkRes.data : [];
 
-  const ROWS = assignments.slice(0, 6).map((asgn) => ({
+  const ROWS = assignments.slice(0, 6).map((asgn: any) => ({
     category: (
       <div>
         <span className="font-semibold text-text-primary text-xs block">{asgn.workbookTitle || 'Untitled Workbook'}</span>
@@ -157,8 +159,14 @@ export default async function StudentOverviewPage() {
         subtitle="Access scheduled live interactive classes, daily tactical assignments, and curriculum libraries."
       />
 
-      {/* 📣 Broadcast Announcement Banner */}
-      <AcademyAnnouncementBanner />
+      {/* 📣 Broadcast Announcement Banner (Only rendered if published by Admin) */}
+      {activeAnnouncement && (
+        <AcademyAnnouncementBanner
+          title={activeAnnouncement.title}
+          message={activeAnnouncement.body}
+          date={activeAnnouncement.published_at ? new Date(activeAnnouncement.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : undefined}
+        />
+      )}
 
       {/* 🏅 Academy Hall of Fame */}
       <AcademyHallOfFame />

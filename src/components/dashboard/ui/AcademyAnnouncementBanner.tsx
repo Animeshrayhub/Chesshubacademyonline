@@ -7,22 +7,25 @@ interface AcademyAnnouncementBannerProps {
   message?: string;
   date?: string;
   badge?: string;
+  actionUrl?: string;
 }
 
 export default function AcademyAnnouncementBanner({
-  title = '🏆 Upcoming Academy Blitz Championship!',
-  message = 'Join our weekly Lichess arena tournament this Sunday at 5:00 PM IST. Prizes for top 3 rankers!',
-  date = 'Sunday, 5:00 PM IST',
-  badge = 'ACADEMY EVENT',
+  title,
+  message,
+  date,
+  badge = 'ACADEMY ANNOUNCEMENT',
+  actionUrl = '/dashboard/student/announcements',
 }: AcademyAnnouncementBannerProps) {
   const [dismissed, setDismissed] = useState(false);
 
-  if (dismissed) return null;
+  // If dismissed or no title provided, do not render banner
+  if (dismissed || !title) return null;
 
   return (
     <div className="bg-gradient-to-r from-amber-500 via-indigo-600 to-purple-600 rounded-2xl p-4 text-white shadow-xl flex flex-col md:flex-row items-center justify-between gap-4 relative overflow-hidden">
       {/* Subtle shine effect */}
-      <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full blur-xl pointer-events-none"></div>
+      <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full blur-xl pointer-events-none" />
 
       <div className="flex items-center gap-3 z-10">
         <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center text-xl shadow-inner shrink-0">
@@ -33,20 +36,22 @@ export default function AcademyAnnouncementBanner({
             <span className="text-[10px] font-extrabold bg-white/20 border border-white/30 text-white px-2 py-0.5 rounded-full uppercase tracking-wider">
               {badge}
             </span>
-            <span className="text-xs text-amber-200 font-bold">{date}</span>
+            {date && <span className="text-xs text-amber-200 font-bold">{date}</span>}
           </div>
           <h4 className="text-sm font-bold leading-snug">{title}</h4>
-          <p className="text-xs text-white/90 font-medium">{message}</p>
+          {message && <p className="text-xs text-white/90 font-medium">{message}</p>}
         </div>
       </div>
 
       <div className="flex items-center gap-2 shrink-0 z-10">
-        <a
-          href="/dashboard/student/tournaments"
-          className="px-4 py-2 bg-white text-slate-950 hover:bg-slate-100 font-bold text-xs rounded-xl shadow-md transition-all active:scale-95 whitespace-nowrap"
-        >
-          🏆 View Details
-        </a>
+        {actionUrl && (
+          <a
+            href={actionUrl}
+            className="px-4 py-2 bg-white text-slate-950 hover:bg-slate-100 font-bold text-xs rounded-xl shadow-md transition-all active:scale-95 whitespace-nowrap"
+          >
+            📢 View Announcement
+          </a>
+        )}
         <button
           type="button"
           onClick={() => setDismissed(true)}
