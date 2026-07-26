@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useEffect } from 'react';
+import { useId, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import DashboardIcon from '../ui/DashboardIcon';
@@ -18,9 +18,14 @@ export default function MobileNav({ isOpen, onClose, role, navItems }: MobileNav
   const pathname = usePathname();
   const menuLabelId = useId();
 
-  // Close mobile nav when navigation path changes
+  const prevPathname = useRef(pathname);
+
+  // Close mobile nav only when navigation path changes
   useEffect(() => {
-    onClose();
+    if (prevPathname.current !== pathname) {
+      prevPathname.current = pathname;
+      onClose();
+    }
   }, [pathname, onClose]);
 
   if (!isOpen) return null;

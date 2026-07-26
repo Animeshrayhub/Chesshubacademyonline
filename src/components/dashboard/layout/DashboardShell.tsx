@@ -32,7 +32,7 @@ export default function DashboardShell({ role, user, children }: DashboardShellP
   const navItems = getNavForRole(role);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-surface-light text-text-primary">
+    <div className="flex h-screen w-full max-w-full overflow-hidden bg-surface-light text-text-primary">
       {/* Skip link for keyboard accessibility */}
       <a
         href="#dashboard-content"

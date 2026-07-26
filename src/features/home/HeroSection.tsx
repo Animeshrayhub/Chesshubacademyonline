@@ -35,7 +35,7 @@ export default function HeroSection() {
             </div>
 
             {/* Headline */}
-            <h1 className="font-heading text-5xl md:text-6xl xl:text-7xl font-bold leading-[1.08] mb-6 text-white">
+            <h1 className="font-heading text-4xl sm:text-5xl md:text-6xl xl:text-7xl font-bold leading-[1.08] mb-6 text-white">
               Master Chess.
               <br />
               <span className="text-gradient-gold">Master Life.</span>
