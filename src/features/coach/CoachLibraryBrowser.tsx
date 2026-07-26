@@ -14,6 +14,7 @@ import {
   assignTemplateAction,
   assignCollectionToStudentAction,
   assignCourseToStudentAction,
+  assignPracticeGameToStudentAction,
 } from '@/actions/homework';
 import PageHeader from '@/components/dashboard/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
@@ -34,7 +35,7 @@ interface CoachLibraryBrowserProps {
   coachProfileId: string;
 }
 
-type ActiveTab = 'templates' | 'collections' | 'courses';
+type ActiveTab = 'templates' | 'collections' | 'courses' | 'practice_games';
 
 const LEVEL_STYLES: Record<HomeworkLevel, string> = {
   BEGINNER:     'bg-green-50 text-green-700',
@@ -69,7 +70,7 @@ export default function CoachLibraryBrowser({
   const PAGE_SIZE = 20;
 
   // Assign modal
-  const [assignTarget, setAssignTarget] = useState<{ type: 'template' | 'collection' | 'course'; id: string; title: string } | null>(null);
+  const [assignTarget, setAssignTarget] = useState<{ type: 'template' | 'collection' | 'course' | 'game'; id: string; title: string } | null>(null);
   const [selectedStudent, setSelectedStudent] = useState('');
   const [dueAt, setDueAt] = useState('');
   const [coachNotes, setCoachNotes] = useState('');
@@ -94,7 +95,7 @@ export default function CoachLibraryBrowser({
     }
   };
 
-  const openAssign = (type: 'template' | 'collection' | 'course', id: string, title: string) => {
+  const openAssign = (type: 'template' | 'collection' | 'course' | 'game', id: string, title: string) => {
     setAssignTarget({ type, id, title });
     setSelectedStudent('');
     setDueAt('');
@@ -125,6 +126,13 @@ export default function CoachLibraryBrowser({
         dueAt: dueAt || undefined,
         coachNotes: coachNotes || undefined,
       });
+    } else if (assignTarget.type === 'game') {
+      res = await assignPracticeGameToStudentAction({
+        gameTitle: assignTarget.title,
+        studentProfileId: selectedStudent,
+        coachProfileId,
+        coachNotes: coachNotes || undefined,
+      });
     } else {
       res = await assignCourseToStudentAction({
         courseId: assignTarget.id,
@@ -147,9 +155,10 @@ export default function CoachLibraryBrowser({
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const TABS: { key: ActiveTab; label: string; count: number }[] = [
-    { key: 'templates',   label: '📚 Templates',   count: total },
-    { key: 'collections', label: '🗂️ Collections',  count: collections.length },
-    { key: 'courses',     label: '🎓 Courses',       count: courses.length },
+    { key: 'templates',      label: '📚 Templates',      count: total },
+    { key: 'collections',    label: '🗂️ Collections',     count: collections.length },
+    { key: 'courses',        label: '🎓 Courses',          count: courses.length },
+    { key: 'practice_games', label: '⚔️ Practice Games',  count: 4 },
   ];
 
   return (
@@ -329,6 +338,35 @@ export default function CoachLibraryBrowser({
                   className="w-full px-4 py-2 text-sm rounded-lg bg-primary text-white hover:bg-primary-dark transition-colors font-medium"
                 >
                   Assign Course
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Practice Games ── */}
+      {activeTab === 'practice_games' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-4">
+          {[
+            { id: 'game-1', title: 'Rook & Pawn Endgame Technique', desc: 'Lucena Position practice vs Computer Bot', level: 'INTERMEDIATE' },
+            { id: 'game-2', title: 'Italian Game Opening Practice', desc: 'Play 10 moves of 1.e4 e5 2.Nf3 Nc6 3.Bc4', level: 'BEGINNER' },
+            { id: 'game-3', title: 'Knight Fork Defense Challenge', desc: 'Tactical defense sparring vs Computer Bot', level: 'INTERMEDIATE' },
+            { id: 'game-4', title: 'King & Pawn Endgame Precision', desc: 'Opposition & triangulation practice game', level: 'ADVANCED' },
+          ].map(game => (
+            <div key={game.id} className="bg-white rounded-2xl border border-border p-5 shadow-sm hover:shadow-md transition-all flex flex-col">
+              <h3 className="font-semibold text-text-primary text-base mb-1">⚔️ {game.title}</h3>
+              <p className="text-sm text-text-secondary mb-3">{game.desc}</p>
+              <div className="flex gap-2 mb-4">
+                <span className={`text-xs px-2 py-0.5 rounded-full ${LEVEL_STYLES[game.level as HomeworkLevel]}`}>{game.level}</span>
+              </div>
+              <div className="mt-auto">
+                <button
+                  id={`coach-assign-game-${game.id}`}
+                  onClick={() => openAssign('game', game.id, game.title)}
+                  className="w-full px-4 py-2 text-sm rounded-lg bg-primary text-white hover:bg-primary-dark transition-colors font-medium"
+                >
+                  Assign Practice Game
                 </button>
               </div>
             </div>

@@ -832,3 +832,19 @@ export async function reassignTemplateHomeworkAction(assignmentId: string, coach
 export async function getTemplateVersionHistoryAction(templateId: string) {
   return serializeResult(await hw.getTemplateVersionHistory(templateId));
 }
+
+export async function assignPracticeGameToStudentAction(data: {
+  gameTitle: string;
+  fen?: string;
+  studentProfileId: string;
+  coachProfileId?: string;
+  coachNotes?: string;
+}) {
+  const res = await hw.assignPracticeGameToStudent(data);
+  if (res.success) {
+    revalidatePath('/dashboard/coach/homework');
+    revalidatePath('/dashboard/student/homework');
+    revalidatePath('/dashboard/student/games');
+  }
+  return serializeResult(res);
+}

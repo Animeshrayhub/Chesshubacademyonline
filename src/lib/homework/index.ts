@@ -2702,3 +2702,30 @@ export async function getTemplateVersionHistory(templateId: string): Promise<Res
     return { success: false, error: new InternalServerError(error instanceof Error ? error.message : 'Unknown error') };
   }
 }
+
+export async function assignPracticeGameToStudent(data: {
+  gameTitle: string;
+  fen?: string;
+  studentProfileId: string;
+  coachProfileId?: string;
+  coachNotes?: string;
+}): Promise<Result<{ count: number }>> {
+  try {
+    await assertCoach();
+    const admin = createSupabaseAdmin();
+
+    const { error } = await admin.from('student_homework_assignments').insert({
+      student_profile_id: data.studentProfileId,
+      coach_profile_id: data.coachProfileId ?? null,
+      status: 'assigned',
+      coach_notes: data.coachNotes ? `[Practice Game: ${data.gameTitle}] ${data.coachNotes}` : `[Practice Game: ${data.gameTitle}] Play position against Bot or Lichess`,
+      assigned_at: new Date().toISOString(),
+    });
+
+    if (error) return { success: false, error: new DatabaseError('Failed to assign practice game', error) };
+    return { success: true, data: { count: 1 } };
+  } catch (error) {
+    if (error instanceof BaseError) return { success: false, error };
+    return { success: false, error: new InternalServerError(error instanceof Error ? error.message : 'Unknown error') };
+  }
+}

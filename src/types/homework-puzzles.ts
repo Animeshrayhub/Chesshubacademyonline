@@ -24,9 +24,14 @@ export interface DbHomeworkPuzzle {
   title:         string;
   fen:           string;
   solution:      string[];          // UCI move sequence
+  alt_solutions?: string[];         // Alternative UCI move sequence variations
   theme:         PuzzleTheme | string;
   difficulty:    PuzzleDifficulty;
   rating:        number;
+  estimated_time?: number;          // Estimated time in minutes
+  tags?:         string[];
+  chapter_id?:    string | null;
+  status?:       'active' | 'draft' | 'archived';
   hint_1:        string | null;
   hint_2:        string | null;
   hint_3:        string | null;
@@ -47,12 +52,15 @@ export interface StudentPuzzleView {
   theme:         string;
   difficulty:    PuzzleDifficulty;
   rating:        number;
+  estimated_time?: number;
+  tags?:         string[];
   puzzle_order:  number;
   // hints and solution only present when allowed
   hint_1?:       string | null;
   hint_2?:       string | null;
   hint_3?:       string | null;
   solution?:     string[];   // only when solution_unlocked = true
+  alt_solutions?: string[];
   explanation?:  string | null;
 }
 
