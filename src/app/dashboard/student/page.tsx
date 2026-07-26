@@ -16,7 +16,6 @@ import DailyStreakWidget from '@/components/dashboard/ui/DailyStreakWidget';
 import StudentBattleArena from '@/components/dashboard/ui/StudentBattleArena';
 import AcademyAnnouncementBanner from '@/components/dashboard/ui/AcademyAnnouncementBanner';
 import LichessTournamentManager from '@/components/dashboard/ui/LichessTournamentManager';
-import PuzzleRushSurvival from '@/components/dashboard/ui/PuzzleRushSurvival';
 import AIOpeningAssistant from '@/components/dashboard/ui/AIOpeningAssistant';
 import { getLatestPublishedAnnouncement } from '@/lib/announcements';
 import { getAcademyTournaments } from '@/lib/tournaments';
@@ -231,11 +230,8 @@ export default async function StudentOverviewPage() {
         userRole={user?.role === 'ADMIN' ? 'admin' : user?.role === 'COACH' ? 'coach' : 'student'}
       />
 
-      {/* 🤖 AI Opening Repertoire Assistant & ⚡ Puzzle Rush Survival Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <AIOpeningAssistant />
-        <PuzzleRushSurvival />
-      </div>
+      {/* 🤖 AI Opening Repertoire Assistant */}
+      <AIOpeningAssistant />
 
 
       {/* Shortcuts */}
