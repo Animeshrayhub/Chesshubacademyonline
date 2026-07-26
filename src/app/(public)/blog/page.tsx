@@ -123,68 +123,91 @@ export default function BlogPage() {
             </div>
           )}
 
-          {/* Category filter */}
-          <div className="flex flex-wrap gap-3 mb-12" role="navigation" aria-label="Blog categories">
-            <span className="px-5 py-2 rounded-full bg-primary text-white text-sm font-semibold">
-              All Posts
-            </span>
-            {CATEGORIES.map((cat) => (
-              <button
-                key={cat}
-                type="button"
-                className="px-5 py-2 rounded-full border border-border text-text-secondary text-sm font-medium hover:border-primary hover:text-primary transition-colors duration-200"
+          {/* Empty state when no blog posts exist */}
+          {BLOG_POSTS.length === 0 ? (
+            <div className="py-20 text-center max-w-md mx-auto">
+              <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-5 text-3xl">
+                📝
+              </div>
+              <h2 className="font-heading text-2xl font-bold text-text-primary mb-3">
+                No Articles Published Yet
+              </h2>
+              <p className="text-text-secondary text-sm leading-relaxed mb-6">
+                Our grandmaster coaching team and admin staff will be publishing official articles, chess insights, and academy updates here soon.
+              </p>
+              <Link
+                href="/book-demo"
+                className="inline-flex items-center justify-center px-6 py-3 bg-accent hover:bg-accent-hover text-surface-dark font-semibold text-sm rounded-xl transition-all shadow-gold"
               >
-                {cat}
-              </button>
-            ))}
-          </div>
+                Book Free Demo Class
+              </Link>
+            </div>
+          ) : (
+            <>
+              {/* Category filter */}
+              <div className="flex flex-wrap gap-3 mb-12" role="navigation" aria-label="Blog categories">
+                <span className="px-5 py-2 rounded-full bg-primary text-white text-sm font-semibold">
+                  All Posts
+                </span>
+                {CATEGORIES.map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    className="px-5 py-2 rounded-full border border-border text-text-secondary text-sm font-medium hover:border-primary hover:text-primary transition-colors duration-200"
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
 
-          {/* Articles grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {others.map((post) => (
-              <Link key={post.id} href={`/blog/${post.slug}`} className="group block">
-                <article className="card-premium overflow-hidden h-full flex flex-col">
-                  <div className="relative h-52 overflow-hidden">
-                    <Image
-                      src={post.imageUrl}
-                      alt={post.title}
-                      fill
-                      className="object-cover transition-transform duration-300 group-hover:scale-105"
-                      sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                    />
-                  </div>
-                  <div className="p-6 flex flex-col flex-1">
-                    <Badge variant="primary" className="self-start mb-4">
-                      {post.category}
-                    </Badge>
-                    <h2 className="font-heading font-bold text-text-primary text-lg mb-3 leading-tight group-hover:text-primary transition-colors line-clamp-2">
-                      {post.title}
-                    </h2>
-                    <p className="text-text-secondary text-sm leading-relaxed mb-6 flex-1 line-clamp-3">
-                      {post.excerpt}
-                    </p>
-                    <div className="flex items-center gap-3 pt-4 border-t border-border">
-                      <div className="relative w-8 h-8 rounded-full overflow-hidden">
+              {/* Articles grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {others.map((post) => (
+                  <Link key={post.id} href={`/blog/${post.slug}`} className="group block">
+                    <article className="card-premium overflow-hidden h-full flex flex-col">
+                      <div className="relative h-52 overflow-hidden">
                         <Image
-                          src={post.authorImageUrl}
-                          alt={post.author}
+                          src={post.imageUrl}
+                          alt={post.title}
                           fill
-                          className="object-cover"
-                          sizes="32px"
+                          className="object-cover transition-transform duration-300 group-hover:scale-105"
+                          sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
                         />
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-semibold text-text-primary truncate">{post.author}</div>
-                        <div className="text-xs text-text-secondary">
-                          {formatDate(post.publishedAt)} · {post.readingTimeMinutes} min
+                      <div className="p-6 flex flex-col flex-1">
+                        <Badge variant="primary" className="self-start mb-4">
+                          {post.category}
+                        </Badge>
+                        <h2 className="font-heading font-bold text-text-primary text-lg mb-3 leading-tight group-hover:text-primary transition-colors line-clamp-2">
+                          {post.title}
+                        </h2>
+                        <p className="text-text-secondary text-sm leading-relaxed mb-6 flex-1 line-clamp-3">
+                          {post.excerpt}
+                        </p>
+                        <div className="flex items-center gap-3 pt-4 border-t border-border">
+                          <div className="relative w-8 h-8 rounded-full overflow-hidden">
+                            <Image
+                              src={post.authorImageUrl}
+                              alt={post.author}
+                              fill
+                              className="object-cover"
+                              sizes="32px"
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-semibold text-text-primary truncate">{post.author}</div>
+                            <div className="text-xs text-text-secondary">
+                              {formatDate(post.publishedAt)} · {post.readingTimeMinutes} min
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </div>
-                </article>
-              </Link>
-            ))}
-          </div>
+                    </article>
+                  </Link>
+                ))}
+              </div>
+            </>
+          )}
         </Container>
       </section>
 
