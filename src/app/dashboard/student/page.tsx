@@ -21,17 +21,17 @@ import PuzzleRushSurvival from '@/components/dashboard/ui/PuzzleRushSurvival';
 import AIOpeningAssistant from '@/components/dashboard/ui/AIOpeningAssistant';
 import AcademyHallOfFame from '@/components/dashboard/ui/AcademyHallOfFame';
 import { getLatestPublishedAnnouncement } from '@/lib/announcements';
-
-
+import { getAcademyTournaments } from '@/lib/tournaments';
 
 export const dynamic = 'force-dynamic';
 
 export default async function StudentOverviewPage() {
   const user = await getCurrentUser();
-  const [statsRes, homeworkRes, activeAnnouncement] = await Promise.all([
+  const [statsRes, homeworkRes, activeAnnouncement, tournaments] = await Promise.all([
     getStudentDashboardStats(),
     getStudentHomework(),
     getLatestPublishedAnnouncement(),
+    getAcademyTournaments(),
   ]);
 
   const stats = statsRes.success && statsRes.data ? statsRes.data : {
@@ -168,9 +168,6 @@ export default async function StudentOverviewPage() {
         />
       )}
 
-      {/* 🏅 Academy Hall of Fame */}
-      <AcademyHallOfFame />
-
 
       {/* Lichess Rating Widget */}
       {stats.lichess && (
@@ -231,7 +228,10 @@ export default async function StudentOverviewPage() {
       </div>
 
       {/* 🏆 Lichess Custom Tournament Join Manager */}
-      <LichessTournamentManager userRole="student" />
+      <LichessTournamentManager
+        initialTournaments={tournaments}
+        userRole={user?.role === 'ADMIN' ? 'admin' : user?.role === 'COACH' ? 'coach' : 'student'}
+      />
 
       {/* 🤖 AI Opening Repertoire Assistant & ⚡ Puzzle Rush Survival Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

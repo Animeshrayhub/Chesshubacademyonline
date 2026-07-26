@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
+import { addTournamentAction } from '@/actions/tournaments';
 
-interface TournamentItem {
+export interface TournamentItem {
   id: string;
   title: string;
   lichessUrl: string;
@@ -17,24 +18,7 @@ interface LichessTournamentManagerProps {
 }
 
 export default function LichessTournamentManager({
-  initialTournaments = [
-    {
-      id: 't-1',
-      title: 'ChessHub Weekly Arena Blitz',
-      lichessUrl: 'https://lichess.org/tournament/arena',
-      date: 'Sunday, July 26 • 5:00 PM IST',
-      timeControl: '3+0 Blitz',
-      status: 'UPCOMING',
-    },
-    {
-      id: 't-2',
-      title: 'Academy Rapid Championship',
-      lichessUrl: 'https://lichess.org/tournament/swiss',
-      date: 'Friday, July 24 • 6:30 PM IST',
-      timeControl: '10+0 Rapid',
-      status: 'UPCOMING',
-    },
-  ],
+  initialTournaments = [],
   userRole = 'student',
 }: LichessTournamentManagerProps) {
   const [tournaments, setTournaments] = useState<TournamentItem[]>(initialTournaments);
@@ -43,21 +27,35 @@ export default function LichessTournamentManager({
   const [newUrl, setNewUrl] = useState('');
   const [newDate, setNewDate] = useState('');
   const [newTc, setNewTc] = useState('3+0 Blitz');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleAddTournament = (e: React.FormEvent) => {
+  const handleAddTournament = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle || !newUrl) return;
+
+    setIsSubmitting(true);
+    const cleanUrl = newUrl.startsWith('http') ? newUrl : `https://${newUrl}`;
 
     const newItem: TournamentItem = {
       id: `t-${Date.now()}`,
       title: newTitle,
-      lichessUrl: newUrl.startsWith('http') ? newUrl : `https://${newUrl}`,
+      lichessUrl: cleanUrl,
       date: newDate || 'Upcoming Session',
       timeControl: newTc,
       status: 'UPCOMING',
     };
 
+    try {
+      await addTournamentAction({
+        title: newTitle,
+        lichessUrl: cleanUrl,
+        date: newDate || 'Upcoming Session',
+        timeControl: newTc,
+      });
+    } catch {}
+
     setTournaments([newItem, ...tournaments]);
+    setIsSubmitting(false);
     setShowAddModal(false);
     setNewTitle('');
     setNewUrl('');
@@ -95,34 +93,44 @@ export default function LichessTournamentManager({
 
       {/* List of Tournaments */}
       <div className="space-y-3">
-        {tournaments.map((t) => (
-          <div
-            key={t.id}
-            className="p-4 bg-slate-950/70 border border-slate-800/80 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4 hover:border-amber-500/40 transition-all"
-          >
-            <div className="space-y-1 text-center md:text-left">
-              <div className="flex items-center gap-2 justify-center md:justify-start">
-                <span className="text-[10px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full uppercase">
-                  {t.timeControl}
-                </span>
-                <span className="text-xs text-slate-400 font-medium">{t.date}</span>
-              </div>
-              <h4 className="text-sm font-bold text-white">{t.title}</h4>
-            </div>
-
-            <a
-              href={t.lichessUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-4 py-2 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition-all active:scale-95 flex items-center gap-2 whitespace-nowrap"
-            >
-              <span>🏆 Join Tournament on Lichess</span>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
-            </a>
+        {tournaments.length === 0 ? (
+          <div className="p-6 text-center text-slate-400 bg-slate-950/40 border border-slate-800/60 rounded-2xl space-y-2">
+            <div className="text-2xl">🏆</div>
+            <p className="text-xs font-bold text-slate-300">No Active Tournaments Scheduled</p>
+            <p className="text-[11px] text-slate-500 max-w-sm mx-auto leading-relaxed">
+              Academy coaches update tournament links prior to weekly Lichess arena matches.
+            </p>
           </div>
-        ))}
+        ) : (
+          tournaments.map((t) => (
+            <div
+              key={t.id}
+              className="p-4 bg-slate-950/70 border border-slate-800/80 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4 hover:border-amber-500/40 transition-all"
+            >
+              <div className="space-y-1 text-center md:text-left">
+                <div className="flex items-center gap-2 justify-center md:justify-start">
+                  <span className="text-[10px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full uppercase">
+                    {t.timeControl}
+                  </span>
+                  <span className="text-xs text-slate-400 font-medium">{t.date}</span>
+                </div>
+                <h4 className="text-sm font-bold text-white">{t.title}</h4>
+              </div>
+
+              <a
+                href={t.lichessUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition-all active:scale-95 flex items-center gap-2 whitespace-nowrap"
+              >
+                <span>🏆 Join Tournament on Lichess</span>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+              </a>
+            </div>
+          ))
+        )}
       </div>
 
       {/* Add Tournament Modal (Coach/Admin) */}

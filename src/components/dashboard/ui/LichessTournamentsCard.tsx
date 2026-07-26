@@ -69,16 +69,9 @@ export default async function LichessTournamentsCard() {
     errorMsg = 'Failed to load Lichess Arena standings.';
   }
 
-  // Fallback / loading mock standings if Lichess is offline
-  const fallbackStandings: TournamentStanding[] = [
-    { name: 'ChessMaster_99', rank: 1, rating: 2150, score: 28 },
-    { name: 'TacticsWizard', rank: 2, rating: 1980, score: 22 },
-    { name: 'PawnPusher_01', rank: 3, rating: 1845, score: 18 },
-  ];
-
-  const displayTitle = tournament ? tournament.fullName : 'Academy Arena Weekly';
-  const displayPlayers = tournament ? tournament.nbPlayers : 12;
-  const displayStandings = tournament ? tournament.standing : fallbackStandings;
+  const displayTitle = tournament ? tournament.fullName : 'Lichess Global Arena';
+  const displayPlayers = tournament ? tournament.nbPlayers : 0;
+  const displayStandings = tournament ? tournament.standing : [];
 
   return (
     <div className="bg-white rounded-2xl border border-border shadow-card p-5 transition-all hover:shadow-card-hover duration-200">
@@ -103,15 +96,17 @@ export default async function LichessTournamentsCard() {
           <span className="text-xs font-bold text-text-primary leading-tight block">
             {displayTitle}
           </span>
-          <span className="text-[9px] text-text-secondary mt-0.5 block">
-            {displayPlayers} active players competing
-          </span>
+          {displayPlayers > 0 && (
+            <span className="text-[9px] text-text-secondary mt-0.5 block">
+              {displayPlayers} active players competing
+            </span>
+          )}
         </div>
 
         <div className="bg-slate-50 border border-border/80 rounded-xl p-2.5 space-y-2">
           <span className="text-[9px] text-text-secondary uppercase font-bold tracking-wider block mb-1">Top Standings</span>
           {displayStandings.length === 0 ? (
-            <p className="text-[10px] text-slate-400 italic">No standings recorded yet.</p>
+            <p className="text-[10px] text-slate-400 italic">No live standings right now. Check back during active matches.</p>
           ) : (
             displayStandings.map((player) => (
               <div key={player.name} className="flex items-center justify-between text-xs text-text-primary border-b border-border/40 pb-1.5 last:border-0 last:pb-0">
