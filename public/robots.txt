@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+
+# Block private routes (when they exist in future phases)
+Disallow: /login
+Disallow: /dashboard
+Disallow: /admin
+
+Sitemap: https://chesshubacademy.com/sitemap.xml
