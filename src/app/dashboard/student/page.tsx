@@ -240,7 +240,6 @@ export default async function StudentOverviewPage() {
 
       {/* Shortcuts */}
       <div>
-
         <h2 className="text-sm font-semibold text-text-primary mb-3">Study Center Shortcuts</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {QUICK_ACTIONS.map((action, index) => (
@@ -250,7 +249,7 @@ export default async function StudentOverviewPage() {
       </div>
 
       {/* Tables & Activities */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pb-2">
         <div className="lg:col-span-2">
           <DashboardTable
             columns={COLUMNS}
