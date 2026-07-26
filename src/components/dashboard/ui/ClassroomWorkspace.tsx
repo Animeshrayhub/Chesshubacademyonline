@@ -825,63 +825,78 @@ export default function ClassroomWorkspace({
             )}
 
             <div className="flex-grow flex flex-col justify-center items-center h-full w-full">
-              {status === 'LIVE' && zoomJoinUrl ? (
-                <div className="w-full h-full min-h-[350px] bg-slate-950 rounded-xl overflow-hidden relative border border-slate-800 flex-grow flex flex-col">
-                  {/* Provider 1: Jitsi Meet (Native Embedded iFrame) */}
-                  {zoomJoinUrl.includes('jit.si') ? (
-                    <iframe
-                      src={`${zoomJoinUrl}#userInfo.displayName="${encodeURIComponent(userName)}"`}
-                      className="w-full h-full absolute inset-0 border-0"
-                      allow="microphone *; camera *; display-capture *; autoplay *; media-record *; fullscreen *"
-                    />
-                  ) : zoomJoinUrl.includes('meet.google.com') || zoomJoinUrl.includes('custom') ? (
-                    /* Provider 2: Google Meet / Custom External Launcher */
-                    <div className="w-full h-full min-h-[300px] p-6 flex flex-col items-center justify-center text-center">
-                      <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-300 flex items-center justify-center text-2xl mb-3 border border-amber-500/30">
-                        📹
-                      </div>
-                      <h4 className="text-sm font-bold text-white mb-1">Google Meet / Live Session Active</h4>
-                      <p className="text-xs text-slate-400 mb-5 max-w-xs leading-relaxed">
-                        Click below to launch your live video classroom session in your browser.
-                      </p>
-                      <a
-                        href={zoomJoinUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs shadow-gold transition-all inline-flex items-center gap-2"
-                      >
-                        <span>🚀 Launch Video Classroom</span>
-                      </a>
-                    </div>
-                  ) : (
-                    /* Provider 3: Zoom SDK / Web View Embed */
-                    <>
-                      {!zoomError ? (
-                        <div id="meetingSDKElement" className="w-full h-full flex-grow relative" />
-                      ) : (
-                        <iframe
-                          src={zoomEmbedUrl}
-                          className="w-full h-full absolute inset-0 border-0"
-                          allow="microphone *; camera *; display-capture *; autoplay *; media-record *; fullscreen *; microphone; camera; display-capture"
-                        />
-                      )}
+              {(() => {
+                const activeVideoUrl = zoomJoinUrl || `https://meet.jit.si/ChessHub-${classId.replace(/[^a-zA-Z0-9]/g, '')}`;
+                const canShowVideo = status === 'LIVE' || isCoach;
 
-                      {zoomLoading && !zoomError && (
-                        <div className="absolute inset-0 bg-slate-950 flex items-center justify-center z-10">
-                          <div className="text-center space-y-2">
-                            <span className="text-xl animate-spin inline-block">⏳</span>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Loading secure classroom...</p>
-                          </div>
+                if (!canShowVideo) {
+                  return (
+                    <div className="p-6 text-center text-slate-400 space-y-2">
+                      <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center mx-auto text-lg mb-2">
+                        ⏳
+                      </div>
+                      <p className="text-xs font-bold text-slate-300">Class Session Scheduled</p>
+                      <p className="text-[11px] text-slate-500 max-w-xs leading-relaxed">
+                        Video stream activates as soon as your assigned coach clicks &quot;Start Live Class&quot;.
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="w-full h-full min-h-[350px] bg-slate-950 rounded-xl overflow-hidden relative border border-slate-800 flex-grow flex flex-col">
+                    {/* Provider 1: Jitsi Meet (Native Embedded iFrame) */}
+                    {activeVideoUrl.includes('jit.si') ? (
+                      <iframe
+                        src={`${activeVideoUrl}#userInfo.displayName="${encodeURIComponent(userName)}"`}
+                        className="w-full h-full absolute inset-0 border-0"
+                        allow="microphone *; camera *; display-capture *; autoplay *; media-record *; fullscreen *"
+                      />
+                    ) : activeVideoUrl.includes('meet.google.com') || activeVideoUrl.includes('custom') ? (
+                      /* Provider 2: Google Meet / Custom External Launcher */
+                      <div className="w-full h-full min-h-[300px] p-6 flex flex-col items-center justify-center text-center">
+                        <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-300 flex items-center justify-center text-2xl mb-3 border border-amber-500/30">
+                          📹
                         </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              ) : (
-                <p className="text-xs text-slate-500 italic text-center py-6">
-                  Video activates once the coach starts the live session.
-                </p>
-              )}
+                        <h4 className="text-sm font-bold text-white mb-1">Google Meet / Live Session Active</h4>
+                        <p className="text-xs text-slate-400 mb-5 max-w-xs leading-relaxed">
+                          Click below to launch your live video classroom session in your browser.
+                        </p>
+                        <a
+                          href={activeVideoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs shadow-gold transition-all inline-flex items-center gap-2"
+                        >
+                          <span>🚀 Launch Video Classroom</span>
+                        </a>
+                      </div>
+                    ) : (
+                      /* Provider 3: Zoom SDK / Web View Embed */
+                      <>
+                        {!zoomError ? (
+                          <div id="meetingSDKElement" className="w-full h-full flex-grow relative" />
+                        ) : (
+                          <iframe
+                            src={zoomEmbedUrl}
+                            className="w-full h-full absolute inset-0 border-0"
+                            allow="microphone *; camera *; display-capture *; autoplay *; media-record *; fullscreen *; microphone; camera; display-capture"
+                          />
+                        )}
+
+                        {zoomLoading && !zoomError && (
+                          <div className="absolute inset-0 bg-slate-950 flex items-center justify-center z-10">
+                            <div className="text-center space-y-2">
+                              <span className="text-xl animate-spin inline-block">⏳</span>
+                              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Loading secure classroom...</p>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         );

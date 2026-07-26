@@ -143,18 +143,26 @@ export default async function ClassroomPage({ params }: { params: { classId: str
   }
 
 
-  // Zoom OAuth Token Refresh Checks: Validate Zoom credentials before classroom loads
-  if ((role === 'coach' || role === 'admin') && (!cls.zoom_start_url || !cls.zoom_meeting_id)) {
-    try {
-      const { createZoomMeeting } = await import('@/lib/zoom');
-      const zoomResult = await createZoomMeeting(params.classId, cls.class_type, cls.scheduled_start, cls.duration_minutes);
-      if (zoomResult.success && zoomResult.data) {
-        cls.zoom_meeting_id = zoomResult.data.meetingId;
-        cls.zoom_join_url = zoomResult.data.joinUrl;
-        cls.zoom_start_url = zoomResult.data.startUrl;
+  // Video Meeting Link resolution: validate Zoom API or auto-provision Jitsi URL
+  if (!cls.zoom_join_url) {
+    if (role === 'coach' || role === 'admin') {
+      try {
+        const { createClassMeeting } = await import('@/lib/video');
+        const videoRes = await createClassMeeting(params.classId, cls.class_type, cls.scheduled_start, cls.duration_minutes, 'JITSI');
+        if (videoRes.success && videoRes.data) {
+          cls.zoom_meeting_id = videoRes.data.meetingId;
+          cls.zoom_join_url = videoRes.data.joinUrl;
+          cls.zoom_start_url = videoRes.data.startUrl;
+        }
+      } catch (videoErr) {
+        console.error('Failed to provision video meeting:', videoErr);
       }
-    } catch (zoomErr) {
-      console.error('Failed to validate/refresh Zoom token before classroom load:', zoomErr);
+    }
+
+    if (!cls.zoom_join_url) {
+      const safeId = params.classId.replace(/[^a-zA-Z0-9]/g, '');
+      cls.zoom_join_url = `https://meet.jit.si/ChessHub-${safeId}`;
+      cls.zoom_start_url = cls.zoom_join_url;
     }
   }
 
