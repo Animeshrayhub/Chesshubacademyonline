@@ -8,7 +8,6 @@ import { getStudentDashboardStats, getStudentHomework } from '@/lib/students';
 import { getCurrentUser } from '@/lib/supabase/auth';
 import type { StatCardData, QuickAction, ActivityItem, TableColumn } from '@/types/dashboard';
 
-import DailyPuzzleCard from '@/components/dashboard/ui/DailyPuzzleCard';
 import LichessTournamentsCard from '@/components/dashboard/ui/LichessTournamentsCard';
 import StudentGreeting from '@/components/dashboard/ui/StudentGreeting';
 import LichessSyncTime from '@/components/dashboard/ui/LichessSyncTime';
@@ -19,7 +18,6 @@ import AcademyAnnouncementBanner from '@/components/dashboard/ui/AcademyAnnounce
 import LichessTournamentManager from '@/components/dashboard/ui/LichessTournamentManager';
 import PuzzleRushSurvival from '@/components/dashboard/ui/PuzzleRushSurvival';
 import AIOpeningAssistant from '@/components/dashboard/ui/AIOpeningAssistant';
-import AcademyHallOfFame from '@/components/dashboard/ui/AcademyHallOfFame';
 import { getLatestPublishedAnnouncement } from '@/lib/announcements';
 import { getAcademyTournaments } from '@/lib/tournaments';
 
@@ -263,43 +261,6 @@ export default async function StudentOverviewPage() {
           />
         </div>
         <div className="space-y-6">
-          {/* Puzzles Progress Tracker Widget */}
-          {stats.puzzleStats && (
-            <div className="bg-white rounded-2xl border border-border shadow-card p-5 space-y-4">
-              <div className="flex items-center justify-between border-b border-border/60 pb-2.5">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-orange-50 border border-orange-100 flex items-center justify-center">
-                    <DashboardIcon iconKey="activity" className="w-4 h-4 text-orange-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-xs font-extrabold text-text-primary uppercase tracking-wider">Tactics Progress</h3>
-                    <p className="text-[9px] text-text-secondary">Your training dashboard stats</p>
-                  </div>
-                </div>
-                {stats.puzzleStats.streak > 0 && (
-                  <span className="text-[10px] bg-orange-50 text-orange-600 font-bold px-2 py-0.5 rounded-full border border-orange-100">
-                    🔥 {stats.puzzleStats.streak} Day Streak
-                  </span>
-                )}
-              </div>
-
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="bg-slate-50 border border-border/80 p-2 rounded-xl">
-                  <span className="text-[9px] text-text-secondary uppercase font-semibold block mb-0.5">Total Solved</span>
-                  <span className="text-xs font-extrabold text-primary font-mono">{stats.puzzleStats.totalSolved}</span>
-                </div>
-                <div className="bg-slate-50 border border-border/80 p-2 rounded-xl">
-                  <span className="text-[9px] text-text-secondary uppercase font-semibold block mb-0.5">Solve Rate</span>
-                  <span className="text-xs font-extrabold text-green-600 font-mono">{stats.puzzleStats.solveRate}%</span>
-                </div>
-                <div className="bg-slate-50 border border-border/80 p-2 rounded-xl">
-                  <span className="text-[9px] text-text-secondary uppercase font-semibold block mb-0.5">Accuracy</span>
-                  <span className="text-xs font-extrabold text-accent font-mono">{stats.puzzleStats.averageAccuracy}%</span>
-                </div>
-              </div>
-            </div>
-          )}
-          <DailyPuzzleCard />
           <LichessTournamentsCard />
           <ActivityFeed items={ACTIVITIES} />
         </div>
