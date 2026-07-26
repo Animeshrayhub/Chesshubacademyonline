@@ -1,6 +1,6 @@
 export const SITE_NAME = 'ChessHub Academy';
 export const SITE_TAGLINE = 'Learn Chess. Think Better. Compete Smarter.';
-export const SITE_URL = 'https://chesshubacademy.com';
+export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://chesshubacademy.online';
 export const SITE_EMAIL = 'clubchess259@gmail.com';
 export const SITE_PHONE = '+91 70086 65245';
 export const SITE_WHATSAPP = '917008665245';
