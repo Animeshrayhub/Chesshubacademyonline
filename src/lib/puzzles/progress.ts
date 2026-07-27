@@ -121,13 +121,29 @@ export function getStudentRankTitle(rating: number, xp: number): { title: string
   return { title: 'Pawn Tactician', badge: '♟️', minRating: 800 };
 }
 
+const ACTIONABLE_THEMES = new Set([
+  'matein1',
+  'matein2',
+  'matein3',
+  'fork',
+  'pin',
+  'skewer',
+  'sacrifice',
+  'discoveredattack',
+  'endgame',
+  'opening',
+  'middlegame',
+  'zugzwang',
+]);
+
 export function getWeakestTheme(stats: StudentPuzzleStats): { theme: string; accuracy: number; total: number } | null {
   let worstTheme: string | null = null;
   let lowestAcc = 100;
   let worstTotal = 0;
 
   Object.entries(stats.themeAccuracy).forEach(([theme, data]) => {
-    if (data.total >= 3) {
+    const key = theme.toLowerCase();
+    if (ACTIONABLE_THEMES.has(key) && data.total >= 3) {
       const acc = Math.round((data.correct / data.total) * 100);
       if (acc < lowestAcc) {
         lowestAcc = acc;
