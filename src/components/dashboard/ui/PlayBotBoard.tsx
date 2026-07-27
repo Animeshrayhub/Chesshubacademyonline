@@ -335,8 +335,19 @@ export default function PlayBotBoard({ initialFen, classId, onCloseCustom }: Pla
     }
   };
 
-  // v5 API: onPieceDrop receives ({ piece, sourceSquare, targetSquare })
-  const handlePieceDrop = ({ sourceSquare, targetSquare }: { sourceSquare: string; targetSquare: string | null }): boolean => {
+  // Supports both positional args and object params
+  const handlePieceDrop = (sourceOrObj: any, targetArg?: string | null): boolean => {
+    let sourceSquare: string = '';
+    let targetSquare: string | null = null;
+
+    if (typeof sourceOrObj === 'object' && sourceOrObj !== null && 'sourceSquare' in sourceOrObj) {
+      sourceSquare = sourceOrObj.sourceSquare;
+      targetSquare = sourceOrObj.targetSquare || null;
+    } else {
+      sourceSquare = String(sourceOrObj || '');
+      targetSquare = targetArg || null;
+    }
+
     if (status !== 'active' || isBotThinking || !targetSquare) return false;
 
     // Check if it's the student's turn

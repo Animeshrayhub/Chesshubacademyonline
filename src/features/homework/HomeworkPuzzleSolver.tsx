@@ -157,13 +157,24 @@ export default function HomeworkPuzzleSolver({
     }
   }, [status]);
 
-  // Main move handler
+  // Main move handler — supports both positional args and object params
   const onDrop = useCallback(async (
-    sourceSquare: string,
-    targetSquare: string,
-    piece: string
+    sourceOrObj: any,
+    targetArg?: string,
+    piece?: string
   ): Promise<boolean> => {
-    if (status === 'solved' || status === 'failed' || isSubmitting) return false;
+    let sourceSquare: string = '';
+    let targetSquare: string = '';
+
+    if (typeof sourceOrObj === 'object' && sourceOrObj !== null && 'sourceSquare' in sourceOrObj) {
+      sourceSquare = sourceOrObj.sourceSquare;
+      targetSquare = sourceOrObj.targetSquare;
+    } else {
+      sourceSquare = String(sourceOrObj || '');
+      targetSquare = targetArg || '';
+    }
+
+    if (status === 'solved' || status === 'failed' || isSubmitting || !targetSquare) return false;
     if (isPreviouslyDone) return false;
 
     const uciMove = `${sourceSquare}${targetSquare}`;

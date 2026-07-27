@@ -662,8 +662,21 @@ export default function ChessWorkspace({
 
 
 
-  // Chessboard move handlers — v5 API: onPieceDrop receives ({ piece, sourceSquare, targetSquare })
-  const onDrop = ({ sourceSquare, targetSquare, piece }: { sourceSquare: string; targetSquare: string | null; piece: any }): boolean => {
+  // Chessboard move handlers — supports both positional args and object params
+  const onDrop = (sourceOrObj: any, targetArg?: string | null, pieceArg?: any): boolean => {
+    let sourceSquare: string = '';
+    let targetSquare: string | null = null;
+    let piece: any = pieceArg;
+
+    if (typeof sourceOrObj === 'object' && sourceOrObj !== null && 'sourceSquare' in sourceOrObj) {
+      sourceSquare = sourceOrObj.sourceSquare;
+      targetSquare = sourceOrObj.targetSquare || null;
+      piece = sourceOrObj.piece || pieceArg;
+    } else {
+      sourceSquare = String(sourceOrObj || '');
+      targetSquare = targetArg || null;
+    }
+
     if (!targetSquare) return false;
 
     if (isEditorMode && isCoach) {

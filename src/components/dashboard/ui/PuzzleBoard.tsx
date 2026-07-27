@@ -280,9 +280,20 @@ export default function PuzzleBoard({ puzzle, onSolveComplete, token }: PuzzleBo
     }
   };
 
-  // Handle piece drops during solving — v5 API: ({ piece, sourceSquare, targetSquare })
-  const handlePieceDrop = ({ sourceSquare, targetSquare }: { sourceSquare: string; targetSquare: string | null }): boolean => {
-    if (status !== 'solving' || !targetSquare) return false;
+  // Handle piece drops during solving — supports both positional args and object params
+  const handlePieceDrop = (sourceOrObj: any, targetArg?: string | null): boolean => {
+    let sourceSquare: string = '';
+    let targetSquare: string | null = null;
+
+    if (typeof sourceOrObj === 'object' && sourceOrObj !== null && 'sourceSquare' in sourceOrObj) {
+      sourceSquare = sourceOrObj.sourceSquare;
+      targetSquare = sourceOrObj.targetSquare || null;
+    } else {
+      sourceSquare = String(sourceOrObj || '');
+      targetSquare = targetArg || null;
+    }
+
+    if ((status !== 'solving' && status !== 'intro') || !targetSquare) return false;
     setSelectedSquare(null);
     setOptionSquares({});
 
