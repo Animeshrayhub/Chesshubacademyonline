@@ -8,6 +8,7 @@ import { supabase } from '@/utils/supabaseClient';
 import DashboardIcon from './DashboardIcon';
 import Button from '@/components/ui/Button';
 import ChessWorkspace from './ChessWorkspace';
+import ClassroomRecorder from './ClassroomRecorder';
 
 import { endClassAction, startClassAction, submitClassEndReportAction } from '@/actions/classes';
 import { getZoomSignatureAction } from '@/actions/zoom';
@@ -1164,6 +1165,9 @@ export default function ClassroomWorkspace({
             </div>
           )}
 
+
+          {/* Local Screen & Audio Recording for Coach and Admin */}
+          <ClassroomRecorder classId={classId} isCoachOrAdmin={isCoach} />
 
           {/* Coach start/end actions */}
           {isCoach && status === 'SCHEDULED' && (
