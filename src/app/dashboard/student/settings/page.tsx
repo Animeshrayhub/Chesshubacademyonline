@@ -1,47 +1,43 @@
-export default function StudentGeneralSettingsPage() {
+import React from 'react';
+import { getMyStudentProfile } from '@/lib/students';
+import { getCurrentUser } from '@/lib/supabase/auth';
+import StudentGeneralSettingsForm from '@/features/student/StudentGeneralSettingsForm';
+
+export const dynamic = 'force-dynamic';
+
+export default async function StudentGeneralSettingsPage() {
+  const profileRes = await getMyStudentProfile();
+  const authUser = await getCurrentUser();
+
+  const profile = profileRes.success ? profileRes.data : null;
+
+  const displayName = profile
+    ? `${profile.firstName || ''} ${profile.lastName || ''}`.trim() || profile.email.split('@')[0]
+    : authUser
+    ? `${authUser.firstName || ''} ${authUser.lastName || ''}`.trim() || authUser.username || authUser.email
+    : 'Student';
+
+  const email = profile?.email || authUser?.email || '';
+  const timezone = profile?.timezone || 'UTC+5:30 (India Standard Time)';
+  const level = profile?.level || 'BEGINNER';
+
   return (
-    <div className="bg-white rounded-2xl border border-border shadow-card p-6 max-w-2xl">
-      <h3 className="text-base font-bold text-text-primary mb-4">Student Profile Preferences</h3>
-
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-semibold text-text-primary mb-2">Display Name</label>
-          <input
-            type="text"
-            defaultValue="Academy Student"
-            disabled
-            className="w-full px-4 py-3 rounded-xl border border-border bg-surface-light text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-semibold text-text-primary mb-2">Academic Email</label>
-          <input
-            type="email"
-            defaultValue="student@chesshubacademy.com"
-            disabled
-            className="w-full px-4 py-3 rounded-xl border border-border bg-surface-light text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-semibold text-text-primary mb-2">Local timezone</label>
-          <select className="w-full px-4 py-3 rounded-xl border border-border bg-white text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary">
-            <option>UTC-5 (Eastern Standard Time)</option>
-            <option>UTC+5:30 (India Standard Time)</option>
-            <option>UTC+0 (Greenwich Mean Time)</option>
-          </select>
-        </div>
-
-        <div className="flex justify-end gap-3 pt-2">
-          <button
-            type="button"
-            className="px-4 py-2.5 bg-primary hover:bg-primary-dark text-white rounded-xl text-sm font-semibold transition-colors duration-150"
-          >
-            Save General Changes
-          </button>
-        </div>
+    <div className="bg-white rounded-3xl border border-border shadow-card p-6 max-w-2xl space-y-4">
+      <div>
+        <h3 className="text-lg font-bold text-text-primary">Student Profile Preferences</h3>
+        <p className="text-xs text-text-secondary mt-1">
+          Manage display preferences, academic email details, and local timezone updates.
+        </p>
       </div>
+
+      <StudentGeneralSettingsForm
+        initialData={{
+          displayName,
+          email,
+          timezone,
+          level,
+        }}
+      />
     </div>
   );
 }
