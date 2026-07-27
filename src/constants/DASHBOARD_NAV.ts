@@ -49,7 +49,7 @@ export const ADMIN_NAV: NavItem[] = [
   { label: 'Blog',          href: '/dashboard/admin/blog',          iconKey: 'fileText',        roles: ['admin'], children: BLOG_CHILDREN },
   { label: 'Announcements', href: '/dashboard/admin/announcements', iconKey: 'megaphone',       roles: ['admin'] },
   { label: 'Website Reviews', href: '/dashboard/admin/reviews', iconKey: 'award',           roles: ['admin'] },
-  { label: 'Photo Gallery', href: '/dashboard/admin/gallery', iconKey: 'fileText',       roles: ['admin'] },
+  { label: 'Photo Gallery',   href: '/dashboard/admin/gallery', iconKey: 'fileText',        roles: ['admin'] },
   { label: 'Site Media & Images', href: '/dashboard/admin/media', iconKey: 'fileText',       roles: ['admin'] },
   { label: 'Certificates',  href: '/dashboard/admin/certificates',  iconKey: 'award',           roles: ['admin'] },
   { label: 'Reports',       href: '/dashboard/admin/reports',       iconKey: 'barChart',        roles: ['admin'], children: REPORTS_CHILDREN },

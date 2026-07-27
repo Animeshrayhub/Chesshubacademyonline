@@ -1,20 +1,20 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect } from 'react';
 import Container from '@/components/ui/Container';
 import SectionTitle from '@/components/ui/SectionTitle';
-import { fetchPublicGalleryAction } from '@/actions/gallery';
-import type { GalleryItem } from '@/lib/gallery';
+import { fetchGalleryPhotosAction } from '@/actions/gallery';
+import type { GalleryPhoto } from '@/lib/gallery';
 
 export default function AcademyGallerySection() {
-  const [items, setItems] = useState<GalleryItem[]>([]);
+  const [items, setItems] = useState<GalleryPhoto[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>('ALL');
-  const [selectedPhoto, setSelectedPhoto] = useState<GalleryItem | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<GalleryPhoto | null>(null);
 
   useEffect(() => {
-    fetchPublicGalleryAction().then((res) => {
-      if (res.success && res.gallery) {
-        setItems(res.gallery);
+    fetchGalleryPhotosAction().then((res: any) => {
+      if (res.success && res.photos) {
+        setItems(res.photos);
       }
     });
   }, []);
