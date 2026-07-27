@@ -7,6 +7,13 @@ import DashboardIcon from './DashboardIcon';
 import Button from '@/components/ui/Button';
 import type { PuzzleData, PuzzleResult } from '@/lib/puzzles/types';
 import { customChessPieces } from './ChessPieces';
+import {
+  getStudentPuzzleStats,
+  recordPuzzleAttempt,
+  getStudentRankTitle,
+  getWeakestTheme,
+  type StudentPuzzleStats,
+} from '@/lib/puzzles/progress';
 
 // react-chessboard v5 — Chessboard takes a single `options` prop
 const ChessboardComponent = dynamic(
@@ -25,6 +32,20 @@ export default function PuzzleBoard({ puzzle, onSolveComplete, token }: PuzzleBo
   const [selectedTheme, setSelectedTheme] = useState('ALL');
   const [currentPuzzle, setCurrentPuzzle] = useState<PuzzleData>(puzzle);
   const [loadingNext, setLoadingNext] = useState(false);
+
+  // Student Tactical Progress State
+  const [studentStats, setStudentStats] = useState<StudentPuzzleStats | null>(null);
+  const [lastAttemptReward, setLastAttemptReward] = useState<{
+    ratingDelta: number;
+    xpGain: number;
+    isGoalJustCompleted: boolean;
+    rankTitle: string;
+    rankBadge: string;
+  } | null>(null);
+
+  useEffect(() => {
+    setStudentStats(getStudentPuzzleStats());
+  }, []);
 
   // Sync state if puzzle prop changes from outside
   useEffect(() => {
@@ -383,6 +404,22 @@ export default function PuzzleBoard({ puzzle, onSolveComplete, token }: PuzzleBo
     setStatus('solved');
     setMessage({ text: 'Puzzle solved! Excellent job!', type: 'success' });
 
+    // Record student stats & rating reward
+    const recordRes = recordPuzzleAttempt(
+      currentPuzzle.id,
+      currentPuzzle.rating,
+      totalMistakes === 0,
+      currentPuzzle.themes
+    );
+    setStudentStats(recordRes.newStats);
+    setLastAttemptReward({
+      ratingDelta: recordRes.ratingDelta,
+      xpGain: recordRes.xpGain,
+      isGoalJustCompleted: recordRes.isGoalJustCompleted,
+      rankTitle: recordRes.rank.title,
+      rankBadge: recordRes.rank.badge,
+    });
+
     const totalSeconds = startTimeRef.current
       ? Math.floor((Date.now() - startTimeRef.current) / 1000)
       : elapsedTime;
@@ -555,6 +592,126 @@ export default function PuzzleBoard({ puzzle, onSolveComplete, token }: PuzzleBo
 
   return (
     <div className="space-y-4">
+      {/* 🏆 Student Tactical Progress & Growth Banner */}
+      {studentStats && (
+        <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950/80 border border-slate-800 rounded-3xl p-4 shadow-xl">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            
+            {/* Left: Rank & Tactical Rating */}
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-2xl shadow-gold">
+                {getStudentRankTitle(studentStats.tacticalRating, studentStats.xp).badge}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-amber-400 uppercase tracking-wide">
+                    {getStudentRankTitle(studentStats.tacticalRating, studentStats.xp).title}
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                    {studentStats.xp} XP
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2 mt-0.5">
+                  <span className="text-xl font-extrabold text-white">
+                    🏆 {studentStats.tacticalRating}
+                  </span>
+                  <span className="text-xs font-semibold text-emerald-400">
+                    Tactical Rating
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Center: Daily Goal Progress Bar */}
+            <div className="flex-1 max-w-xs space-y-1.5">
+              <div className="flex items-center justify-between text-xs font-bold">
+                <span className="text-slate-300 flex items-center gap-1">
+                  🎯 Daily Goal: {studentStats.todaySolvedCount} / {studentStats.dailyGoal} Solved
+                </span>
+                <span className="text-amber-400">
+                  {Math.min(100, Math.round((studentStats.todaySolvedCount / studentStats.dailyGoal) * 100))}%
+                </span>
+              </div>
+              <div className="w-full h-2.5 rounded-full bg-slate-950 border border-slate-800 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-amber-500 to-emerald-400 rounded-full transition-all duration-500"
+                  style={{
+                    width: `${Math.min(100, (studentStats.todaySolvedCount / studentStats.dailyGoal) * 100)}%`,
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Right: Streak & Practice Stats */}
+            <div className="flex items-center gap-3">
+              <div className="px-3.5 py-1.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-center">
+                <span className="text-xs font-bold text-amber-400 block">
+                  🔥 {studentStats.currentStreak} Day Streak
+                </span>
+                <span className="text-[10px] text-slate-400">Best: {studentStats.bestStreak}d</span>
+              </div>
+
+              <div className="px-3.5 py-1.5 rounded-2xl bg-slate-800/80 border border-slate-700 text-center">
+                <span className="text-xs font-bold text-white block">
+                  {studentStats.totalSolved} / {studentStats.totalAttempted}
+                </span>
+                <span className="text-[10px] text-slate-400">Total Solved</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Smart Focus Recommendation Bar */}
+          {(() => {
+            const weak = getWeakestTheme(studentStats);
+            if (!weak) return null;
+            return (
+              <div className="mt-3 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs">
+                <span className="text-slate-300 flex items-center gap-1.5">
+                  <span className="text-amber-400 font-bold">🎯 Weakest Theme Focus:</span> 
+                  You have <span className="font-bold text-amber-300">{weak.accuracy}% accuracy</span> in <span className="capitalize font-bold text-white">{weak.theme}</span> puzzles.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedTheme(weak.theme);
+                    fetchLevelPuzzle(selectedLevel, weak.theme);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 font-bold text-[11px] transition-all"
+                >
+                  Practice {weak.theme} Puzzles →
+                </button>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* 🎉 Reward Toast Banner */}
+      {lastAttemptReward && status === 'solved' && (
+        <div className="bg-emerald-950/90 border border-emerald-500/40 text-emerald-200 rounded-2xl p-3.5 flex items-center justify-between shadow-xl animate-bounce">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">🎉</span>
+            <div>
+              <span className="font-extrabold text-white text-sm block">
+                Puzzle Solved! +{lastAttemptReward.ratingDelta} Rating | +{lastAttemptReward.xpGain} XP
+              </span>
+              <span className="text-xs text-emerald-300">
+                {lastAttemptReward.isGoalJustCompleted
+                  ? '🏆 Daily Goal Completed (+50 Bonus XP)!'
+                  : `Current Rank: ${lastAttemptReward.rankBadge} ${lastAttemptReward.rankTitle}`}
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setLastAttemptReward(null)}
+            className="text-xs text-emerald-400 hover:text-white underline font-semibold px-2"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Lichess Theme Selector Bar */}
       <div className="bg-slate-900 border border-slate-800/80 rounded-2xl p-3 flex items-center gap-2 overflow-x-auto shadow-md">
         <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider whitespace-nowrap pl-1">
