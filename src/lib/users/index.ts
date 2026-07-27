@@ -230,16 +230,14 @@ export async function disableUser(
       };
     }
 
-    // 2. Update Auth User
-    const { error: authError } = await adminClient.auth.admin.updateUserById(userId, {
-      user_metadata: { is_active: isActive },
-    });
-
-    if (authError) {
-      return {
-        success: false,
-        error: new DatabaseError('Failed to update user active status in auth', authError),
-      };
+    // 2. Update Auth User (ban duration & metadata)
+    try {
+      await adminClient.auth.admin.updateUserById(userId, {
+        ban_duration: disabled ? '876000h' : 'none',
+        user_metadata: { is_active: isActive },
+      });
+    } catch (authErr) {
+      console.warn('Non-blocking auth update warning in disableUser:', authErr);
     }
 
     return { success: true, data: { id: data.id, isActive: data.is_active } };

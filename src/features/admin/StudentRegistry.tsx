@@ -27,17 +27,26 @@ import {
 
 import type { AdminStudentRow, StudentLevel } from '@/types/dashboard';
 
+import { useRouter } from 'next/navigation';
+
 interface StudentRegistryProps {
   students: AdminStudentRow[];
   coaches?: any[];
 }
 
 export default function StudentRegistry({ students, coaches }: StudentRegistryProps) {
+  const router = useRouter();
+  const [studentList, setStudentList] = useState<AdminStudentRow[]>(students);
   const [search, setSearch] = useState('');
   const [levelFilter, setLevelFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [page, setPage] = useState(1);
   const [, startTransition] = useTransition();
+
+  // Sync state when props update
+  React.useEffect(() => {
+    setStudentList(students);
+  }, [students]);
 
   // Modals state
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -57,7 +66,7 @@ export default function StudentRegistry({ students, coaches }: StudentRegistryPr
   const pageSize = 10;
 
   // Filter students
-  const filtered = students.filter((s) => {
+  const filtered = studentList.filter((s) => {
     const nameMatch = `${s.first_name} ${s.last_name}`.toLowerCase().includes(search.toLowerCase()) ||
       s.email.toLowerCase().includes(search.toLowerCase());
     
@@ -77,19 +86,29 @@ export default function StudentRegistry({ students, coaches }: StudentRegistryPr
   const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   const handleCreate = async (data: any) => {
+    let res;
     if (data.role === 'COACH') {
-      return await createCoachAction(data);
+      res = await createCoachAction(data);
+    } else if (data.role === 'ADMIN') {
+      res = await createAdminAction(data);
+    } else {
+      res = await createStudentAction(data);
     }
-    if (data.role === 'ADMIN') {
-      return await createAdminAction(data);
+    if (res.success) {
+      router.refresh();
     }
-    const res = await createStudentAction(data);
     return res;
   };
 
   const handleEdit = async (data: any) => {
     if (!editUser) return { success: false };
     const res = await updateUserAction(editUser.id, data);
+    if (res.success) {
+      setStudentList((prev) =>
+        prev.map((s) => (s.id === editUser.id ? { ...s, ...data } : s))
+      );
+      router.refresh();
+    }
     return res;
   };
 
@@ -112,25 +131,38 @@ export default function StudentRegistry({ students, coaches }: StudentRegistryPr
 
   const handleConfirmArchive = () => {
     if (!confirmArchive) return;
+    const targetId = confirmArchive.id;
+    setStudentList((prev) => prev.filter((s) => s.id !== targetId));
+    setConfirmArchive(null);
     startTransition(async () => {
-      await archiveUserAction(confirmArchive.id);
-      setConfirmArchive(null);
+      await archiveUserAction(targetId);
+      router.refresh();
     });
   };
 
   const handleConfirmDisable = () => {
     if (!confirmDisable) return;
+    const targetId = confirmDisable.id;
+    setStudentList((prev) =>
+      prev.map((s) => (s.id === targetId ? { ...s, is_active: false } : s))
+    );
+    setConfirmDisable(null);
     startTransition(async () => {
-      await disableUserAction(confirmDisable.id);
-      setConfirmDisable(null);
+      await disableUserAction(targetId);
+      router.refresh();
     });
   };
 
   const handleConfirmEnable = () => {
     if (!confirmEnable) return;
+    const targetId = confirmEnable.id;
+    setStudentList((prev) =>
+      prev.map((s) => (s.id === targetId ? { ...s, is_active: true } : s))
+    );
+    setConfirmEnable(null);
     startTransition(async () => {
-      await enableUserAction(confirmEnable.id);
-      setConfirmEnable(null);
+      await enableUserAction(targetId);
+      router.refresh();
     });
   };
 

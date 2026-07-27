@@ -28,6 +28,7 @@ import {
   resetPasswordAction,
 } from '@/actions/users';
 
+import { useRouter } from 'next/navigation';
 import type { AdminCoachRow } from '@/types/dashboard';
 
 interface CoachRegistryProps {
@@ -35,10 +36,17 @@ interface CoachRegistryProps {
 }
 
 export default function CoachRegistry({ coaches }: CoachRegistryProps) {
+  const router = useRouter();
+  const [coachList, setCoachList] = useState<AdminCoachRow[]>(coaches);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [page, setPage] = useState(1);
   const [, startTransition] = useTransition();
+
+  // Sync state when props update
+  React.useEffect(() => {
+    setCoachList(coaches);
+  }, [coaches]);
 
   // Modals state
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -56,11 +64,10 @@ export default function CoachRegistry({ coaches }: CoachRegistryProps) {
   const [confirmEnable, setConfirmEnable] = useState<AdminCoachRow | null>(null);
   const [photoCoach, setPhotoCoach] = useState<AdminCoachRow | null>(null);
 
-
   const pageSize = 10;
 
   // Filter coaches
-  const filtered = coaches.filter((c) => {
+  const filtered = coachList.filter((c) => {
     const nameMatch = `${c.first_name} ${c.last_name}`.toLowerCase().includes(search.toLowerCase()) ||
       c.email.toLowerCase().includes(search.toLowerCase());
     
@@ -77,19 +84,29 @@ export default function CoachRegistry({ coaches }: CoachRegistryProps) {
   const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   const handleCreate = async (data: any) => {
+    let res;
     if (data.role === 'STUDENT') {
-      return await createStudentAction(data);
+      res = await createStudentAction(data);
+    } else if (data.role === 'ADMIN') {
+      res = await createAdminAction(data);
+    } else {
+      res = await createCoachAction(data);
     }
-    if (data.role === 'ADMIN') {
-      return await createAdminAction(data);
+    if (res.success) {
+      router.refresh();
     }
-    const res = await createCoachAction(data);
     return res;
   };
 
   const handleEdit = async (data: any) => {
     if (!editUser) return { success: false };
     const res = await updateUserAction(editUser.id, data);
+    if (res.success) {
+      setCoachList((prev) =>
+        prev.map((c) => (c.id === editUser.id ? { ...c, ...data } : c))
+      );
+      router.refresh();
+    }
     return res;
   };
 
@@ -112,25 +129,38 @@ export default function CoachRegistry({ coaches }: CoachRegistryProps) {
 
   const handleConfirmArchive = () => {
     if (!confirmArchive) return;
+    const targetId = confirmArchive.id;
+    setCoachList((prev) => prev.filter((c) => c.id !== targetId));
+    setConfirmArchive(null);
     startTransition(async () => {
-      await archiveUserAction(confirmArchive.id);
-      setConfirmArchive(null);
+      await archiveUserAction(targetId);
+      router.refresh();
     });
   };
 
   const handleConfirmDisable = () => {
     if (!confirmDisable) return;
+    const targetId = confirmDisable.id;
+    setCoachList((prev) =>
+      prev.map((c) => (c.id === targetId ? { ...c, is_active: false } : c))
+    );
+    setConfirmDisable(null);
     startTransition(async () => {
-      await disableUserAction(confirmDisable.id);
-      setConfirmDisable(null);
+      await disableUserAction(targetId);
+      router.refresh();
     });
   };
 
   const handleConfirmEnable = () => {
     if (!confirmEnable) return;
+    const targetId = confirmEnable.id;
+    setCoachList((prev) =>
+      prev.map((c) => (c.id === targetId ? { ...c, is_active: true } : c))
+    );
+    setConfirmEnable(null);
     startTransition(async () => {
-      await enableUserAction(confirmEnable.id);
-      setConfirmEnable(null);
+      await enableUserAction(targetId);
+      router.refresh();
     });
   };
 

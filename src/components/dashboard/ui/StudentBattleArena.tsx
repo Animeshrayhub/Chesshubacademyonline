@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Chess } from 'chess.js';
@@ -22,7 +22,7 @@ interface StudentBattleArenaProps {
 }
 
 export default function StudentBattleArena({ studentName = 'Student' }: StudentBattleArenaProps) {
-  const [inBattle, setInBattle] = useState(false);
+  const [inBattle, setInBattle] = useState(true);
   const [timeLeft, setTimeLeft] = useState(60);
   const [puzzlesSolved, setPuzzlesSolved] = useState(0);
   const [totalAttempts, setTotalAttempts] = useState(0);
@@ -243,8 +243,17 @@ export default function StudentBattleArena({ studentName = 'Student' }: StudentB
             <div className="w-full max-w-[420px] aspect-square rounded-xl overflow-hidden shadow-2xl border border-slate-700/60">
               <Chessboard
                 position={game.fen()}
-                onPieceDrop={handlePieceDrop}
+                onPieceDrop={(source: string, target: string) => handlePieceDrop(source, target)}
                 boardOrientation={turnColor}
+                options={{
+                  position: game.fen(),
+                  onPieceDrop: ({ sourceSquare, targetSquare }: any) => handlePieceDrop(sourceSquare, targetSquare),
+                  boardOrientation: turnColor,
+                  boardStyle: {
+                    borderRadius: '12px',
+                    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
+                  },
+                }}
                 customBoardStyle={{
                   borderRadius: '12px',
                   boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
