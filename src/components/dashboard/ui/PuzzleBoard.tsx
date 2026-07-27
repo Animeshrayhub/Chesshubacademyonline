@@ -207,6 +207,9 @@ export default function PuzzleBoard({ puzzle, onSolveComplete, token }: PuzzleBo
     setBoardOrientation(currentPuzzle.playerToMove);
     setSelectedSquare(null);
     setOptionSquares({});
+    setHintSquare(null);
+    setHintTargetSquare(null);
+    setHintText(null);
     
     if (timerRef.current) clearInterval(timerRef.current);
     startTimeRef.current = null;

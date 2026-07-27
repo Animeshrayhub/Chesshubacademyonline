@@ -212,6 +212,85 @@ const FALLBACK_PUZZLES: PuzzleData[] = [
     puzzleDate: '2026-07-13',
   },
 
+  // ─── Discovered Attack & Tactical Motifs ─────────────────────────────────────
+  {
+    id: 'disc-1',
+    source: 'lichess',
+    initialFen: 'r1b1k2r/pppp1ppp/8/4q3/8/2B5/PPP2PPP/R3KB1R w KQkq - 0 1',
+    solution: ['c3e5'],
+    playerToMove: 'white',
+    rating: 1100,
+    difficulty: 'Beginner',
+    themes: ['discoveredAttack', 'tactics', 'hangingPiece'],
+    numberOfMoves: 1,
+  },
+  {
+    id: 'disc-2',
+    source: 'lichess',
+    initialFen: '3r2k1/5ppp/8/8/3B4/8/3R1PPP/6K1 w - - 0 1',
+    solution: ['d4f6', 'd8d2'],
+    playerToMove: 'white',
+    rating: 1300,
+    difficulty: 'Intermediate',
+    themes: ['discoveredAttack', 'tactics'],
+    numberOfMoves: 2,
+  },
+  {
+    id: 'pin-1',
+    source: 'lichess',
+    initialFen: 'r1bqk1nr/pppp1ppp/2n5/4p3/1b2P3/2N2N2/PPPP1PPP/R1BQKB1R w KQkq - 4 4',
+    solution: ['c3d5'],
+    playerToMove: 'white',
+    rating: 1000,
+    difficulty: 'Beginner',
+    themes: ['pin', 'opening'],
+    numberOfMoves: 1,
+  },
+  {
+    id: 'skewer-1',
+    source: 'lichess',
+    initialFen: '4k3/8/8/8/8/8/1R6/1K1R4 w - - 0 1',
+    solution: ['b2b8', 'e8e7', 'b8h8'],
+    playerToMove: 'white',
+    rating: 1200,
+    difficulty: 'Intermediate',
+    themes: ['skewer', 'endgame'],
+    numberOfMoves: 2,
+  },
+  {
+    id: 'mate2-1',
+    source: 'lichess',
+    initialFen: 'r1b2r1k/pp3p1p/2n2p2/8/2B5/6R1/PPP2PPP/3R2K1 w - - 0 1',
+    solution: ['d1d6', 'h8g8', 'd6f6'],
+    playerToMove: 'white',
+    rating: 1300,
+    difficulty: 'Intermediate',
+    themes: ['mate', 'mateIn2'],
+    numberOfMoves: 2,
+  },
+  {
+    id: 'mate3-1',
+    source: 'lichess',
+    initialFen: 'r1b2rk1/ppp2ppp/8/8/3B4/8/PPP2PPP/R2R2K1 w - - 0 1',
+    solution: ['d4bc5', 'f8e8', 'd1d8'],
+    playerToMove: 'white',
+    rating: 1500,
+    difficulty: 'Intermediate',
+    themes: ['mate', 'mateIn3'],
+    numberOfMoves: 3,
+  },
+  {
+    id: 'zugzwang-1',
+    source: 'lichess',
+    initialFen: '8/8/8/8/8/5k2/4p3/4K3 w - - 0 1',
+    solution: ['e1d2', 'f3f2', 'd2d3', 'e2e1q'],
+    playerToMove: 'white',
+    rating: 1600,
+    difficulty: 'Advanced',
+    themes: ['zugzwang', 'endgame'],
+    numberOfMoves: 2,
+  },
+
   // ─── Master (Rating >= 2400) ────────────────────────────────────────────────
   {
     id: 'offline-17',
@@ -251,7 +330,7 @@ export async function GET(req: NextRequest) {
 
     const searchParams = req.nextUrl.searchParams;
     const requestedLevel = searchParams.get('level'); // Beginner, Intermediate, Advanced, Expert, Master
-    const requestedTheme = searchParams.get('theme'); // mateIn1, mateIn2, fork, pin, skewer, sacrifice, etc.
+    const requestedTheme = searchParams.get('theme'); // mateIn1, mateIn2, fork, pin, skewer, sacrifice, discoveredAttack, etc.
 
     let targetDifficulty = requestedLevel;
 
@@ -271,17 +350,27 @@ export async function GET(req: NextRequest) {
         : 'Advanced';
     }
 
-    // Filter local puzzles by student difficulty & requested theme
+    // Strict Theme-First Filtering
     let pool = FALLBACK_PUZZLES;
+
     if (requestedTheme && requestedTheme !== 'ALL') {
-      const themeMatches = pool.filter((p) =>
+      const themeMatches = FALLBACK_PUZZLES.filter((p) =>
         p.themes.some((t) => t.toLowerCase() === requestedTheme.toLowerCase())
       );
-      if (themeMatches.length > 0) pool = themeMatches;
-    }
 
-    const diffMatches = pool.filter((p) => p.difficulty.toLowerCase() === targetDifficulty!.toLowerCase());
-    if (diffMatches.length > 0) pool = diffMatches;
+      if (themeMatches.length > 0) {
+        // Theme matching is strictly prioritized!
+        const diffInTheme = themeMatches.filter(
+          (p) => p.difficulty.toLowerCase() === targetDifficulty!.toLowerCase()
+        );
+        pool = diffInTheme.length > 0 ? diffInTheme : themeMatches;
+      }
+    } else {
+      const diffMatches = pool.filter(
+        (p) => p.difficulty.toLowerCase() === targetDifficulty!.toLowerCase()
+      );
+      if (diffMatches.length > 0) pool = diffMatches;
+    }
 
     const randomIndex = Math.floor(Math.random() * pool.length);
     const selectedPuzzle = pool[randomIndex];
