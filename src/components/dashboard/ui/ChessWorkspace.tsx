@@ -720,8 +720,9 @@ export default function ChessWorkspace({
 
     if (isEditorMode && isCoach) {
       try {
-        const color = piece.pieceType ? piece.pieceType[0] as 'w' | 'b' : (piece[0] as 'w' | 'b');
-        const type = piece.pieceType ? piece.pieceType[1].toLowerCase() as 'p' | 'n' | 'b' | 'r' | 'q' | 'k' : piece[1].toLowerCase() as 'p' | 'n' | 'b' | 'r' | 'q' | 'k';
+        const pieceStr = typeof piece === 'string' ? piece : (piece?.pieceType || piece?.piece || 'wP');
+        const color = (pieceStr[0] || 'w').toLowerCase() === 'b' ? 'b' : 'w';
+        const type = (pieceStr[1] || 'p').toLowerCase() as 'p' | 'n' | 'b' | 'r' | 'q' | 'k';
         gameRef.current.remove(sourceSquare as any);
         gameRef.current.put({ type, color }, targetSquare as any);
         const nextFen = gameRef.current.fen();
@@ -741,7 +742,8 @@ export default function ChessWorkspace({
           });
         }
         return true;
-      } catch {
+      } catch (err) {
+        console.error('Editor move drop error:', err);
         return false;
       }
     }
@@ -751,10 +753,15 @@ export default function ChessWorkspace({
     setSelectedSquare(null);
     setOptionSquares({});
     try {
+      const pieceOnSource = gameRef.current.get(sourceSquare as any);
+      const isPromotion =
+        pieceOnSource?.type === 'p' &&
+        (targetSquare.endsWith('8') || targetSquare.endsWith('1'));
+
       const result = gameRef.current.move({
         from: sourceSquare,
         to: targetSquare,
-        promotion: 'q',
+        promotion: isPromotion ? 'q' : undefined,
       });
       if (!result) return false;
 
@@ -951,6 +958,9 @@ export default function ChessWorkspace({
   // Control Functions
   const handleUndo = useCallback(() => {
     if (isReadOnly) return;
+    const history = gameRef.current.history();
+    if (history.length === 0) return;
+
     const undone = gameRef.current.undo();
     if (!undone) return;
 
@@ -959,12 +969,9 @@ export default function ChessWorkspace({
     setCanUndo(gameRef.current.history().length > 0);
 
     const prevFen = gameRef.current.fen();
-    setFen(prevFen);
-    setMoveHistory(gameRef.current.history());
-    setHistoryIndex((prev) => (prev > 0 ? prev - 1 : 0));
-    if (onMove) onMove(prevFen, gameRef.current.pgn());
+    syncFromGame(gameRef.current);
     broadcastBoardState(prevFen, gameRef.current.history());
-  }, [isReadOnly, onMove]);
+  }, [isReadOnly, syncFromGame]);
 
   const handleRedo = useCallback(() => {
     if (isReadOnly || undoneMovesRef.current.length === 0) return;
@@ -978,12 +985,9 @@ export default function ChessWorkspace({
     setCanUndo(true);
 
     const nextFen = gameRef.current.fen();
-    setFen(nextFen);
-    setMoveHistory(gameRef.current.history());
-    setHistoryIndex((prev) => prev + 1);
-    if (onMove) onMove(nextFen, gameRef.current.pgn());
+    syncFromGame(gameRef.current);
     broadcastBoardState(nextFen, gameRef.current.history());
-  }, [isReadOnly, onMove]);
+  }, [isReadOnly, syncFromGame]);
 
   // Feature 88: Keyboard Shortcuts Listener (ArrowLeft -> Undo Move, ArrowRight -> Redo Move)
   useEffect(() => {
@@ -1379,11 +1383,16 @@ export default function ChessWorkspace({
             )}
 
             <ChessboardComponent
+              position={fen}
+              onPieceDrop={onDrop}
+              boardOrientation={boardOrientation}
+              arePiecesDraggable={(isCoach || !isBoardLocked) && !isReadOnly}
+              customSquareStyles={{ ...highlights, ...optionSquares }}
               options={{
                 position: fen,
                 onPieceDrop: onDrop,
                 boardOrientation: boardOrientation,
-                allowDragging: (isCoach || !isBoardLocked) && !isReadOnly && !editorActivePiece,
+                allowDragging: (isCoach || !isBoardLocked) && !isReadOnly,
                 darkSquareStyle: { backgroundColor: currentTheme.darkSquareColor },
                 lightSquareStyle: { backgroundColor: currentTheme.lightSquareColor },
                 boardStyle: currentTheme.backgroundImage ? {
@@ -1430,25 +1439,26 @@ export default function ChessWorkspace({
             <span className="text-[10px] text-slate-400 font-bold font-mono pl-1">Theme</span>
             <select
               value={selectedThemeId}
-              onChange={(e) => handleThemeChange(e.target.value)}
-              className="bg-slate-900 border-none text-[10px] text-white focus:outline-none cursor-pointer rounded px-1.5 py-0.5 font-semibold"
+              onChange={(e) => setSelectedThemeId(e.target.value)}
+              className="bg-slate-900 border border-slate-700/80 text-amber-300 font-bold text-xs rounded-lg px-2 py-0.5 focus:outline-none"
             >
-              {BOARD_THEMES.map((theme) => (
-                <option key={theme.id} value={theme.id} className="bg-slate-900 text-white">
-                  {theme.name}
+              {BOARD_THEMES.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
                 </option>
               ))}
             </select>
           </div>
 
+          {/* Board Orientation Flip */}
           <Button
             type="button"
             variant="ghost"
             size="sm"
             onClick={() => setBoardOrientation(boardOrientation === 'white' ? 'black' : 'white')}
-            className="text-white border-slate-700 hover:bg-slate-800"
+            className="text-white border-slate-700 hover:bg-slate-800 font-bold"
           >
-            Flip
+            🔄 Flip
           </Button>
 
           {isCoach && (
@@ -1457,18 +1467,18 @@ export default function ChessWorkspace({
               variant="ghost"
               size="sm"
               onClick={handleOrientationSync}
-              className="text-white border-slate-700 hover:bg-slate-800"
-              title="Align student board orientation with your current view"
+              className="text-amber-300 border-amber-500/30 hover:bg-amber-500/10 font-bold"
+              title="Sync board orientation (flip) to all student screens"
             >
-              Sync Flip
+              📡 Sync Flip
             </Button>
           )}
 
-          {/* Lock / Unlock Toggle for Coaches */}
+          {/* Student Move Permission Lock Toggle */}
           {isCoach ? (
             <Button
               type="button"
-              variant={isBoardLocked ? 'ghost' : 'secondary'}
+              variant="ghost"
               size="sm"
               onClick={() => {
                 const nextState = !isBoardLocked;
@@ -1479,8 +1489,10 @@ export default function ChessWorkspace({
                   payload: { locked: nextState },
                 });
               }}
-              className={`text-white border-slate-700 hover:bg-slate-800 ${
-                !isBoardLocked ? 'bg-green-600/20 border-green-500/30 text-green-300' : ''
+              className={`font-bold transition-all ${
+                isBoardLocked 
+                  ? 'bg-red-500/20 text-red-300 border-red-500/40 hover:bg-red-500/30' 
+                  : 'bg-green-500/20 text-green-300 border-green-500/40 hover:bg-green-500/30'
               }`}
             >
               {isBoardLocked ? '🔒 Student Moves: OFF' : '🔓 Student Moves: ON'}
@@ -1500,7 +1512,7 @@ export default function ChessWorkspace({
             variant="ghost"
             size="sm"
             onClick={handleUndo}
-            disabled={!canUndo && moveHistory.length === 0}
+            disabled={moveHistory.length === 0 && !canUndo}
             className="text-white border-slate-700 hover:bg-slate-800 disabled:opacity-40 font-bold"
             title="Undo move (or press Left Arrow key)"
           >
@@ -1511,7 +1523,7 @@ export default function ChessWorkspace({
             variant="ghost"
             size="sm"
             onClick={handleRedo}
-            disabled={!canRedo}
+            disabled={!canRedo && undoneMovesRef.current.length === 0}
             className="text-white border-slate-700 hover:bg-slate-800 disabled:opacity-40 font-bold"
             title="Redo move (or press Right Arrow key)"
           >
