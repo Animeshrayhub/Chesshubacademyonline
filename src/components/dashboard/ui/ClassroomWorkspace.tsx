@@ -9,7 +9,7 @@ import DashboardIcon from './DashboardIcon';
 import Button from '@/components/ui/Button';
 import ChessWorkspace from './ChessWorkspace';
 
-import { endClassAction, startClassAction } from '@/actions/classes';
+import { endClassAction, startClassAction, submitClassEndReportAction } from '@/actions/classes';
 import { getZoomSignatureAction } from '@/actions/zoom';
 import { listHomeworkAction, listChaptersAction, assignChapterToClassAction } from '@/actions/homework';
 
@@ -664,22 +664,67 @@ export default function ClassroomWorkspace({
     });
   };
 
-  const handleEndClass = () => {
-    if (confirm('Are you sure you want to end this class session? Both you and the student will return to your dashboards.')) {
-      setError('');
-      startTransition(async () => {
-        const res = await endClassAction(classId);
-        if (res?.success) {
-          mainChannelRef.current?.send({
-            type: 'broadcast',
-            event: 'status-change',
-            payload: { status: 'COMPLETED' },
-          });
-          router.push(isCoach ? '/dashboard/coach/classes' : '/dashboard/student/classes');
-        } else {
-          setError(res?.error?.message || 'Failed to end class.');
-        }
+  // End Class Modal & Session Report State
+  const [showEndClassModal, setShowEndClassModal] = useState(false);
+  const [endClassRemarks, setEndClassRemarks] = useState('');
+  const [attendanceMap, setAttendanceMap] = useState<Record<string, boolean>>({});
+  const [isSubmittingEndReport, setIsSubmittingEndReport] = useState(false);
+
+  const handleOpenEndClassModal = () => {
+    const initialAttendance: Record<string, boolean> = {};
+    students.forEach((s) => {
+      const key = s.studentProfileId || s.email;
+      initialAttendance[key] = true;
+    });
+    setAttendanceMap(initialAttendance);
+    setEndClassRemarks(sessionNotes || '');
+    setShowEndClassModal(true);
+  };
+
+  const handleToggleStudentAttendance = (key: string) => {
+    setAttendanceMap((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
+  const handleSubmitEndClassReport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmittingEndReport(true);
+    setError('');
+
+    const attendanceList = students.map((s) => {
+      const key = s.studentProfileId || s.email;
+      return {
+        studentProfileId: s.studentProfileId,
+        studentEmail: s.email,
+        attended: attendanceMap[key] ?? true,
+      };
+    });
+
+    try {
+      const res = await submitClassEndReportAction({
+        classId,
+        sessionNotes: endClassRemarks,
+        attendance: attendanceList,
       });
+
+      if (res?.success) {
+        mainChannelRef.current?.send({
+          type: 'broadcast',
+          event: 'status-change',
+          payload: { status: 'COMPLETED' },
+        });
+        setStatus('COMPLETED');
+        setShowEndClassModal(false);
+        router.push(isCoach ? '/dashboard/coach/classes' : '/dashboard/student/classes');
+      } else {
+        setError(res?.error?.message || 'Failed to end class.');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'An error occurred ending class.');
+    } finally {
+      setIsSubmittingEndReport(false);
     }
   };
 
@@ -1133,11 +1178,11 @@ export default function ClassroomWorkspace({
 
           {isCoach && (status === 'SCHEDULED' || status === 'LIVE') && (
             <button
-              onClick={handleEndClass}
-              disabled={isPending}
-              className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+              onClick={handleOpenEndClassModal}
+              disabled={isPending || isSubmittingEndReport}
+              className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-md"
             >
-              {isPending ? 'Ending...' : 'End Class'}
+              <span>🛑 End Class</span>
             </button>
           )}
         </div>
@@ -1211,6 +1256,145 @@ export default function ClassroomWorkspace({
           />
         </div>
       </div>
+
+      {/* 🛑 End Class & Session Report Modal (Coach Feedback & Student Attendance) */}
+      {showEndClassModal && (
+        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-xl space-y-5 shadow-2xl relative text-white max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-red-500/20 border border-red-500/40 flex items-center justify-center text-xl shadow-md">
+                  🛑
+                </div>
+                <div>
+                  <h3 className="font-heading font-bold text-base text-red-400">
+                    End Session &amp; Submit Class Report
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Mark student attendance and enter class remarks before returning to dashboard.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowEndClassModal(false)}
+                className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center justify-center text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Session Stats Bar */}
+            <div className="grid grid-cols-3 gap-3 bg-slate-950 p-3 rounded-2xl border border-slate-800 text-center">
+              <div>
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Elapsed Time</span>
+                <span className="text-sm font-extrabold text-amber-400 font-mono">⏱️ {formatElapsed(elapsedSeconds)}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Class Type</span>
+                <span className="text-xs font-bold text-white uppercase">{classType}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Coach Profile</span>
+                <span className="text-xs font-bold text-emerald-400 truncate block">{coachName}</span>
+              </div>
+            </div>
+
+            <form onSubmit={handleSubmitEndClassReport} className="space-y-4">
+              {/* Student Attendance Section */}
+              <div>
+                <h4 className="text-xs font-extrabold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <span>📋 Student Attendance Checklist ({students.length})</span>
+                </h4>
+
+                {students.length === 0 ? (
+                  <p className="text-xs text-slate-500 italic p-3 bg-slate-950 rounded-xl border border-slate-850">
+                    No students currently registered for this session track.
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {students.map((student) => {
+                      const key = student.studentProfileId || student.email;
+                      const isPresent = attendanceMap[key] ?? true;
+
+                      return (
+                        <div
+                          key={key}
+                          className="bg-slate-950/70 p-3 rounded-2xl border border-slate-800 flex items-center justify-between gap-3"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-xl bg-primary/20 text-primary flex items-center justify-center font-bold text-xs">
+                              {student.firstName[0]}{student.lastName[0]}
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold text-white">{student.firstName} {student.lastName}</p>
+                              <p className="text-[10px] text-slate-400">{student.email}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleStudentAttendance(key)}
+                              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1 border ${
+                                isPresent
+                                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-sm'
+                                  : 'bg-red-500/20 text-red-300 border-red-500/40'
+                              }`}
+                            >
+                              <span>{isPresent ? '🟢 Present' : '🔴 Absent'}</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Class Remarks & Coach Feedback */}
+              <div>
+                <label className="block text-xs font-extrabold text-slate-300 uppercase tracking-wider mb-1.5">
+                  📝 Class Remarks &amp; Coach Feedback for Students/Parents
+                </label>
+                <textarea
+                  rows={4}
+                  placeholder="e.g. Excellent calculation and focus during the tactical puzzle exercises today. Reviewed Evan's Gambit and key endgame ideas..."
+                  value={endClassRemarks}
+                  onChange={(e) => setEndClassRemarks(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500 leading-relaxed"
+                />
+              </div>
+
+              {error && (
+                <div className="p-3 bg-red-950/80 border border-red-500/40 rounded-xl text-red-300 text-xs font-bold text-center">
+                  ⚠️ {error}
+                </div>
+              )}
+
+              {/* Submit Buttons */}
+              <div className="flex items-center justify-end gap-3 border-t border-slate-800 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowEndClassModal(false)}
+                  disabled={isSubmittingEndReport}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingEndReport}
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-extrabold text-xs shadow-lg transition-all flex items-center gap-2 disabled:opacity-50"
+                >
+                  <span>{isSubmittingEndReport ? '⏳ Submitting Report...' : '🚀 Submit Report & End Class'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

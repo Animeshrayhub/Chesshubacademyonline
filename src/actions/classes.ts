@@ -126,3 +126,39 @@ export async function updateStudentAttendanceAction(classId: string, studentProf
   return serializeResult(result);
 }
 
+export async function submitClassEndReportAction(data: {
+  classId: string;
+  sessionNotes: string;
+  attendance: { studentProfileId?: string; studentEmail?: string; attended: boolean }[];
+}) {
+  try {
+    if (data.sessionNotes) {
+      await classesService.saveSessionNotes(data.classId, data.sessionNotes);
+    }
+
+    if (data.attendance && data.attendance.length > 0) {
+      for (const item of data.attendance) {
+        if (item.studentProfileId) {
+          await classesService.updateStudentAttendance(data.classId, item.studentProfileId, item.attended);
+        }
+      }
+    }
+
+    const result = await classesService.setClassStatus(data.classId, 'COMPLETED');
+    if (result && result.success) {
+      revalidatePath(`/classroom/${data.classId}`);
+      revalidatePath(`/classroom/${data.classId}/review`);
+      revalidatePath('/dashboard/coach/classes');
+      revalidatePath('/dashboard/student/classes');
+      revalidatePath('/dashboard/admin/classes');
+      revalidatePath('/dashboard/coach');
+    }
+    return serializeResult(result);
+  } catch (err: any) {
+    return {
+      success: false,
+      error: { message: err?.message || 'Failed to submit class report and end class.' },
+    };
+  }
+}
+
