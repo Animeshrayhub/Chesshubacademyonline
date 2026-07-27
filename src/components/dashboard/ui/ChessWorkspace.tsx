@@ -249,6 +249,38 @@ export default function ChessWorkspace({
     undoneMovesRef.current = [];
   }, [initialFen]);
 
+  // Load saved PGN / FEN position for this classId on initial mount!
+  useEffect(() => {
+    if (typeof window === 'undefined' || !classId) return;
+    try {
+      const savedPgn = localStorage.getItem(`classroom_pgn_${classId}`);
+      const savedFen = localStorage.getItem(`classroom_fen_${classId}`);
+      if (savedPgn || savedFen) {
+        const c = new Chess();
+        let loaded = false;
+        if (savedPgn && savedPgn.trim()) {
+          try {
+            c.loadPgn(savedPgn);
+            loaded = true;
+          } catch {}
+        }
+        if (!loaded && savedFen && savedFen.trim()) {
+          try {
+            c.load(savedFen);
+            loaded = true;
+          } catch {}
+        }
+        if (loaded) {
+          gameRef.current = c;
+          setFen(c.fen());
+          setMoveHistory(c.history());
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load saved classroom PGN:', e);
+    }
+  }, [classId]);
+
   // In a classroom (classId present), start unlocked (false) so students can move unless coach locks.
   const [isBoardLocked, setIsBoardLocked] = useState(false);
   const isBoardLockedRef = useRef(false);
@@ -391,6 +423,13 @@ export default function ChessWorkspace({
 
     setArrows([]);
     setHighlights({});
+
+    if (typeof window !== 'undefined' && classId) {
+      try {
+        localStorage.setItem(`classroom_pgn_${classId}`, g.pgn());
+        localStorage.setItem(`classroom_fen_${classId}`, nextFen);
+      } catch (e) {}
+    }
 
     if (onMove) onMove(nextFen, g.pgn());
 
@@ -1671,7 +1710,43 @@ export default function ChessWorkspace({
 
           {/* Move History */}
           <div className="space-y-2 flex flex-col flex-grow min-h-[180px]">
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Move List ({moveHistory.length})</span>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                Move List ({moveHistory.length})
+              </span>
+              {moveHistory.length > 0 && (
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const pgnStr = gameRef.current.pgn();
+                      navigator.clipboard.writeText(pgnStr);
+                      alert('📋 Full Game PGN copied to clipboard!');
+                    }}
+                    className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-[10px] rounded-md transition-colors"
+                    title="Copy full game PGN notation"
+                  >
+                    📋 Copy PGN
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const pgnStr = gameRef.current.pgn();
+                      const blob = new Blob([pgnStr], { type: 'text/plain;charset=utf-8' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `ChessHub_Class_${classId || 'Game'}.pgn`;
+                      a.click();
+                    }}
+                    className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 font-bold text-[10px] rounded-md transition-colors"
+                    title="Download PGN file to local device"
+                  >
+                    💾 Save PGN
+                  </button>
+                </div>
+              )}
+            </div>
             <div className="bg-slate-950/40 border border-slate-800/60 p-3 rounded-xl flex-grow overflow-y-auto max-h-[220px]">
               {moveHistory.length === 0 ? (
                 <p className="text-xs text-slate-500 italic text-center py-4">No moves played yet.</p>

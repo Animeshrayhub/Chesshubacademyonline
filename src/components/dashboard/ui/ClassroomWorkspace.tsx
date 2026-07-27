@@ -703,10 +703,15 @@ export default function ClassroomWorkspace({
       };
     });
 
+    const savedPgn = typeof window !== 'undefined' ? localStorage.getItem(`classroom_pgn_${classId}`) : '';
+    const finalSessionNotes = savedPgn && !endClassRemarks.includes('GAME PGN NOTATION')
+      ? `${endClassRemarks ? endClassRemarks + '\n\n' : ''}--- CLASSROOM GAME PGN NOTATION ---\n${savedPgn}`
+      : endClassRemarks;
+
     try {
       const res = await submitClassEndReportAction({
         classId,
-        sessionNotes: endClassRemarks,
+        sessionNotes: finalSessionNotes,
         attendance: attendanceList,
       });
 
