@@ -12,6 +12,7 @@ import DashboardIcon from '@/components/dashboard/ui/DashboardIcon';
 import Link from 'next/link';
 import { getStudentHomework } from '@/lib/students';
 import CoachAssignedPuzzlesList from '@/features/student/CoachAssignedPuzzlesList';
+import StudentLeaderboardClient, { type LeaderboardStudentData } from '@/features/student/StudentLeaderboardClient';
 
 export const dynamic = 'force-dynamic';
 
@@ -122,23 +123,13 @@ export default async function StudentPuzzlesPage({ searchParams }: PuzzlesPagePr
     homeworkCompletedMap[row.student_id] = (homeworkCompletedMap[row.student_id] || 0) + 1;
   });
 
-  const leaderboardSolved = students.map((s: any) => ({
+  const leaderboardStudents: LeaderboardStudentData[] = students.map((s: any) => ({
+    id: s.id,
     name: s.name,
-    value: puzzleSolvedMap[s.id] || 0,
-    detail: `${puzzleSolvedMap[s.id] || 0} solved`,
-  })).sort((a: any, b: any) => b.value - a.value).slice(0, 10);
-
-  const leaderboardXp = students.map((s: any) => ({
-    name: s.name,
-    value: puzzleWeeklyXpMap[s.id] || 0,
-    detail: `${puzzleWeeklyXpMap[s.id] || 0} XP`,
-  })).sort((a: any, b: any) => b.value - a.value).slice(0, 10);
-
-  const leaderboardHomework = students.map((s: any) => ({
-    name: s.name,
-    value: homeworkCompletedMap[s.id] || 0,
-    detail: `${homeworkCompletedMap[s.id] || 0} completed`,
-  })).sort((a: any, b: any) => b.value - a.value).slice(0, 10);
+    solved: puzzleSolvedMap[s.id] || 0,
+    xp: puzzleWeeklyXpMap[s.id] || 0,
+    homeworkCompleted: homeworkCompletedMap[s.id] || 0,
+  }));
 
   // Tabs navigation helper
   const tabs = [
@@ -221,64 +212,7 @@ export default async function StudentPuzzlesPage({ searchParams }: PuzzlesPagePr
         )}
 
         {activeTab === 'leaderboard' && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Puzzles Solved Card */}
-            <div className="bg-white border border-border rounded-2xl shadow-card p-5">
-              <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider mb-4 flex items-center gap-1.5 border-b border-border/60 pb-2">
-                🔥 Tactics Solved
-              </h4>
-              <div className="space-y-3">
-                {leaderboardSolved.map((item: any, idx: number) => (
-                  <div key={idx} className="flex justify-between items-center text-xs">
-                    <span className="font-semibold text-text-secondary w-5">{idx + 1}.</span>
-                    <span className="flex-grow font-medium text-text-primary">{item.name}</span>
-                    <span className="font-bold text-primary">{item.detail}</span>
-                  </div>
-                ))}
-                {leaderboardSolved.length === 0 && (
-                  <p className="text-xs italic text-slate-400">No solve data recorded.</p>
-                )}
-              </div>
-            </div>
-
-            {/* Weekly XP Card */}
-            <div className="bg-white border border-border rounded-2xl shadow-card p-5">
-              <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider mb-4 flex items-center gap-1.5 border-b border-border/60 pb-2">
-                ⚡ Weekly XP (7 Days)
-              </h4>
-              <div className="space-y-3">
-                {leaderboardXp.map((item: any, idx: number) => (
-                  <div key={idx} className="flex justify-between items-center text-xs">
-                    <span className="font-semibold text-text-secondary w-5">{idx + 1}.</span>
-                    <span className="flex-grow font-medium text-text-primary">{item.name}</span>
-                    <span className="font-bold text-green-600">{item.detail}</span>
-                  </div>
-                ))}
-                {leaderboardXp.length === 0 && (
-                  <p className="text-xs italic text-slate-400">No XP accumulated this week.</p>
-                )}
-              </div>
-            </div>
-
-            {/* Homework Champions Card */}
-            <div className="bg-white border border-border rounded-2xl shadow-card p-5">
-              <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider mb-4 flex items-center gap-1.5 border-b border-border/60 pb-2">
-                📝 Homework Champions
-              </h4>
-              <div className="space-y-3">
-                {leaderboardHomework.map((item: any, idx: number) => (
-                  <div key={idx} className="flex justify-between items-center text-xs">
-                    <span className="font-semibold text-text-secondary w-5">{idx + 1}.</span>
-                    <span className="flex-grow font-medium text-text-primary">{item.name}</span>
-                    <span className="font-bold text-orange-600">{item.detail}</span>
-                  </div>
-                ))}
-                {leaderboardHomework.length === 0 && (
-                  <p className="text-xs italic text-slate-400">No homework submissions yet.</p>
-                )}
-              </div>
-            </div>
-          </div>
+          <StudentLeaderboardClient initialStudents={leaderboardStudents} />
         )}
 
         {activeTab === 'playbot' && (
