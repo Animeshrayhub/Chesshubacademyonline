@@ -165,8 +165,13 @@ export default function PuzzleBoard({ puzzle, onSolveComplete, token }: PuzzleBo
       if (res.ok) {
         const nextPuzzle = await res.json();
         setCurrentPuzzle(nextPuzzle);
+        setMessage({ text: `Practicing ${themeName === 'ALL' ? 'all' : themeName} puzzle`, type: 'info' });
       } else {
-        setMessage({ text: 'Failed to load next puzzle. Please try again.', type: 'error' });
+        const errData = await res.json().catch(() => ({}));
+        setMessage({
+          text: errData.error || `No ${themeName} puzzles found in active catalog. Please try another theme or import puzzles in Admin Manager.`,
+          type: 'error',
+        });
       }
     } catch {
       setMessage({ text: 'Network connection failed.', type: 'error' });

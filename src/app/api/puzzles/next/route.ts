@@ -364,6 +364,15 @@ export async function GET(req: NextRequest) {
           (p) => p.difficulty.toLowerCase() === targetDifficulty!.toLowerCase()
         );
         pool = diffInTheme.length > 0 ? diffInTheme : themeMatches;
+      } else {
+        return NextResponse.json(
+          {
+            notFound: true,
+            error: `No ${requestedTheme} theme puzzles currently available in catalog.`,
+            theme: requestedTheme,
+          },
+          { status: 404 }
+        );
       }
     } else {
       const diffMatches = pool.filter(
