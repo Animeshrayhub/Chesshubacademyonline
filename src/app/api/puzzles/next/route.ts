@@ -225,6 +225,7 @@ export async function GET(req: NextRequest) {
 
     const searchParams = req.nextUrl.searchParams;
     const requestedLevel = searchParams.get('level'); // Beginner, Intermediate, Advanced, Expert, Master
+    const requestedTheme = searchParams.get('theme'); // mateIn1, mateIn2, fork, pin, skewer, sacrifice, etc.
 
     let targetDifficulty = requestedLevel;
 
@@ -244,9 +245,17 @@ export async function GET(req: NextRequest) {
         : 'Advanced';
     }
 
-    // Filter local puzzles by student difficulty, fallback to random if none
-    let pool = FALLBACK_PUZZLES.filter(p => p.difficulty.toLowerCase() === targetDifficulty!.toLowerCase());
-    if (pool.length === 0) pool = FALLBACK_PUZZLES;
+    // Filter local puzzles by student difficulty & requested theme
+    let pool = FALLBACK_PUZZLES;
+    if (requestedTheme && requestedTheme !== 'ALL') {
+      const themeMatches = pool.filter((p) =>
+        p.themes.some((t) => t.toLowerCase() === requestedTheme.toLowerCase())
+      );
+      if (themeMatches.length > 0) pool = themeMatches;
+    }
+
+    const diffMatches = pool.filter((p) => p.difficulty.toLowerCase() === targetDifficulty!.toLowerCase());
+    if (diffMatches.length > 0) pool = diffMatches;
 
     const randomIndex = Math.floor(Math.random() * pool.length);
     const selectedPuzzle = pool[randomIndex];

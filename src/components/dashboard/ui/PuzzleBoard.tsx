@@ -22,6 +22,7 @@ interface PuzzleBoardProps {
 
 export default function PuzzleBoard({ puzzle, onSolveComplete, token }: PuzzleBoardProps) {
   const [selectedLevel, setSelectedLevel] = useState<'Beginner' | 'Intermediate' | 'Advanced' | 'Expert' | 'Master'>('Beginner');
+  const [selectedTheme, setSelectedTheme] = useState('ALL');
   const [currentPuzzle, setCurrentPuzzle] = useState<PuzzleData>(puzzle);
   const [loadingNext, setLoadingNext] = useState(false);
 
@@ -79,14 +80,33 @@ export default function PuzzleBoard({ puzzle, onSolveComplete, token }: PuzzleBo
   }, []);
 
   const handleNextPuzzle = async () => {
-    await fetchLevelPuzzle(selectedLevel);
+    await fetchLevelPuzzle(selectedLevel, selectedTheme);
   };
 
-  const fetchLevelPuzzle = async (levelName: string) => {
+  const fetchLevelPuzzle = async (levelName: string, themeName: string = selectedTheme) => {
     setLoadingNext(true);
     setMessage({ text: `Loading next ${levelName} puzzle...`, type: 'info' });
     try {
-      const res = await fetch(`/api/puzzles/next?level=${levelName}`, {
+      // 1. Check custom imported Lichess CSV puzzles first!
+      if (typeof window !== 'undefined') {
+        const customStored = localStorage.getItem('custom_lichess_puzzles');
+        if (customStored) {
+          const customPuzzles: PuzzleData[] = JSON.parse(customStored);
+          const filtered = customPuzzles.filter((p) => {
+            if (themeName === 'ALL') return true;
+            return p.themes.some((t) => t.toLowerCase() === themeName.toLowerCase());
+          });
+          if (filtered.length > 0) {
+            const randP = filtered[Math.floor(Math.random() * filtered.length)];
+            setCurrentPuzzle(randP);
+            setLoadingNext(false);
+            return;
+          }
+        }
+      }
+
+      // 2. Fetch from API
+      const res = await fetch(`/api/puzzles/next?level=${levelName}&theme=${themeName}`, {
         cache: 'no-store',
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -98,8 +118,8 @@ export default function PuzzleBoard({ puzzle, onSolveComplete, token }: PuzzleBo
       } else {
         setMessage({ text: 'Failed to load next puzzle. Please try again.', type: 'error' });
       }
-    } catch (err) {
-      setMessage({ text: 'Error connecting to server.', type: 'error' });
+    } catch {
+      setMessage({ text: 'Network connection failed.', type: 'error' });
     } finally {
       setLoadingNext(false);
     }
@@ -517,8 +537,54 @@ export default function PuzzleBoard({ puzzle, onSolveComplete, token }: PuzzleBo
     ? Math.max(0, Math.round((expectedMovesCount / (expectedMovesCount + mistakes)) * 100))
     : 0;
 
+  const THEME_OPTIONS = [
+    { id: 'ALL', label: 'All Themes' },
+    { id: 'mateIn1', label: '🎯 Mate in 1' },
+    { id: 'mateIn2', label: '⚡ Mate in 2' },
+    { id: 'mateIn3', label: '👑 Mate in 3' },
+    { id: 'fork', label: '🍴 Fork' },
+    { id: 'pin', label: '📌 Pin' },
+    { id: 'skewer', label: '🗡️ Skewer' },
+    { id: 'sacrifice', label: '💥 Sacrifice' },
+    { id: 'discoveredAttack', label: '🛡️ Discovered Attack' },
+    { id: 'endgame', label: '♟️ Endgame' },
+    { id: 'opening', label: '📖 Opening' },
+    { id: 'middlegame', label: '⚔️ Middlegame' },
+    { id: 'zugzwang', label: '🌀 Zugzwang' },
+  ];
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 bg-surface-dark border border-slate-800 rounded-3xl p-6 shadow-2xl">
+    <div className="space-y-4">
+      {/* Lichess Theme Selector Bar */}
+      <div className="bg-slate-900 border border-slate-800/80 rounded-2xl p-3 flex items-center gap-2 overflow-x-auto shadow-md">
+        <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider whitespace-nowrap pl-1">
+          🎯 Filter Theme:
+        </span>
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+          {THEME_OPTIONS.map((theme) => {
+            const isActive = selectedTheme === theme.id;
+            return (
+              <button
+                key={theme.id}
+                type="button"
+                onClick={() => {
+                  setSelectedTheme(theme.id);
+                  fetchLevelPuzzle(selectedLevel, theme.id);
+                }}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all whitespace-nowrap border ${
+                  isActive
+                    ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-gold'
+                    : 'bg-slate-950 hover:bg-slate-800 text-slate-300 border-slate-800'
+                }`}
+              >
+                {theme.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 bg-surface-dark border border-slate-800 rounded-3xl p-6 shadow-2xl">
       
       {/* Board Panel */}
       <div className="lg:col-span-2 flex flex-col items-center gap-4">
@@ -771,6 +837,7 @@ export default function PuzzleBoard({ puzzle, onSolveComplete, token }: PuzzleBo
               </div>
             )}
           </div>
+        </div>
         </div>
       </div>
     </div>
