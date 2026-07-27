@@ -8,6 +8,32 @@ export const dynamic = 'force-dynamic';
 
 // Bounded list of fallback puzzles categorized by difficulty
 const FALLBACK_PUZZLES: PuzzleData[] = [
+  // ─── Lichess Study: Mate in 1 (Chapters 1 - 24) ──────────────────────────
+  { id: 'mate1-1', source: 'lichess', initialFen: '3q1rk1/5pbg/5Qp1/8/8/2B5/5PPP/6K1 w - - 0 1', solution: ['f6g7'], playerToMove: 'white', rating: 800, difficulty: 'Beginner', themes: ['mate', 'mateIn1'], numberOfMoves: 1 },
+  { id: 'mate1-2', source: 'lichess', initialFen: '2r2rk1/2q2p1p/6pQ/4P1N1/8/8/PPP5/2KR4 w - - 0 1', solution: ['h6h7'], playerToMove: 'white', rating: 800, difficulty: 'Beginner', themes: ['mate', 'mateIn1'], numberOfMoves: 1 },
+  { id: 'mate1-3', source: 'lichess', initialFen: 'r2q1rk1/pp1p1p1p/5PpQ/8/4N3/8/PP3PPP/R5K1 w - - 0 1', solution: ['h6g7'], playerToMove: 'white', rating: 800, difficulty: 'Beginner', themes: ['mate', 'mateIn1'], numberOfMoves: 1 },
+  { id: 'mate1-4', source: 'lichess', initialFen: '6r1/7k/2p1pPp1/3p4/8/1R6/5PPP/5K2 w - - 0 1', solution: ['b3h3'], playerToMove: 'white', rating: 800, difficulty: 'Beginner', themes: ['mate', 'mateIn1'], numberOfMoves: 1 },
+  { id: 'mate1-5', source: 'lichess', initialFen: 'r5k1/q4p2/5Bp1/8/8/8/PP6/K6R w - - 0 1', solution: ['h1h8'], playerToMove: 'white', rating: 800, difficulty: 'Beginner', themes: ['mate', 'mateIn1'], numberOfMoves: 1 },
+  { id: 'mate1-6', source: 'lichess', initialFen: 'r4rk1/5p1p/8/8/8/8/1BP5/2KR4 w - - 0 1', solution: ['d1g1'], playerToMove: 'white', rating: 800, difficulty: 'Beginner', themes: ['mate', 'mateIn1'], numberOfMoves: 1 },
+  { id: 'mate1-7', source: 'lichess', initialFen: '4r2k/4r1p1/6p1/8/2B5/8/1PP5/2KR4 w - - 0 1', solution: ['d1h1'], playerToMove: 'white', rating: 800, difficulty: 'Beginner', themes: ['mate', 'mateIn1'], numberOfMoves: 1 },
+  { id: 'mate1-8', source: 'lichess', initialFen: '8/2r1N1pk/8/8/8/2q2p2/2P5/2KR4 w - - 0 1', solution: ['d1h1'], playerToMove: 'white', rating: 800, difficulty: 'Beginner', themes: ['mate', 'mateIn1'], numberOfMoves: 1 },
+  { id: 'mate1-9', source: 'lichess', initialFen: 'r7/4KNkp/8/8/a7/8/8/1R6 w - - 0 1', solution: ['b1g1'], playerToMove: 'white', rating: 800, difficulty: 'Beginner', themes: ['mate', 'mateIn1'], numberOfMoves: 1 },
+  { id: 'mate1-10', source: 'lichess', initialFen: '2kr4/3n4/2p5/8/5B2/8/6PP/5B1K w - - 0 1', solution: ['f4a6'], playerToMove: 'white', rating: 800, difficulty: 'Beginner', themes: ['mate', 'mateIn1'], numberOfMoves: 1 },
+  { id: 'mate1-11', source: 'lichess', initialFen: 'r1b1kb1r/5ppp/8/6B1/8/8/5PPP/3R3K w - - 0 1', solution: ['d1d8'], playerToMove: 'white', rating: 800, difficulty: 'Beginner', themes: ['mate', 'mateIn1'], numberOfMoves: 1 },
+  { id: 'mate1-12', source: 'lichess', initialFen: 'r4rk1/p6p/1n6/5N1/3B4/3B4/6PP/7K w - - 0 1', solution: ['d3h7'], playerToMove: 'white', rating: 800, difficulty: 'Beginner', themes: ['mate', 'mateIn1'], numberOfMoves: 1 },
+  { id: 'mate1-13', source: 'lichess', initialFen: 'r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/5Q2/PPPP1PPP/RNB1K1NR w - - 0 1', solution: ['f3f7'], playerToMove: 'white', rating: 800, difficulty: 'Beginner', themes: ['mate', 'mateIn1'], numberOfMoves: 1 },
+  { id: 'mate1-14', source: 'lichess', initialFen: 'rnbqkbnr/ppppp2p/5p2/6p1/3PP3/8/PPP2PPP/RNBQKBNR w KQkq - 0 1', solution: ['d1h5'], playerToMove: 'white', rating: 800, difficulty: 'Beginner', themes: ['mate', 'mateIn1'], numberOfMoves: 1 },
+  { id: 'mate1-15', source: 'lichess', initialFen: '6k1/5ppp/a1p5/3b4/8/1pB5/1Pr2PPP/3RR1K1 w - - 0 1', solution: ['e1e8'], playerToMove: 'white', rating: 800, difficulty: 'Beginner', themes: ['mate', 'mateIn1'], numberOfMoves: 1 },
+  { id: 'mate1-16', source: 'lichess', initialFen: 'rnbq1rk1/ppp2ppp/3bp3/3p3Q/3P4/3BPN2/PPP2PPP/RNB1K2R w - - 0 1', solution: ['h5h7'], playerToMove: 'white', rating: 800, difficulty: 'Beginner', themes: ['mate', 'mateIn1'], numberOfMoves: 1 },
+  { id: 'mate1-17', source: 'lichess', initialFen: '6k1/p1p2rpp/1q6/2p5/4P3/PQ6/1P4PP/3R3K w - - 0 1', solution: ['d1d8'], playerToMove: 'white', rating: 800, difficulty: 'Beginner', themes: ['mate', 'mateIn1'], numberOfMoves: 1 },
+  { id: 'mate1-18', source: 'lichess', initialFen: 'rnb4k/p5pp/8/4N3/8/1B6/PPP5/2K4R w - - 0 1', solution: ['e5g6'], playerToMove: 'white', rating: 800, difficulty: 'Beginner', themes: ['mate', 'mateIn1'], numberOfMoves: 1 },
+  { id: 'mate1-19', source: 'lichess', initialFen: '6r1/2Q2P2/5k2/5P2/5K2/8/8/8 w - - 0 1', solution: ['f7g8q'], playerToMove: 'white', rating: 800, difficulty: 'Beginner', themes: ['mate', 'mateIn1'], numberOfMoves: 1 },
+  { id: 'mate1-20', source: 'lichess', initialFen: '8/3pkP2/4p3/8/8/3K4/8/5R2 w - - 0 1', solution: ['f7f8q'], playerToMove: 'white', rating: 800, difficulty: 'Beginner', themes: ['mate', 'mateIn1'], numberOfMoves: 1 },
+  { id: 'mate1-21', source: 'lichess', initialFen: '3Nnr2/R2PkP2/4p3/8/8/4K3/8/3R4 w - - 0 1', solution: ['f7e8q'], playerToMove: 'white', rating: 800, difficulty: 'Beginner', themes: ['mate', 'mateIn1'], numberOfMoves: 1 },
+  { id: 'mate1-22', source: 'lichess', initialFen: '2kr4/3p4/8/4B3/8/3B4/3K4/8 w - - 0 1', solution: ['d3a6'], playerToMove: 'white', rating: 800, difficulty: 'Beginner', themes: ['mate', 'mateIn1'], numberOfMoves: 1 },
+  { id: 'mate1-23', source: 'lichess', initialFen: '2kr4/8/8/8/Q7/6B1/6K1/8 w - - 0 1', solution: ['a4c6'], playerToMove: 'white', rating: 800, difficulty: 'Beginner', themes: ['mate', 'mateIn1'], numberOfMoves: 1 },
+  { id: 'mate1-24', source: 'lichess', initialFen: '3r4/1pk5/3pP3/2N5/8/8/8/2R4K w - - 0 1', solution: ['c5d7'], playerToMove: 'white', rating: 800, difficulty: 'Beginner', themes: ['mate', 'mateIn1'], numberOfMoves: 1 },
+
   // ─── Beginner (Rating < 1200) ───────────────────────────────────────────────
   {
     id: 'offline-1',

@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect } from 'react';
 import { Chess } from 'chess.js';
@@ -36,16 +36,116 @@ export default function LichessPuzzleCsvImporter({ onImportComplete }: LichessPu
     }
   }, []);
 
+  const parsePgnStudyData = (rawText: string): PuzzleData[] => {
+    const chapters = rawText.split(/\[Event\s+/i).filter(Boolean);
+    const results: PuzzleData[] = [];
+
+    chapters.forEach((ch, idx) => {
+      const fenMatch = ch.match(/\[FEN\s+"([^"]+)"\]/i);
+      const chapterMatch = ch.match(/\[ChapterName\s+"([^"]+)"\]/i);
+      const urlMatch = ch.match(/\[ChapterURL\s+"([^"]+)"\]/i);
+      const eventMatch = ch.match(/"([^"]+)"/);
+
+      if (!fenMatch) return;
+      const initialFen = fenMatch[1].trim();
+
+      const lines = ch.split('\n');
+      const moveLines = lines.filter((l) => !l.trim().startsWith('[') && l.trim().length > 0 && l.trim() !== '*');
+      const movesText = moveLines.join(' ').replace(/\{[^}]*\}/g, '').replace(/\$\d+/g, '').replace(/\*/g, '').trim();
+
+      try {
+        const chess = new Chess(initialFen);
+        const playerToMove = chess.turn() === 'w' ? 'white' : 'black';
+        const solutionMoves: string[] = [];
+
+        if (movesText) {
+          const tempGame = new Chess(initialFen);
+          const rawTokens = movesText.split(/\s+/).filter((t) => t && !t.match(/^\d+\.$/));
+          for (const token of rawTokens) {
+            if (token === '*' || token === '1-0' || token === '0-1' || token === '1/2-1/2') continue;
+            try {
+              const moveRes = tempGame.move(token);
+              if (moveRes) {
+                solutionMoves.push(`${moveRes.from}${moveRes.to}${moveRes.promotion || ''}`);
+              }
+            } catch {}
+          }
+        }
+
+        // Auto-find mate-in-1 move if solution was not specified
+        if (solutionMoves.length === 0) {
+          const tempGame = new Chess(initialFen);
+          const legalMoves = tempGame.moves({ verbose: true });
+          for (const m of legalMoves) {
+            const testGame = new Chess(initialFen);
+            testGame.move(m);
+            if (testGame.isCheckmate() || testGame.isGameOver()) {
+              solutionMoves.push(`${m.from}${m.to}${m.promotion || ''}`);
+              break;
+            }
+          }
+        }
+
+        if (solutionMoves.length > 0) {
+          const title = chapterMatch ? chapterMatch[1] : (eventMatch ? eventMatch[1] : `Chapter ${idx + 1}`);
+          const isMate = title.toLowerCase().includes('mate') || solutionMoves.length === 1;
+          const themes = isMate ? ['mate', 'mateIn1', 'tactics'] : ['tactics'];
+
+          results.push({
+            id: `pgn-study-${idx + 1}-${Date.now().toString(36)}`,
+            source: 'lichess',
+            initialFen,
+            solution: solutionMoves,
+            playerToMove,
+            rating: 800,
+            difficulty: 'Beginner',
+            themes,
+            numberOfMoves: Math.ceil(solutionMoves.length / 2),
+            externalUrl: urlMatch ? urlMatch[1] : undefined,
+          });
+        }
+      } catch (err) {
+        console.warn(`PGN chapter ${idx + 1} parse error:`, err);
+      }
+    });
+
+    return results;
+  };
+
   const parseCsvData = (rawText: string) => {
     setError('');
     setSuccessMsg('');
     if (!rawText.trim()) {
-      setError('Please paste CSV text or select a file first.');
+      setError('Please paste CSV or PGN study text or select a file first.');
       return;
     }
 
     setIsProcessing(true);
     try {
+      // Auto-detect PGN Study vs CSV
+      if (rawText.includes('[Event') || rawText.includes('[FEN')) {
+        const pgnPuzzles = parsePgnStudyData(rawText);
+        if (pgnPuzzles.length === 0) {
+          setError('No valid FEN positions or solution moves found in PGN Study text.');
+          setIsProcessing(false);
+          return;
+        }
+
+        const existingIds = new Set(importedPuzzles.map((p) => p.id));
+        const newOnly = pgnPuzzles.filter((p) => !existingIds.has(p.id));
+        const combined = [...newOnly, ...importedPuzzles];
+
+        setImportedPuzzles(combined);
+        try {
+          localStorage.setItem('custom_lichess_puzzles', JSON.stringify(combined));
+        } catch (e) {}
+
+        setSuccessMsg(`🎉 Successfully imported ${pgnPuzzles.length} PGN Study Chapters into catalog!`);
+        if (onImportComplete) onImportComplete(combined);
+        setIsProcessing(false);
+        return;
+      }
+
       const lines = rawText.trim().split('\n');
       if (lines.length === 0) {
         setError('Empty CSV file provided.');
