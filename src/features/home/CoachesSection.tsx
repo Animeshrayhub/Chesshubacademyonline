@@ -2,9 +2,11 @@ import Image from 'next/image';
 import Link from 'next/link';
 import Container from '@/components/ui/Container';
 import SectionTitle from '@/components/ui/SectionTitle';
-import { COACHES } from '@/constants/COACHES';
+import { getPublicCoachesList } from '@/lib/coaches/public';
 
-export default function CoachesSection() {
+export default async function CoachesSection() {
+  const coaches = await getPublicCoachesList();
+
   return (
     <section
       className="section-py bg-white"
@@ -20,7 +22,7 @@ export default function CoachesSection() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
 
-          {COACHES.map((coach) => (
+          {coaches.map((coach) => (
             <article
               key={coach.id}
               className="group card-premium overflow-hidden"

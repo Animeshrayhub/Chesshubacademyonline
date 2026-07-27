@@ -16,6 +16,7 @@ import Modal from '@/components/ui/Modal';
 import AdminCoachPhotoModal from '@/components/dashboard/ui/AdminCoachPhotoModal';
 
 
+import { updateCoachProfileAction } from '@/actions/coaches';
 import {
   createCoachAction,
   createStudentAction,
@@ -376,10 +377,11 @@ export default function CoachRegistry({ coaches }: CoachRegistryProps) {
           isOpen={true}
           onClose={() => setPhotoCoach(null)}
           coachName={`${photoCoach.first_name} ${photoCoach.last_name}`}
-          currentImageUrl=""
-          onSaveImageUrl={(newUrl) => {
-            console.log('Saved coach image:', photoCoach.id, newUrl);
+          currentImageUrl={photoCoach.profile?.photo_url || ''}
+          onSaveImageUrl={async (newUrl) => {
+            await updateCoachProfileAction(photoCoach.id, { photo_url: newUrl });
             setPhotoCoach(null);
+            window.location.reload();
           }}
         />
       )}

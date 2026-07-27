@@ -67,6 +67,8 @@ export default function CoachProfileDetail({ coach }: CoachProfileDetailProps) {
   const [fideRating, setFideRating] = useState(bioData.fideRating);
   const [country, setCountry] = useState(bioData.country);
 
+  const [photoUrl, setPhotoUrl] = useState(coach.profile?.photo_url ?? '');
+
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [saveLoading, setSaveLoading] = useState(false);
 
@@ -88,11 +90,12 @@ export default function CoachProfileDetail({ coach }: CoachProfileDetailProps) {
       experienceYears: parseInt(experienceYears, 10) || 0,
       languages: languages.split(',').map((l) => l.trim()).filter(Boolean),
       bio: serializedBio,
+      photo_url: photoUrl,
     });
 
     setSaveLoading(false);
     if (res.success) {
-      setMessage({ type: 'success', text: 'Coach registry details updated successfully.' });
+      setMessage({ type: 'success', text: 'Coach registry details & photo updated successfully.' });
     } else {
       setMessage({ type: 'error', text: res.error?.message || 'Failed to update details.' });
     }
@@ -261,6 +264,19 @@ export default function CoachProfileDetail({ coach }: CoachProfileDetailProps) {
                   value={fideRating}
                   onChange={(e) => setFideRating(e.target.value)}
                 />
+                <div className="sm:col-span-2">
+                  <Input
+                    id="cpd-photoUrl"
+                    label="Coach Profile Photo URL (Direct Link or Google Drive Share Link)"
+                    placeholder="https://drive.google.com/file/d/... or /coaches/animesh-ray.jpg"
+                    value={photoUrl}
+                    onChange={(e) => setPhotoUrl(e.target.value)}
+                  />
+                  <p className="text-[11px] text-amber-600 font-semibold mt-1">
+                    💡 <strong>Tip:</strong> Paste any public image URL or Google Drive sharing link — it automatically renders on the homepage and about page!
+                  </p>
+                </div>
+
                 <div className="sm:col-span-2">
                   <Input
                     id="cpd-country"

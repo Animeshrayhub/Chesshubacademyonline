@@ -6,7 +6,7 @@ import SectionTitle from '@/components/ui/SectionTitle';
 import Card from '@/components/ui/Card';
 import JsonLd from '@/components/seo/JsonLd';
 import BookDemoCTASection from '@/features/home/BookDemoCTASection';
-import { COACHES } from '@/constants/COACHES';
+import { getPublicCoachesList } from '@/lib/coaches/public';
 import { SITE_URL, SITE_OG_IMAGE, SITE_NAME } from '@/constants/SITE';
 
 export const metadata: Metadata = {
@@ -36,7 +36,9 @@ const VALUES = [
   { icon: '🌱', title: 'Professionalism', description: 'Every interaction reflects our commitment to professional standards.' },
 ];
 
-export default function AboutPage() {
+export default async function AboutPage() {
+  const coaches = await getPublicCoachesList();
+
   const orgSchema = {
     '@context': 'https://schema.org',
     '@type': 'EducationalOrganization',
@@ -188,7 +190,7 @@ export default function AboutPage() {
           />
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
 
-            {COACHES.map((coach) => (
+            {coaches.map((coach) => (
               <article key={coach.id} className="card-premium overflow-hidden group">
                 <div className="relative h-72 overflow-hidden">
                   <Image
