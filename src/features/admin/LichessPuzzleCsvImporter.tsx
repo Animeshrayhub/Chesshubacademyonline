@@ -160,6 +160,7 @@ export default function LichessPuzzleCsvImporter({ onImportComplete }: LichessPu
       let ratingIdx = 3;
       let themesIdx = 7;
       let idIdx = 0;
+      let openingTagsIdx = -1;
 
       const headers = headerLine.split(',').map((h) => h.trim());
       if (headers.includes('fen')) fenIdx = headers.indexOf('fen');
@@ -167,6 +168,7 @@ export default function LichessPuzzleCsvImporter({ onImportComplete }: LichessPu
       if (headers.includes('rating')) ratingIdx = headers.indexOf('rating');
       if (headers.includes('themes')) themesIdx = headers.indexOf('themes');
       if (headers.includes('puzzleid')) idIdx = headers.indexOf('puzzleid');
+      if (headers.includes('openingtags')) openingTagsIdx = headers.indexOf('openingtags');
 
       const parsedList: PuzzleData[] = [];
       const startLine = headers.includes('fen') ? 1 : 0;
@@ -182,7 +184,13 @@ export default function LichessPuzzleCsvImporter({ onImportComplete }: LichessPu
         const fenStr = cols[fenIdx];
         const movesStr = cols[movesIdx];
         const ratingNum = parseInt(cols[ratingIdx]) || 1200;
-        const themesArr = cols[themesIdx] ? cols[themesIdx].split(/\s+/).filter(Boolean) : ['tactics'];
+        
+        const rawThemes = cols[themesIdx] ? cols[themesIdx].split(/\s+/).filter(Boolean) : ['tactics'];
+        if (openingTagsIdx !== -1 && cols[openingTagsIdx]) {
+          const tags = cols[openingTagsIdx].split(/\s+/).filter(Boolean);
+          rawThemes.push(...tags);
+        }
+        const themesArr = Array.from(new Set(rawThemes));
 
         if (!fenStr || !movesStr) continue;
 
