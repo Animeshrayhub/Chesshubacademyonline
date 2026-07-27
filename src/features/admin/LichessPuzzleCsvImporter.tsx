@@ -146,7 +146,7 @@ export default function LichessPuzzleCsvImporter({ onImportComplete }: LichessPu
         return;
       }
 
-      const lines = rawText.trim().split('\n');
+      const lines = rawText.trim().split(/\r?\n/);
       if (lines.length === 0) {
         setError('Empty CSV file provided.');
         setIsProcessing(false);
@@ -238,9 +238,11 @@ export default function LichessPuzzleCsvImporter({ onImportComplete }: LichessPu
 
       setImportedPuzzles(combined);
       try {
-        localStorage.setItem('custom_lichess_puzzles', JSON.stringify(combined));
+        // Bounded save to avoid browser QuotaExceededError on multi-MB datasets
+        const safeCache = combined.slice(0, 2000);
+        localStorage.setItem('custom_lichess_puzzles', JSON.stringify(safeCache));
       } catch (e) {
-        console.error('Failed to save puzzles to localStorage:', e);
+        console.warn('LocalStorage limit reached for offline cache, keeping all in memory:', e);
       }
 
       setSuccessMsg(`🎉 Successfully imported ${parsedList.length} Lichess Puzzles into catalog!`);
