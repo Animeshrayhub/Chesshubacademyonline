@@ -94,6 +94,35 @@ export default function PuzzleBoard({ puzzle, onSolveComplete, token }: PuzzleBo
   const [aiExplanation, setAiExplanation] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
 
+  // Hint state & highlights
+  const [hintSquare, setHintSquare] = useState<string | null>(null);
+  const [hintTargetSquare, setHintTargetSquare] = useState<string | null>(null);
+  const [hintText, setHintText] = useState<string | null>(null);
+
+  const handleGetHint = () => {
+    if (status !== 'solving') return;
+
+    const expectedMove = currentPuzzle?.solution?.[solutionIndex];
+    if (!expectedMove) return;
+
+    const from = expectedMove.substring(0, 2);
+    const to = expectedMove.substring(2, 4);
+
+    if (!hintSquare) {
+      // Step 1: Highlight piece to move
+      setHintSquare(from);
+      const piece = gameRef.current.get(from as any);
+      const pieceName = piece
+        ? { p: 'Pawn', n: 'Knight', b: 'Bishop', r: 'Rook', q: 'Queen', k: 'King' }[piece.type] || 'Piece'
+        : 'Piece';
+      setHintText(`💡 Hint: Move the ${pieceName} on ${from.toUpperCase()}`);
+    } else if (!hintTargetSquare) {
+      // Step 2: Highlight target destination square too
+      setHintTargetSquare(to);
+      setHintText(`💡 Hint: Move from ${from.toUpperCase()} to ${to.toUpperCase()}`);
+    }
+  };
+
   // Sync state helper
   const syncState = useCallback(() => {
     setFen(gameRef.current.fen());
@@ -549,6 +578,9 @@ export default function PuzzleBoard({ puzzle, onSolveComplete, token }: PuzzleBo
     setAiExplanation(null);
     setSelectedSquare(null);
     setOptionSquares({});
+    setHintSquare(null);
+    setHintTargetSquare(null);
+    setHintText(null);
     
     if (currentPuzzle.opponentMoveUci) {
       const from = currentPuzzle.opponentMoveUci.substring(0, 2);
@@ -763,11 +795,31 @@ export default function PuzzleBoard({ puzzle, onSolveComplete, token }: PuzzleBo
                 ...optionSquares,
                 ...(rightSquareGold ? { [rightSquareGold]: { backgroundColor: 'rgba(212, 175, 55, 0.4)' } } : {}),
                 ...(wrongSquareRed ? { [wrongSquareRed]: { backgroundColor: 'rgba(239, 68, 68, 0.4)' } } : {}),
+                ...(hintSquare ? { [hintSquare]: { backgroundColor: 'rgba(245, 158, 11, 0.65)', boxShadow: 'inset 0 0 0 4px #f59e0b' } } : {}),
+                ...(hintTargetSquare ? { [hintTargetSquare]: { backgroundColor: 'rgba(16, 185, 129, 0.65)', boxShadow: 'inset 0 0 0 4px #10b981' } } : {}),
               },
               pieces: customChessPieces,
             }}
           />
         </div>
+
+        {/* Active Hint Banner */}
+        {hintText && (
+          <div className="w-full max-w-[540px] bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-bold px-4 py-2.5 rounded-2xl text-center shadow-lg animate-pulse flex items-center justify-between">
+            <span>{hintText}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setHintSquare(null);
+                setHintTargetSquare(null);
+                setHintText(null);
+              }}
+              className="text-[10px] text-amber-400 hover:text-white underline font-semibold ml-2"
+            >
+              Clear
+            </button>
+          </div>
+        )}
 
         {/* Board Controls */}
         <div className="flex gap-3">
@@ -808,15 +860,26 @@ export default function PuzzleBoard({ puzzle, onSolveComplete, token }: PuzzleBo
           )}
 
           {status === 'solving' && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={handleReset}
-              className="text-white border-slate-700 hover:bg-slate-800"
-            >
-              Restart
-            </Button>
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={handleGetHint}
+                className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/40 font-bold"
+              >
+                💡 Hint
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleReset}
+                className="text-white border-slate-700 hover:bg-slate-800"
+              >
+                Restart
+              </Button>
+            </>
           )}
 
           {(status === 'solved' || status === 'failed') && (
