@@ -236,4 +236,66 @@ export const lichessAdapter: PuzzleSource = {
   fetchDailyPuzzle: fetchLichessDailyPuzzle,
 };
 
+/**
+ * Fetches a specific puzzle by ID from Lichess API and normalizes it.
+ */
+export async function fetchLichessPuzzleById(id: string): Promise<PuzzleData | null> {
+  try {
+    const res = await fetch(`https://lichess.org/api/puzzle/${id}`, {
+      headers: {
+        Accept: 'application/json',
+        ...(process.env.LICHESS_API_TOKEN
+          ? { Authorization: `Bearer ${process.env.LICHESS_API_TOKEN}` }
+          : {}),
+      },
+      next: { revalidate: 3600 },
+    });
+
+    if (!res.ok) return null;
+
+    const data: LichessPuzzleResponse = await res.json();
+    const { puzzle, game } = data;
+
+    const { Chess } = await import('chess.js');
+    const chess = new Chess();
+    const cleanPgn = game.pgn.replace(/\{[^}]*\}/g, '').replace(/\$\d+/g, '').trim();
+    chess.loadPgn(cleanPgn);
+
+    const fullHistory = chess.history({ verbose: true });
+    const targetPly = puzzle.initialPly;
+
+    const positionChess = new Chess();
+    for (let i = 0; i < targetPly && i < fullHistory.length; i++) {
+      positionChess.move(fullHistory[i].san);
+    }
+
+    const initialFen = positionChess.fen();
+    const playerToMove = positionChess.turn() === 'w' ? 'white' : 'black';
+    const numberOfMoves = Math.ceil(puzzle.solution.length / 2);
+    const rating = puzzle.rating;
+
+    const oppMove = fullHistory[targetPly];
+    const opponentMoveUci = oppMove ? `${oppMove.from}${oppMove.to}${oppMove.promotion || ''}` : undefined;
+    const opponentMoveSan = oppMove ? oppMove.san : undefined;
+
+    return {
+      id: puzzle.id,
+      source: 'lichess',
+      initialFen,
+      solution: puzzle.solution,
+      playerToMove,
+      rating,
+      difficulty: getDifficultyLabel(rating),
+      themes: puzzle.themes.filter((t) => t !== 'master' && t !== 'masterVsMaster'),
+      numberOfMoves,
+      opponentMoveUci,
+      opponentMoveSan,
+      externalUrl: `https://lichess.org/training/${puzzle.id}`,
+    };
+  } catch (err) {
+    console.error(`Failed to fetch Lichess puzzle ${id}:`, err);
+    return null;
+  }
+}
+
 export { fetchLichessDailyPuzzle };
