@@ -222,3 +222,29 @@ a {
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* ─── Media & Download Protection ───────────────────────────────────────────── */
+img, iframe, canvas, video, .protect-media {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-drag: none !important;
+}
+
+@media print {
+  img, iframe, video, .protect-media {
+    display: none !important;
+    visibility: hidden !important;
+  }
+  body::after {
+    content: "Content protected by ChessHub Academy. Unauthorized printing is restricted.";
+    font-size: 20px;
+    font-weight: bold;
+    color: #ef4444;
+    text-align: center;
+    display: block;
+    padding: 50px;
+  }
+}
