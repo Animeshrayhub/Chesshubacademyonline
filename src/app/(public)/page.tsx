@@ -7,7 +7,7 @@ import ProgramsSection from '@/features/home/ProgramsSection';
 import WhyChooseUsSection from '@/features/home/WhyChooseUsSection';
 import LearningJourneySection from '@/features/home/LearningJourneySection';
 import CoachesSection from '@/features/home/CoachesSection';
-import StudentSuccessSection from '@/features/home/StudentSuccessSection';
+import AcademyGallerySection from '@/features/home/AcademyGallerySection';
 import TestimonialsSection from '@/features/home/TestimonialsSection';
 import FAQSection from '@/features/home/FAQSection';
 import BookDemoCTASection from '@/features/home/BookDemoCTASection';
@@ -77,7 +77,7 @@ export default function HomePage() {
       <WhyChooseUsSection />
       <LearningJourneySection />
       <CoachesSection />
-      <StudentSuccessSection />
+      <AcademyGallerySection />
       <TestimonialsSection />
       <FAQSection />
       <BookDemoCTASection />
