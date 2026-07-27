@@ -119,16 +119,13 @@ export default function TestimonialsSection() {
           </button>
         </div>
 
-        {/* Testimonials grid (NO PHOTOS - Clean Initials Badge) */}
+        {/* Testimonials grid (Clean Text - No Photos or Circle Badges) */}
         <div className="columns-1 md:columns-2 lg:columns-3 gap-6 space-y-6">
-          {reviewsList.map((testimonial) => {
-            const initial = testimonial.name ? testimonial.name.charAt(0).toUpperCase() : 'C';
-
-            return (
-              <article
-                key={testimonial.id}
-                className="card-premium p-7 break-inside-avoid shadow-card hover:shadow-card-hover transition-all duration-200"
-              >
+          {reviewsList.map((testimonial) => (
+            <article
+              key={testimonial.id}
+              className="card-premium p-7 break-inside-avoid shadow-card hover:shadow-card-hover transition-all duration-200"
+            >
                 {/* Stars */}
                 <StarRating rating={testimonial.rating} />
 
@@ -149,24 +146,18 @@ export default function TestimonialsSection() {
                   </div>
                 )}
 
-                {/* Author Badge (Initials Icon - No Photos) */}
-                <footer className="flex items-center gap-3 pt-4 border-t border-border">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500/20 to-indigo-600/20 border border-amber-500/30 text-amber-600 flex items-center justify-center font-bold text-sm shadow-inner shrink-0">
-                    {initial}
+                {/* Author Info (Clean Text - No Photos/Circles) */}
+                <footer className="pt-4 border-t border-border">
+                  <div className="font-semibold text-text-primary text-sm">
+                    {testimonial.name}
                   </div>
-                  <div>
-                    <div className="font-semibold text-text-primary text-sm">
-                      {testimonial.name}
-                    </div>
-                    <div className="text-text-secondary text-xs">
-                      {testimonial.role}
-                      {testimonial.location && ` · ${testimonial.location}`}
-                    </div>
+                  <div className="text-text-secondary text-xs mt-0.5 font-medium">
+                    {testimonial.role}
+                    {testimonial.location && ` · ${testimonial.location}`}
                   </div>
                 </footer>
               </article>
-            );
-          })}
+          ))}
         </div>
 
         {/* 📝 Submit Review Modal */}
