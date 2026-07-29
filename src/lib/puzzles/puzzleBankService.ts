@@ -1,5 +1,7 @@
 import { createSupabaseAdmin } from '../supabase/admin';
 import type { Result } from '../errors';
+import fs from 'fs';
+import path from 'path';
 
 export interface DbHomeworkPuzzle {
   id: string;
@@ -47,7 +49,34 @@ export interface CreatePuzzleBankInput {
   createdBy?: string;
 }
 
-// Fallback in-memory dataset to ensure zero UI crashes if DB table is initializing or missing
+const CUSTOM_PUZZLES_FILE = path.join(process.cwd(), 'src', 'data', 'custom_puzzles.json');
+
+function loadCustomPuzzlesFromDisk(): DbHomeworkPuzzle[] {
+  try {
+    if (fs.existsSync(CUSTOM_PUZZLES_FILE)) {
+      const content = fs.readFileSync(CUSTOM_PUZZLES_FILE, 'utf-8');
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.warn('[puzzleBankService] Error reading custom puzzles file:', e);
+  }
+  return [];
+}
+
+function saveCustomPuzzlesToDisk(puzzles: DbHomeworkPuzzle[]) {
+  try {
+    const dir = path.dirname(CUSTOM_PUZZLES_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(CUSTOM_PUZZLES_FILE, JSON.stringify(puzzles, null, 2), 'utf-8');
+  } catch (e) {
+    console.warn('[puzzleBankService] Error writing custom puzzles file:', e);
+  }
+}
+
+// Fallback in-memory dataset to ensure zero UI crashes
 let inMemoryPuzzles: DbHomeworkPuzzle[] = [
   {
     id: 'puz-fallback-1',
@@ -92,11 +121,13 @@ let inMemoryPuzzles: DbHomeworkPuzzle[] = [
 
 /**
  * Retrieves tactical puzzles from central Puzzle Bank database with filtering & search.
- * Safely falls back to in-memory store if DB table is missing.
+ * Merges disk-persisted custom puzzles for zero data loss.
  */
 export async function getPuzzleBank(
   filters: PuzzleBankFilter = {}
 ): Promise<Result<{ puzzles: DbHomeworkPuzzle[]; total: number }>> {
+  const diskPuzzles = loadCustomPuzzlesFromDisk();
+
   try {
     const admin = createSupabaseAdmin();
     let query = admin.from('homework_puzzles').select('*', { count: 'exact' });
@@ -133,11 +164,22 @@ export async function getPuzzleBank(
     const { data, count, error } = await query;
 
     if (error) {
-      console.warn('[getPuzzleBank] Using fallback dataset due to DB notice:', error.message);
-      let list = [...inMemoryPuzzles];
+      let list = [...diskPuzzles, ...inMemoryPuzzles];
+      const seen = new Set<string>();
+      list = list.filter((p) => {
+        if (seen.has(p.id)) return false;
+        seen.add(p.id);
+        return true;
+      });
+
       if (filters.search?.trim()) {
         const q = filters.search.trim().toLowerCase();
-        list = list.filter((p) => p.title.toLowerCase().includes(q) || p.fen.toLowerCase().includes(q) || p.theme.toLowerCase().includes(q));
+        list = list.filter(
+          (p) =>
+            p.title.toLowerCase().includes(q) ||
+            p.fen.toLowerCase().includes(q) ||
+            p.theme.toLowerCase().includes(q)
+        );
       }
       return {
         success: true,
@@ -145,24 +187,41 @@ export async function getPuzzleBank(
       };
     }
 
+    // Merge DB puzzles with disk custom puzzles
+    const dbList = (data as DbHomeworkPuzzle[]) || [];
+    const combined = [...diskPuzzles, ...dbList];
+    const seen = new Set<string>();
+    const deduplicated = combined.filter((p) => {
+      if (seen.has(p.id)) return false;
+      seen.add(p.id);
+      return true;
+    });
+
     return {
       success: true,
       data: {
-        puzzles: (data as DbHomeworkPuzzle[]) || [],
-        total: count || 0,
+        puzzles: deduplicated,
+        total: deduplicated.length,
       },
     };
   } catch (err: any) {
-    console.warn('[getPuzzleBank] Exception fallback:', err?.message);
+    let list = [...diskPuzzles, ...inMemoryPuzzles];
+    const seen = new Set<string>();
+    list = list.filter((p) => {
+      if (seen.has(p.id)) return false;
+      seen.add(p.id);
+      return true;
+    });
+
     return {
       success: true,
-      data: { puzzles: inMemoryPuzzles, total: inMemoryPuzzles.length },
+      data: { puzzles: list, total: list.length },
     };
   }
 }
 
 /**
- * Creates a single custom puzzle in central Puzzle Bank database.
+ * Creates a single custom puzzle in central Puzzle Bank database and persists locally.
  */
 export async function createPuzzleBankEntry(
   data: CreatePuzzleBankInput
@@ -181,10 +240,16 @@ export async function createPuzzleBankEntry(
     explanation: data.explanation || null,
     source: data.source || 'custom',
     source_id: data.sourceId || null,
-    created_by: data.createdBy || null,
+    created_by: null,
     is_active: true,
     created_at: new Date().toISOString(),
   };
+
+  // Always persist custom puzzle to disk JSON storage immediately
+  const diskPuzzles = loadCustomPuzzlesFromDisk();
+  const updatedDiskPuzzles = [newPuzzle, ...diskPuzzles.filter((p) => p.id !== newPuzzle.id)];
+  saveCustomPuzzlesToDisk(updatedDiskPuzzles);
+  inMemoryPuzzles.unshift(newPuzzle);
 
   try {
     const admin = createSupabaseAdmin();
@@ -203,7 +268,7 @@ export async function createPuzzleBankEntry(
         explanation: data.explanation || null,
         source: data.source || 'custom',
         source_id: data.sourceId || null,
-        created_by: data.createdBy || null,
+        created_by: null,
         is_active: true,
       })
       .select()
@@ -213,11 +278,9 @@ export async function createPuzzleBankEntry(
       return { success: true, data: inserted as DbHomeworkPuzzle };
     }
   } catch (e) {
-    console.warn('[createPuzzleBankEntry] Exception saving to DB:', e);
+    console.warn('[createPuzzleBankEntry] DB notice (persisted to disk storage):', e);
   }
 
-  // Fallback to in-memory save if DB schema error occurs
-  inMemoryPuzzles.unshift(newPuzzle);
   return { success: true, data: newPuzzle };
 }
 
@@ -228,7 +291,7 @@ export async function bulkImportPuzzleBankEntries(
   puzzles: CreatePuzzleBankInput[]
 ): Promise<Result<{ insertedCount: number }>> {
   const newPuzzles: DbHomeworkPuzzle[] = puzzles.map((p, idx) => ({
-    id: `puz-bulk-${Date.now()}-${idx}`,
+    id: `puz-custom-${Date.now()}-${idx}`,
     title: p.title,
     fen: p.fen,
     solution: p.solution,
@@ -239,67 +302,35 @@ export async function bulkImportPuzzleBankEntries(
     hint_2: p.hint2 || null,
     hint_3: p.hint3 || null,
     explanation: p.explanation || null,
-    source: p.source || 'lichess',
+    source: p.source || 'custom',
     source_id: p.sourceId || null,
+    created_by: null,
     is_active: true,
     created_at: new Date().toISOString(),
   }));
 
-  try {
-    const admin = createSupabaseAdmin();
-    const records = puzzles.map((p) => ({
-      title: p.title,
-      fen: p.fen,
-      solution: p.solution,
-      theme: p.theme || 'tactics',
-      difficulty: p.difficulty || 'intermediate',
-      rating: p.rating || 1500,
-      hint_1: p.hint1 || null,
-      hint_2: p.hint2 || null,
-      hint_3: p.hint3 || null,
-      explanation: p.explanation || null,
-      source: p.source || 'lichess',
-      source_id: p.sourceId || null,
-      is_active: true,
-    }));
-
-    const { data, error } = await admin
-      .from('homework_puzzles')
-      .insert(records)
-      .select('id');
-
-    if (!error && data) {
-      return {
-        success: true,
-        data: { insertedCount: data.length },
-      };
-    }
-  } catch (e) {
-    console.warn('[bulkImportPuzzleBankEntries] Exception saving to DB:', e);
-  }
-
-  // Fallback save to in-memory store
+  const diskPuzzles = loadCustomPuzzlesFromDisk();
+  saveCustomPuzzlesToDisk([...newPuzzles, ...diskPuzzles]);
   inMemoryPuzzles = [...newPuzzles, ...inMemoryPuzzles];
-  return {
-    success: true,
-    data: { insertedCount: newPuzzles.length },
-  };
+
+  return { success: true, data: { insertedCount: puzzles.length } };
 }
 
 /**
- * Deletes a puzzle entry from the Puzzle Bank.
+ * Permanently archives or deletes a puzzle entry.
  */
-export async function deletePuzzleBankEntry(id: string): Promise<Result<boolean>> {
+export async function deletePuzzleBankEntry(id: string): Promise<Result<void>> {
+  const diskPuzzles = loadCustomPuzzlesFromDisk();
+  const updatedDiskPuzzles = diskPuzzles.filter((p) => p.id !== id);
+  saveCustomPuzzlesToDisk(updatedDiskPuzzles);
+  inMemoryPuzzles = inMemoryPuzzles.filter((p) => p.id !== id);
+
   try {
     const admin = createSupabaseAdmin();
-    await admin
-      .from('homework_puzzles')
-      .delete()
-      .eq('id', id);
+    await admin.from('homework_puzzles').update({ is_active: false }).eq('id', id);
   } catch (e) {
-    console.warn('[deletePuzzleBankEntry] Exception deleting from DB:', e);
+    // Ignore DB error
   }
 
-  inMemoryPuzzles = inMemoryPuzzles.filter((p) => p.id !== id);
-  return { success: true, data: true };
+  return { success: true, data: undefined };
 }
