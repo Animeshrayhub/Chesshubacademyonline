@@ -2,6 +2,7 @@
 
 import React from 'react';
 import type { AiGameReviewResult } from '@/lib/gameReview/aiGameReviewService';
+import MiniChessBoard from '@/components/dashboard/ui/MiniChessBoard';
 
 interface AiGameReviewCardProps {
   review: AiGameReviewResult;
@@ -53,7 +54,7 @@ export default function AiGameReviewCard({ review }: AiGameReviewCardProps) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Best Move */}
         {review.bestMove && (
-          <div className="bg-slate-900 border border-emerald-500/30 rounded-3xl p-6 space-y-3 relative overflow-hidden">
+          <div className="bg-slate-900 border border-emerald-500/30 rounded-3xl p-6 space-y-4 relative overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <span className="font-heading font-bold text-xs text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
                 <span>🌟 Best Move Highlight</span>
@@ -63,8 +64,9 @@ export default function AiGameReviewCard({ review }: AiGameReviewCardProps) {
               </span>
             </div>
 
-            <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800/80 font-mono text-[11px] text-amber-200/90 truncate">
-              FEN: {review.bestMove.fen}
+            {/* Visual Chess Board for Best Move */}
+            <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl flex flex-col items-center justify-center">
+              <MiniChessBoard initialFen={review.bestMove.fen} />
             </div>
 
             <p className="text-xs text-slate-300 leading-relaxed">
@@ -75,7 +77,7 @@ export default function AiGameReviewCard({ review }: AiGameReviewCardProps) {
 
         {/* Key Blunder */}
         {review.keyBlunder && (
-          <div className="bg-slate-900 border border-red-500/30 rounded-3xl p-6 space-y-3 relative overflow-hidden">
+          <div className="bg-slate-900 border border-red-500/30 rounded-3xl p-6 space-y-4 relative overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <span className="font-heading font-bold text-xs text-red-400 uppercase tracking-wider flex items-center gap-1.5">
                 <span>⚠️ Critical Blunder / Opportunity</span>
@@ -83,6 +85,11 @@ export default function AiGameReviewCard({ review }: AiGameReviewCardProps) {
               <span className="px-2.5 py-0.5 rounded-full bg-red-500/10 border border-red-500/30 text-red-300 font-mono text-xs font-bold">
                 Move {review.keyBlunder.moveNumber}: {review.keyBlunder.san}
               </span>
+            </div>
+
+            {/* Visual Chess Board for Blunder / Position */}
+            <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl flex flex-col items-center justify-center">
+              <MiniChessBoard initialFen={review.keyBlunder.fen || review.bestMove?.fen} />
             </div>
 
             <p className="text-xs text-slate-300 leading-relaxed">
