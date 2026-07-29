@@ -29,6 +29,7 @@ export interface DbClass {
   zoom_join_url: string | null;
   video_provider?: VideoProvider;
   session_notes: string | null;
+  recording_url?: string | null;
   created_at: string;
   updated_at: string;
   archived_at: string | null;
@@ -41,6 +42,7 @@ export interface ClassSummary {
   scheduled_start: string;
   duration_minutes: number;
   session_notes: string | null;
+  recording_url?: string | null;
   coach_id: string;
 }
 
@@ -59,6 +61,7 @@ export interface CreateClassInput {
   customUrl?: string;
   zoomJoinUrl?: string;
   zoomStartUrl?: string;
+  recordingUrl?: string;
   studentUserIds?: string[]; // multiple students mapping
 }
 
@@ -71,6 +74,7 @@ export interface UpdateClassInput {
   customUrl?: string;
   zoomJoinUrl?: string;
   zoomStartUrl?: string;
+  recordingUrl?: string;
   coachUserId?: string;
   studentUserIds?: string[]; // update list
 }
@@ -232,6 +236,7 @@ export async function createClass(data: CreateClassInput): Promise<Result<DbClas
         zoom_meeting_id: videoData.meetingId,
         zoom_join_url: finalJoinUrl,
         zoom_start_url: finalStartUrl,
+        recording_url: data.recordingUrl || null,
       })
       .select()
       .single();
@@ -311,6 +316,7 @@ export async function updateClass(id: string, data: UpdateClassInput): Promise<R
 
     if (data.zoomJoinUrl !== undefined) updates.zoom_join_url = data.zoomJoinUrl;
     if (data.zoomStartUrl !== undefined) updates.zoom_start_url = data.zoomStartUrl;
+    if (data.recordingUrl !== undefined) updates.recording_url = data.recordingUrl;
 
     if (data.coachUserId !== undefined) {
       const { data: coachProfile } = await admin

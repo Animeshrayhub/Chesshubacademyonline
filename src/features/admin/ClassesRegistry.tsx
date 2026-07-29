@@ -13,6 +13,7 @@ import type { AdminClassRow, CreateClassInput, ClassStatus, ClassType, VideoProv
 import { createClassAction, updateClassAction, deleteClassAction } from '@/actions/classes';
 import { createZoomMeetingAction, syncClassRecordingToDriveAction } from '@/actions/zoom';
 import Modal from '@/components/ui/Modal';
+import AdminRecordingPlayerModal from '@/features/admin/AdminRecordingPlayerModal';
 
 interface ClassesRegistryProps {
   classes: AdminClassRow[];
@@ -46,6 +47,10 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
   const [editClass, setEditClass] = useState<AdminClassRow | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<AdminClassRow | null>(null);
 
+  // Video recording player modal state
+  const [isPlayerOpen, setIsPlayerOpen] = useState(false);
+  const [selectedRecordingClass, setSelectedRecordingClass] = useState<AdminClassRow | null>(null);
+
   // Form state
   const [formData, setFormData] = useState({
     coachUserId: '',
@@ -56,6 +61,7 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
     videoProvider: 'JITSI' as VideoProvider,
     zoomJoinUrl: '',
     zoomStartUrl: '',
+    recordingUrl: '',
     studentUserIds: [] as string[],
   });
   const [formError, setFormError] = useState('');
@@ -84,6 +90,7 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
       videoProvider: 'JITSI',
       zoomJoinUrl: '',
       zoomStartUrl: '',
+      recordingUrl: '',
       studentUserIds: [],
     });
     setFormError('');
@@ -96,7 +103,6 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
   };
 
   const openEdit = (cls: AdminClassRow) => {
-    // Find the coach user id from the class coach info by profile ID or first/last name
     const coachUser = coaches.find(
       (c) =>
         (cls.coach?.id && c.profile?.id === cls.coach.id) ||
@@ -118,6 +124,7 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
       videoProvider: detectedProvider,
       zoomJoinUrl: joinUrl,
       zoomStartUrl: cls.zoom_start_url ?? '',
+      recordingUrl: cls.recording_url ?? '',
       studentUserIds: cls.students ? cls.students.map((s) => s.id) : [],
     });
     setFormError('');
@@ -138,7 +145,6 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
       return;
     }
 
-    // Validate student counts based on class type
     const studentCount = formData.studentUserIds.length;
     if (formData.classType === 'PRIVATE' && studentCount > 1) {
       setFormError('PRIVATE classes can have at most 1 student.');
@@ -162,6 +168,7 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
       videoProvider: formData.videoProvider,
       zoomJoinUrl: formData.zoomJoinUrl || undefined,
       zoomStartUrl: formData.zoomStartUrl || undefined,
+      recordingUrl: formData.recordingUrl || undefined,
       studentUserIds: formData.studentUserIds,
     };
 
@@ -201,6 +208,7 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
     { key: 'type', label: 'Type' },
     { key: 'platform', label: 'Video Provider' },
     { key: 'status', label: 'Status' },
+    { key: 'recording', label: 'Recording Video' },
     { key: 'actions', label: 'Actions', width: 'w-10' },
   ];
 
@@ -218,7 +226,15 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
         },
       },
       {
-        label: 'Edit Class',
+        label: cls.recording_url ? '🎥 View / Play Recording' : '🎥 Play / Attach Recording',
+        iconKey: 'video',
+        onClick: () => {
+          setSelectedRecordingClass(cls);
+          setIsPlayerOpen(true);
+        },
+      },
+      {
+        label: 'Edit Class & Recording',
         iconKey: 'pencil',
         onClick: () => openEdit(cls),
       },
@@ -254,7 +270,7 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
       });
     }
 
-    if (cls.status === 'LIVE' || cls.status === 'COMPLETED') {
+    if (cls.status === 'LIVE' || cls.status === 'COMPLETED' || cls.status === 'RECORDING_AVAILABLE') {
       actions.push({
         label: 'Sync Recording to Drive',
         iconKey: 'refresh',
@@ -298,45 +314,60 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
       </span>
     ) : joinUrl ? (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-        🔵 Zoom API
+        🔵 Custom / Zoom
       </span>
     ) : (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-        🟢 Jitsi (Default)
+        ⚪ Pending
       </span>
     );
 
+    const recordingBadge = cls.recording_url ? (
+      <button
+        type="button"
+        onClick={() => {
+          setSelectedRecordingClass(cls);
+          setIsPlayerOpen(true);
+        }}
+        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-purple-100 text-purple-800 border border-purple-300 hover:bg-purple-200 transition cursor-pointer"
+      >
+        ▶️ Play Recording
+      </button>
+    ) : cls.status === 'RECORDING_AVAILABLE' || cls.status === 'COMPLETED' ? (
+      <button
+        type="button"
+        onClick={() => openEdit(cls)}
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 transition cursor-pointer"
+      >
+        + Attach Link
+      </button>
+    ) : (
+      <span className="text-slate-400 text-xs">—</span>
+    );
+
     return {
-      coach: cls.coach ? (
-        <span className="font-semibold text-text-primary">
-          {cls.coach.first_name} {cls.coach.last_name}
+      coach: (
+        <span className="font-semibold text-text-primary text-xs">
+          {cls.coach ? `${cls.coach.first_name} ${cls.coach.last_name}` : '—'}
         </span>
-      ) : (
-        <span className="text-xs text-text-secondary italic">Unassigned</span>
       ),
       students: (
-        <div className="flex flex-wrap gap-1 max-w-xs">
+        <div className="space-y-0.5 max-w-[160px]">
           {cls.students && cls.students.length > 0 ? (
             cls.students.map((s) => (
-              <span key={s.id} className="inline-flex items-center px-1.5 py-0.5 rounded-lg bg-surface-light border border-border text-[10px] font-semibold text-text-secondary">
-                {s.first_name} {s.last_name[0]}.
+              <span key={s.id} className="block text-xs text-text-primary font-medium truncate">
+                {s.first_name} {s.last_name}
               </span>
             ))
           ) : (
-            <span className="text-[10px] text-text-secondary italic">None</span>
+            <span className="text-text-secondary text-xs italic">No students assigned</span>
           )}
         </div>
       ),
-      start: <span className="text-xs text-text-secondary">{dateStr}</span>,
-      duration: <span className="text-xs text-text-secondary">{cls.duration_minutes} min</span>,
+      start: <span className="text-text-secondary text-xs">{dateStr}</span>,
+      duration: <span className="text-text-secondary text-xs font-mono">{cls.duration_minutes} min</span>,
       type: (
-        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${
-          cls.class_type === 'PRIVATE' 
-            ? 'bg-amber-50 text-amber-700 border-amber-100' 
-            : cls.class_type === 'BUDDY'
-            ? 'bg-teal-50 text-teal-700 border-teal-100'
-            : 'bg-blue-50 text-blue-700 border-blue-100'
-        }`}>
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-surface text-text-primary border border-border">
           {cls.class_type}
         </span>
       ),
@@ -346,6 +377,7 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
           {STATUS_LABELS[cls.status]}
         </span>
       ),
+      recording: recordingBadge,
       actions: <TableActions actions={actions} />,
     };
   });
@@ -361,42 +393,43 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
           <button
             type="button"
             onClick={openCreate}
-            className="px-4 py-2.5 bg-accent hover:bg-accent-hover text-surface-dark font-bold rounded-xl text-sm transition-all shadow-gold"
+            className="px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-xl text-xs font-bold transition-colors shadow-sm flex items-center gap-1.5"
           >
-            Create New Class
+            <span>+ Create New Class</span>
           </button>
         }
       />
 
-      <FilterBar
-        searchQuery={search}
-        onSearchChange={setSearch}
-        searchPlaceholder="Search by coach name..."
-        filters={[
-          {
-            key: 'status',
-            label: 'Status',
-            value: statusFilter,
-            onChange: setStatusFilter,
-            options: [
-              { value: 'ALL', label: 'All Statuses' },
-              { value: 'SCHEDULED', label: 'Scheduled' },
-              { value: 'LIVE', label: 'Live' },
-              { value: 'COMPLETED', label: 'Completed' },
-              { value: 'RECORDING_AVAILABLE', label: 'Recording Available' },
-              { value: 'CANCELLED', label: 'Cancelled' },
-            ],
-          },
-        ]}
-      />
+      <div className="space-y-4">
+        <FilterBar
+          searchPlaceholder="Search by coach name..."
+          searchQuery={search}
+          onSearchChange={(v) => { setSearch(v); setPage(1); }}
+          filters={[
+            {
+              key: 'status',
+              label: 'Status',
+              options: [
+                { value: 'ALL', label: 'All Statuses' },
+                { value: 'SCHEDULED', label: 'Scheduled' },
+                { value: 'LIVE', label: 'Live' },
+                { value: 'COMPLETED', label: 'Completed' },
+                { value: 'RECORDING_AVAILABLE', label: 'Recording' },
+                { value: 'CANCELLED', label: 'Cancelled' },
+              ],
+              value: statusFilter,
+              onChange: (v) => { setStatusFilter(v); setPage(1); },
+            },
+          ]}
+        />
 
-      <div className="bg-white rounded-2xl border border-border overflow-hidden">
         <DashboardTable
           columns={columns}
           rows={rows}
-          emptyTitle="No Classes Scheduled"
-          emptyDescription="Schedule class sessions and map them to FIDE coaches to enable classroom links."
+          emptyTitle="No Classes Found"
+          emptyDescription="There are no classes matching your current search or status filter."
         />
+
         <Pagination
           currentPage={page}
           totalPages={totalPages}
@@ -408,7 +441,7 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
       <Modal
         isOpen={isOpen}
         onClose={() => { setIsCreateOpen(false); setEditClass(null); }}
-        title={editClass ? 'Edit Class' : 'Create New Class'}
+        title={editClass ? 'Edit Class & Recording' : 'Create New Class'}
         maxWidthClass="max-w-lg"
       >
         {formSuccess ? (
@@ -585,25 +618,22 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
                   value={formData.zoomJoinUrl}
                   onChange={(e) => setFormData((p) => ({ ...p, zoomJoinUrl: e.target.value }))}
                 />
-                <p className="text-[10px] text-text-secondary mt-1">
-                  💡 {formData.videoProvider === 'JITSI' ? 'Embedded directly in classroom. 100% Free & Unlimited!' : formData.videoProvider === 'ZOOM' ? 'Zoom SDK embed with instant Jitsi fallback if Zoom API is unconfigured.' : 'Google Meet / Custom link launched for students & coaches.'}
-                </p>
               </div>
 
-              {formData.videoProvider === 'ZOOM' && (
-                <div>
-                  <Input
-                    id="zoom-start-url"
-                    label="Host Start Link (Admin/Coach Start Link - optional)"
-                    placeholder="https://zoom.us/s/123456789?zak=... (Optional)"
-                    value={formData.zoomStartUrl}
-                    onChange={(e) => setFormData((p) => ({ ...p, zoomStartUrl: e.target.value }))}
-                  />
-                </div>
-              )}
+              {/* Class Video Recording URL Input */}
+              <div className="pt-2 border-t border-border/60">
+                <Input
+                  id="recording-url"
+                  label="🎥 Class Video Recording URL (Google Drive, Zoom Cloud, MP4, YouTube)"
+                  placeholder="https://drive.google.com/file/d/... or https://..."
+                  value={formData.recordingUrl}
+                  onChange={(e) => setFormData((p) => ({ ...p, recordingUrl: e.target.value }))}
+                />
+                <p className="text-[10px] text-text-secondary mt-1">
+                  💡 Published to student and coach recording archives for playback.
+                </p>
+              </div>
             </div>
-
-
 
             {formError && (
               <p className="text-xs text-red-600 font-medium">{formError}</p>
@@ -627,6 +657,14 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
           </form>
         )}
       </Modal>
+
+      {/* Admin Video Recording Player Modal */}
+      <AdminRecordingPlayerModal
+        isOpen={isPlayerOpen}
+        onClose={() => { setIsPlayerOpen(false); setSelectedRecordingClass(null); }}
+        classData={selectedRecordingClass}
+        onEditRecordingLink={(cls) => openEdit(cls)}
+      />
 
       {/* Delete Confirmation */}
       <ConfirmationModal

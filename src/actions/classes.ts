@@ -25,6 +25,7 @@ export async function createClassAction(data: classesService.CreateClassInput) {
   const result = await classesService.createClass(data);
   if (result.success) {
     revalidatePath('/dashboard/admin/classes');
+    revalidatePath('/dashboard/admin/recordings');
     revalidatePath('/dashboard/admin');
   }
   return serializeResult(result);
@@ -34,6 +35,9 @@ export async function updateClassAction(id: string, data: classesService.UpdateC
   const result = await classesService.updateClass(id, data);
   if (result.success) {
     revalidatePath('/dashboard/admin/classes');
+    revalidatePath('/dashboard/admin/recordings');
+    revalidatePath('/dashboard/student/recordings');
+    revalidatePath('/dashboard/coach/recordings');
   }
   return serializeResult(result);
 }

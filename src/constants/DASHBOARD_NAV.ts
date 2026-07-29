@@ -45,6 +45,7 @@ export const ADMIN_NAV: NavItem[] = [
   { label: 'Coaches',       href: '/dashboard/admin/coaches',       iconKey: 'graduationCap',   roles: ['admin'] },
   { label: 'Bookings',      href: '/dashboard/admin/bookings',      iconKey: 'calendarDays',    roles: ['admin'] },
   { label: 'Classes',       href: '/dashboard/admin/classes',       iconKey: 'video',           roles: ['admin'] },
+  { label: 'Class Recordings', href: '/dashboard/admin/recordings', iconKey: 'video',          roles: ['admin'] },
   { label: 'Homework',      href: '/dashboard/admin/homework',      iconKey: 'bookOpen',        roles: ['admin'], children: ADMIN_HOMEWORK_CHILDREN },
   { label: 'Teaching Curriculum', href: '/dashboard/admin/curriculum', iconKey: 'bookOpen',     roles: ['admin'] },
   { label: 'Blog',          href: '/dashboard/admin/blog',          iconKey: 'fileText',        roles: ['admin'], children: BLOG_CHILDREN },
