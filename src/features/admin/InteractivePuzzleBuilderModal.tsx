@@ -23,50 +23,12 @@ interface InteractivePuzzleBuilderModalProps {
   onSuccess: () => void;
 }
 
+import { sanitizeFen, parsePgnWithVariations } from '@/utils/chessSanitizer';
+
 const DEFAULT_START_FEN = 'r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5Q2/PPPP1PPP/RNB1K2R w KQkq - 4 4';
 
-/**
- * Robust FEN sanitizer that auto-corrects malformed rank counts, trailing spaces,
- * PGN wrappers, and missing half-move fields without crashing.
- */
 export function sanitizeFenString(raw: string): string {
-  if (!raw) return DEFAULT_START_FEN;
-  let cleaned = raw.trim();
-
-  // Strip PGN tag wrapper if user pasted [FEN "8/8/..."]
-  if (cleaned.includes('[FEN') || cleaned.includes('"')) {
-    const match = cleaned.match(/"([^"]+)"/);
-    if (match && match[1]) {
-      cleaned = match[1].trim();
-    } else {
-      cleaned = cleaned.replace(/\[FEN\s+/i, '').replace(/\]/g, '').replace(/"/g, '').trim();
-    }
-  }
-
-  const parts = cleaned.split(/\s+/);
-  let placement = parts[0] || '';
-
-  // Fix malformed placement rank count (must have 7 slashes / 8 ranks)
-  if (placement.includes('/')) {
-    const ranks = placement.split('/');
-    while (ranks.length < 8) {
-      ranks.push('8'); // Fill missing empty ranks
-    }
-    if (ranks.length > 8) {
-      ranks.length = 8;
-    }
-    placement = ranks.join('/');
-  } else {
-    placement = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
-  }
-
-  const turn = parts[1] === 'b' ? 'b' : 'w';
-  const castling = parts[2] || '-';
-  const enPassant = parts[3] || '-';
-  const halfMove = parts[4] || '0';
-  const fullMove = parts[5] || '1';
-
-  return `${placement} ${turn} ${castling} ${enPassant} ${halfMove} ${fullMove}`;
+  return sanitizeFen(raw);
 }
 
 export default function InteractivePuzzleBuilderModal({
@@ -96,6 +58,23 @@ export default function InteractivePuzzleBuilderModal({
   // Initialize and update position safely
   const updateBoardFromFen = useCallback((inputFen: string) => {
     try {
+      // Check if input is a full PGN text containing headers or variation moves
+      if (inputFen.includes('[Event') || inputFen.includes('[FEN') || inputFen.includes('1.')) {
+        const parsed = parsePgnWithVariations(inputFen);
+        if (parsed.success) {
+          const c = new Chess(parsed.fen);
+          gameRef.current = c;
+          setCurrentFen(c.fen());
+          setOrientation(c.turn() === 'w' ? 'white' : 'black');
+          if (parsed.mainMoves.length > 0) {
+            setSolutionMoves(parsed.mainMoves);
+          }
+          setBoardKey((prev) => prev + 1);
+          setErrorMsg('');
+          return;
+        }
+      }
+
       const sanitized = sanitizeFenString(inputFen);
       const c = new Chess(sanitized);
       gameRef.current = c;
@@ -106,7 +85,7 @@ export default function InteractivePuzzleBuilderModal({
     } catch (err) {
       // Fallback cleanly without crashing modal
       try {
-        const fallbackFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+        const fallbackFen = 'k7/8/8/8/8/8/8/K7 w - - 0 1';
         gameRef.current = new Chess(fallbackFen);
         setCurrentFen(fallbackFen);
         setBoardKey((prev) => prev + 1);
