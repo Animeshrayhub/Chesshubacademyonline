@@ -209,10 +209,11 @@ export async function createClass(data: CreateClassInput): Promise<Result<DbClas
       data.zoomJoinUrl || data.customUrl
     );
 
+    const defaultServer = process.env.NEXT_PUBLIC_JITSI_SERVER || 'https://meet.ffmuc.net';
     const videoData = videoRes.data || {
-      meetingId: `jitsi_${Date.now()}`,
-      joinUrl: `https://meet.jit.si/ChessHub-Class-${Date.now()}`,
-      startUrl: `https://meet.jit.si/ChessHub-Class-${Date.now()}`,
+      meetingId: `jitsi_class`,
+      joinUrl: `${defaultServer}/ChessHub_Class_temp`,
+      startUrl: `${defaultServer}/ChessHub_Class_temp`,
       provider: 'JITSI' as VideoProvider,
     };
 
@@ -295,7 +296,8 @@ export async function updateClass(id: string, data: UpdateClassInput): Promise<R
     if (data.videoProvider) {
       const safeId = id.replace(/[^a-zA-Z0-9]/g, '');
       if (data.videoProvider === 'JITSI') {
-        const jitsiUrl = `https://meet.jit.si/ChessHub-${safeId}`;
+        const defaultServer = process.env.NEXT_PUBLIC_JITSI_SERVER || 'https://meet.ffmuc.net';
+        const jitsiUrl = `${defaultServer}/ChessHub_Class_${safeId}`;
         updates.zoom_join_url = jitsiUrl;
         updates.zoom_start_url = jitsiUrl;
         updates.zoom_meeting_id = `jitsi_${safeId}`;
@@ -692,5 +694,54 @@ export async function recordStudentClassJoin(classId: string, studentUserId: str
       success: false,
       error: new InternalServerError(error instanceof Error ? error.message : 'Unknown error'),
     };
+  }
+}
+
+/**
+ * Saves a live class video recording directly to database class_recordings table.
+ */
+export async function saveLiveClassRecording(
+  classId: string,
+  recordingUrl?: string,
+  durationSeconds: number = 3600
+): Promise<Result<any>> {
+  try {
+    const admin = createSupabaseAdmin();
+    const cleanClassId = classId.replace(/[^a-zA-Z0-9]/g, '');
+    const defaultServer = process.env.NEXT_PUBLIC_JITSI_SERVER || 'https://meet.ffmuc.net';
+    const finalUrl = recordingUrl || `${defaultServer}/ChessHub_Class_${cleanClassId}`;
+
+    const { data: rec, error: recErr } = await admin
+      .from('class_recordings')
+      .upsert(
+        {
+          class_id: classId,
+          recording_url: finalUrl,
+          recording_source: 'GOOGLE_DRIVE',
+          recorded_date: new Date().toISOString().split('T')[0],
+          duration_seconds: durationSeconds,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'class_id' }
+      )
+      .select()
+      .single();
+
+    if (recErr) {
+      console.error('[saveLiveClassRecording] DB error:', recErr.message);
+      return { success: false, error: new DatabaseError(recErr.message, recErr) };
+    }
+
+    await admin
+      .from('classes')
+      .update({
+        status: 'RECORDING_AVAILABLE',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', classId);
+
+    return { success: true, data: rec };
+  } catch (err: any) {
+    return { success: false, error: new InternalServerError(err.message || 'Unknown error') };
   }
 }

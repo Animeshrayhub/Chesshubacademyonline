@@ -21,7 +21,7 @@ export const TESTIMONIALS: Testimonial[] = [
     location: 'Mumbai, India',
     rating: 5,
     quote:
-      'I went from a 1100 FIDE rating to 1650 in just one year. GM Arjun\'s opening lessons completely changed how I think about chess. This is truly the best chess coaching I\'ve ever had.',
+      'I went from a 1100 FIDE rating to 1650 in just one year. Our GM coaches\' opening lessons completely changed how I think about chess. This is truly the best chess coaching I\'ve ever had.',
     imageUrl:
       'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=80&h=80&fit=crop&q=80',
     result: '+550 FIDE Rating Points',

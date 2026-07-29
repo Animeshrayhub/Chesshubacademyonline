@@ -1,4 +1,4 @@
-﻿import { createZoomMeeting } from '../zoom';
+import { createZoomMeeting } from '../zoom';
 import type { Result } from '../errors';
 
 export type VideoProvider = 'JITSI' | 'ZOOM' | 'GOOGLE_MEET' | 'CUSTOM';
@@ -57,10 +57,11 @@ export async function createClassMeeting(
     );
   }
 
-  // 3. Jitsi Meet (Default & Universal Fallback)
+  // 3. Jitsi Meet (Default & Universal Fallback - Zero Login & Deterministic Room)
   const safeId = (classId || `room_${Math.random().toString(36).substring(2, 10)}`).replace(/[^a-zA-Z0-9]/g, '');
-  const roomName = `ChessHub-${safeId}`;
-  const jitsiUrl = `https://meet.jit.si/${roomName}`;
+  const roomName = `ChessHub_Class_${safeId}`;
+  const jitsiServer = process.env.NEXT_PUBLIC_JITSI_SERVER || 'https://meet.ffmuc.net';
+  const jitsiUrl = `${jitsiServer}/${roomName}`;
 
   return {
     success: true,

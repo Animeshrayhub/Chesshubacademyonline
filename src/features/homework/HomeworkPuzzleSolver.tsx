@@ -12,7 +12,14 @@ import type {
 import { THEME_CONFIG, MAX_ATTEMPTS } from '@/types/homework-puzzles';
 
 const ChessboardComponent = dynamic(
-  () => import('react-chessboard').then((mod) => mod.Chessboard),
+  () =>
+    import('react-chessboard').then((mod) => {
+      const CB = mod.Chessboard;
+      return function BoardWrapper(props: any) {
+        const boardProps = props.options ? { ...props.options, ...props } : props;
+        return <CB {...boardProps} />;
+      };
+    }),
   { ssr: false }
 ) as any;
 

@@ -162,3 +162,27 @@ export async function submitClassEndReportAction(data: {
   }
 }
 
+export async function saveLiveClassRecordingAction(
+  classId: string,
+  recordingUrl?: string,
+  durationSeconds?: number
+) {
+  try {
+    const result = await classesService.saveLiveClassRecording(classId, recordingUrl, durationSeconds);
+    if (result && result.success) {
+      revalidatePath(`/classroom/${classId}`);
+      revalidatePath(`/classroom/${classId}/review`);
+      revalidatePath('/dashboard/admin/classes');
+      revalidatePath('/dashboard/admin/reports');
+      revalidatePath('/dashboard/coach/recordings');
+      revalidatePath('/dashboard/student/recordings');
+    }
+    return serializeResult(result);
+  } catch (err: any) {
+    return {
+      success: false,
+      error: { message: err?.message || 'Failed to save live class recording.' },
+    };
+  }
+}
+

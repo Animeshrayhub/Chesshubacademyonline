@@ -206,7 +206,7 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
 
   const rows = paginated.map((cls) => {
     const joinUrl = cls.zoom_join_url || '';
-    const isJitsi = joinUrl.includes('jit.si');
+    const isJitsi = joinUrl.includes('jit.si') || joinUrl.includes('ffmuc.net') || joinUrl.toLowerCase().includes('jitsi');
     const isMeet = joinUrl.includes('meet.google.com');
 
     const actions: TableActionItem[] = [

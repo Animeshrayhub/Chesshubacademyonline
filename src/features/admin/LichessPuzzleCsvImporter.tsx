@@ -1,8 +1,21 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { Chess } from 'chess.js';
 import type { PuzzleData } from '@/lib/puzzles/types';
+
+const ChessboardComponent = dynamic(
+  () =>
+    import('react-chessboard').then((mod) => {
+      const CB = mod.Chessboard;
+      return function BoardWrapper(props: any) {
+        const boardProps = props.options ? { ...props.options, ...props } : props;
+        return <CB {...boardProps} />;
+      };
+    }),
+  { ssr: false }
+) as any;
 
 interface LichessPuzzleCsvImporterProps {
   onImportComplete?: (puzzles: PuzzleData[]) => void;
@@ -22,6 +35,7 @@ export default function LichessPuzzleCsvImporter({ onImportComplete }: LichessPu
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [filterTheme, setFilterTheme] = useState('ALL');
+  const [activeBoardPreviewId, setActiveBoardPreviewId] = useState<string | null>(null);
 
   // Load existing stored custom puzzles from localStorage
   useEffect(() => {
@@ -399,37 +413,68 @@ export default function LichessPuzzleCsvImporter({ onImportComplete }: LichessPu
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[500px] overflow-y-auto pr-1">
-            {filteredList.map((puzzle) => (
-              <div
-                key={puzzle.id}
-                className="bg-slate-950 border border-slate-800/80 rounded-2xl p-4 space-y-2 relative hover:border-amber-500/40 transition-all"
-              >
-                <div className="flex justify-between items-center text-xs">
-                  <span className="font-bold text-white font-mono">ID: {puzzle.id}</span>
-                  <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/30">
-                    Rating: {puzzle.rating} ({puzzle.difficulty})
-                  </span>
-                </div>
-
-                <div className="text-[10px] font-mono text-slate-400 bg-slate-900 p-2 rounded-xl border border-slate-800 truncate">
-                  FEN: {puzzle.initialFen}
-                </div>
-
-                <div className="flex items-center justify-between text-xs pt-1">
-                  <span className="text-slate-400">Side: <b className="text-white capitalize">{puzzle.playerToMove}</b></span>
-                  <span className="text-slate-400">Moves: <b className="text-emerald-400 font-mono">{puzzle.solution.join(' ')}</b></span>
-                </div>
-
-                <div className="flex flex-wrap gap-1 pt-1">
-                  {puzzle.themes.map((t, idx) => (
-                    <span key={idx} className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 text-[9px] font-bold">
-                      #{t}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[600px] overflow-y-auto pr-1">
+            {filteredList.map((puzzle) => {
+              const isBoardVisible = activeBoardPreviewId === puzzle.id;
+              return (
+                <div
+                  key={puzzle.id}
+                  className="bg-slate-950 border border-slate-800/80 rounded-2xl p-4 space-y-2.5 relative hover:border-amber-500/40 transition-all"
+                >
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-bold text-white font-mono">ID: {puzzle.id}</span>
+                    <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/30">
+                      Rating: {puzzle.rating} ({puzzle.difficulty})
                     </span>
-                  ))}
+                  </div>
+
+                  {/* FEN Position Box */}
+                  <div className="text-[10px] font-mono text-amber-300 bg-slate-900 p-2.5 rounded-xl border border-slate-800 select-all overflow-x-auto break-all">
+                    <span className="text-[9px] text-slate-500 uppercase tracking-wider block font-sans font-bold mb-0.5">
+                      FEN Notation:
+                    </span>
+                    {puzzle.initialFen}
+                  </div>
+
+                  {/* Interactive Mini-Board Preview */}
+                  {isBoardVisible && (
+                    <div className="w-full aspect-square bg-slate-900 border-2 border-slate-800 rounded-xl overflow-hidden shadow-inner my-2">
+                      <ChessboardComponent
+                        options={{
+                          position: puzzle.initialFen,
+                          boardOrientation: puzzle.playerToMove === 'black' ? 'black' : 'white',
+                          arePiecesDraggable: false,
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between text-xs pt-1">
+                    <span className="text-slate-400">Side: <b className="text-white capitalize">{puzzle.playerToMove}</b></span>
+                    <button
+                      type="button"
+                      onClick={() => setActiveBoardPreviewId(isBoardVisible ? null : puzzle.id)}
+                      className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg text-[10px] font-bold transition-all"
+                    >
+                      {isBoardVisible ? '🙈 Hide Board' : '♟️ Preview Board'}
+                    </button>
+                  </div>
+
+                  <div className="text-xs pt-1 border-t border-slate-800/80">
+                    <span className="text-slate-400 text-[10px] block font-bold">Solution Moves:</span>
+                    <span className="text-emerald-400 font-mono font-bold text-xs">{puzzle.solution.join(' → ')}</span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    {puzzle.themes.map((t, idx) => (
+                      <span key={idx} className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 text-[9px] font-bold">
+                        #{t}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

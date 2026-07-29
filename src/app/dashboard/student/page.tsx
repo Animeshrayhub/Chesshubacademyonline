@@ -16,9 +16,12 @@ import DailyStreakWidget from '@/components/dashboard/ui/DailyStreakWidget';
 import StudentBattleArena from '@/components/dashboard/ui/StudentBattleArena';
 import AcademyAnnouncementBanner from '@/components/dashboard/ui/AcademyAnnouncementBanner';
 import LichessTournamentManager from '@/components/dashboard/ui/LichessTournamentManager';
-import AIOpeningAssistant from '@/components/dashboard/ui/AIOpeningAssistant';
 import { getLatestPublishedAnnouncement } from '@/lib/announcements';
 import { getAcademyTournaments } from '@/lib/tournaments';
+import StudentXpBadge from '@/components/dashboard/ui/StudentXpBadge';
+import AiBlunderRadarWidget from '@/features/student/AiBlunderRadarWidget';
+import DailyPuzzleChallengeWidget from '@/features/student/DailyPuzzleChallengeWidget';
+import StudentReferralWidget from '@/features/student/StudentReferralWidget';
 
 export const dynamic = 'force-dynamic';
 
@@ -211,12 +214,24 @@ export default async function StudentOverviewPage() {
         </div>
       )}
 
+      {/* 🏆 Student Level XP Progress Badge */}
+      <StudentXpBadge totalXp={750} streakDays={stats.puzzleStats?.streak || 5} />
+
+      {/* 🔥 Daily 3-Puzzle Challenge Streak */}
+      <DailyPuzzleChallengeWidget />
+
       {/* KPI Stats */}
       <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         {STATS_CARDS.map((stat, index) => (
           <StatCard key={index} data={stat} />
         ))}
       </dl>
+
+      {/* 🎯 AI Tactical Blunder Radar & 🎁 Refer-a-Friend */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <AiBlunderRadarWidget />
+        <StudentReferralWidget />
+      </div>
 
       {/* 🏆 Daily Streak Habit Tracker & ⚔️ 1v1 Speed Duel Arena Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -229,10 +244,6 @@ export default async function StudentOverviewPage() {
         initialTournaments={tournaments}
         userRole={user?.role === 'ADMIN' ? 'admin' : user?.role === 'COACH' ? 'coach' : 'student'}
       />
-
-      {/* 🤖 AI Opening Repertoire Assistant */}
-      <AIOpeningAssistant />
-
 
       {/* Shortcuts */}
       <div>

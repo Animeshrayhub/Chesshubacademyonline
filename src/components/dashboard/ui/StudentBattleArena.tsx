@@ -1,18 +1,25 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Chess } from 'chess.js';
 import dynamic from 'next/dynamic';
 
 const Chessboard = dynamic(
-  () => import('react-chessboard').then((mod) => mod.Chessboard),
+  () =>
+    import('react-chessboard').then((mod) => {
+      const CB = mod.Chessboard;
+      return function BoardWrapper(props: any) {
+        const boardProps = props.options ? { ...props.options, ...props } : props;
+        return <CB {...boardProps} />;
+      };
+    }),
   { ssr: false }
 ) as any;
 
 interface CompactPuzzle {
   id: string;
   fen: string;
-  moves: string; // e.g. "e8d7 a2e6 d7d8 f7f8"
+  moves: string; // e.g. "c8e6 c4e6"
   rating: number;
   themes: string[];
 }
@@ -21,17 +28,92 @@ interface StudentBattleArenaProps {
   studentName?: string;
 }
 
+// Built-in curated speed run tactical puzzles fallback
+const DEFAULT_SPEED_RUN_PUZZLES: CompactPuzzle[] = [
+  {
+    id: 'sp-1',
+    fen: 'r1b2r1k/pp3p1p/2n2p2/4p3/2B5/4P3/PP3PPP/R1B2RK1 b - - 0 14',
+    moves: 'c8e6 c4e6',
+    rating: 1100,
+    themes: ['pin', 'endgame'],
+  },
+  {
+    id: 'sp-2',
+    fen: '6k1/5ppp/8/8/8/8/1Q3PPP/6K1 w - - 0 1',
+    moves: 'g1h1 b2b8',
+    rating: 900,
+    themes: ['backRank', 'mateIn1'],
+  },
+  {
+    id: 'sp-3',
+    fen: 'r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4',
+    moves: 'd2d3 c6d4',
+    rating: 1000,
+    themes: ['fork', 'tactics'],
+  },
+  {
+    id: 'sp-4',
+    fen: 'r1b1k2r/ppppqppp/2n5/4P3/2B1n3/5N2/PPP2PPP/RNBQ1RK1 b kq - 2 7',
+    moves: 'e4c5 f3g5',
+    rating: 1200,
+    themes: ['attack', 'opening'],
+  },
+  {
+    id: 'sp-5',
+    fen: '2r3k1/5ppp/8/3Q4/8/8/5PPP/2R3K1 w - - 0 1',
+    moves: 'g1h1 c1c8',
+    rating: 950,
+    themes: ['backRank', 'mateIn1'],
+  },
+  {
+    id: 'sp-6',
+    fen: 'r1b2rk1/ppp2ppp/2n5/3qp3/8/3P1N2/PPPQBPPP/R4RK1 b - - 1 10',
+    moves: 'e5e4 d3e4',
+    rating: 1050,
+    themes: ['simplification'],
+  },
+  {
+    id: 'sp-7',
+    fen: 'r1bqk2r/pppp1ppp/2n5/4p3/2B1P1n1/3P1N2/PPP2PPP/RNBQK2R w KQkq - 1 6',
+    moves: 'c1g5 c6e7',
+    rating: 1150,
+    themes: ['pin', 'development'],
+  },
+  {
+    id: 'sp-8',
+    fen: '5rk1/1p3ppp/8/8/8/8/1Q3PPP/5RK1 w - - 0 1',
+    moves: 'g1h1 b2f6',
+    rating: 1000,
+    themes: ['tactics'],
+  },
+  {
+    id: 'sp-9',
+    fen: 'r2q1rk1/ppp2ppp/2np1n2/2b1p1B1/2B1P1b1/2NP1N2/PPP2PPP/R2Q1RK1 w - - 4 8',
+    moves: 'c3d5 f6d5',
+    rating: 1300,
+    themes: ['pin', 'center'],
+  },
+  {
+    id: 'sp-10',
+    fen: '6k1/5p1p/6p1/8/8/8/1Q3PPP/6K1 w - - 0 1',
+    moves: 'g1h1 b2b8',
+    rating: 900,
+    themes: ['backRank'],
+  },
+];
+
 export default function StudentBattleArena({ studentName = 'Student' }: StudentBattleArenaProps) {
-  const [inBattle, setInBattle] = useState(true);
+  const [inBattle, setInBattle] = useState(false);
   const [timeLeft, setTimeLeft] = useState(60);
   const [puzzlesSolved, setPuzzlesSolved] = useState(0);
   const [totalAttempts, setTotalAttempts] = useState(0);
   const [gameOver, setGameOver] = useState(false);
 
-  const [puzzleList, setPuzzleList] = useState<CompactPuzzle[]>([]);
+  const [puzzleList, setPuzzleList] = useState<CompactPuzzle[]>(DEFAULT_SPEED_RUN_PUZZLES);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [boardKey, setBoardKey] = useState(0);
 
-  const currentPuzzle = puzzleList[currentIndex] || null;
+  const currentPuzzle = puzzleList[currentIndex] || DEFAULT_SPEED_RUN_PUZZLES[0];
 
   // Board & game state for active puzzle
   const [game, setGame] = useState<Chess>(new Chess());
@@ -39,32 +121,44 @@ export default function StudentBattleArena({ studentName = 'Student' }: StudentB
   const [turnColor, setTurnColor] = useState<'white' | 'black'>('white');
   const [feedback, setFeedback] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
 
-  // Load puzzles from local API
+  // Fetch puzzles from local API or fallback to curated list
   const loadPuzzles = useCallback(async () => {
     try {
       const res = await fetch('/api/puzzles/local?count=40');
       if (res.ok) {
         const data = await res.json();
-        if (data.puzzles && data.puzzles.length > 0) {
-          setPuzzleList(data.puzzles);
+        if (data.puzzles && Array.isArray(data.puzzles) && data.puzzles.length > 0) {
+          // Filter valid puzzles
+          const valid = data.puzzles.filter((p: any) => p && p.fen && p.moves && p.moves.split(' ').length >= 2);
+          if (valid.length > 0) {
+            setPuzzleList(valid);
+            return;
+          }
         }
       }
     } catch (err) {
       console.error('Failed to load battle arena puzzles:', err);
     }
+    // Fallback to default
+    setPuzzleList(DEFAULT_SPEED_RUN_PUZZLES);
   }, []);
 
   useEffect(() => {
     loadPuzzles();
   }, [loadPuzzles]);
 
-  // Setup current puzzle position
+  // Setup current puzzle position safely
   useEffect(() => {
     if (!currentPuzzle) return;
 
     try {
-      const moves = currentPuzzle.moves ? currentPuzzle.moves.split(' ') : [];
-      if (moves.length < 2) return;
+      const moves = currentPuzzle.moves ? currentPuzzle.moves.trim().split(/\s+/) : [];
+
+      // If puzzle is invalid, auto advance
+      if (moves.length < 2) {
+        setCurrentIndex((prev) => (prev + 1) % Math.max(1, puzzleList.length));
+        return;
+      }
 
       const oppMoveUci = moves[0];
       const sol = moves.slice(1);
@@ -73,16 +167,28 @@ export default function StudentBattleArena({ studentName = 'Student' }: StudentB
       const from = oppMoveUci.substring(0, 2);
       const to = oppMoveUci.substring(2, 4);
       const promo = oppMoveUci.length > 4 ? oppMoveUci.substring(4, 5) : undefined;
-      c.move({ from, to, promotion: promo });
+
+      const moveRes = c.move({ from, to, promotion: promo });
+      if (!moveRes) {
+        // Fallback if move fails to apply
+        setCurrentIndex((prev) => (prev + 1) % Math.max(1, puzzleList.length));
+        return;
+      }
 
       setGame(c);
       setSolution(sol);
-      setTurnColor(c.turn() === 'w' ? 'white' : 'black');
-      setFeedback({ text: `Your turn! (${c.turn() === 'w' ? 'White' : 'Black'} to move)`, type: 'info' });
+      const activeTurn = c.turn() === 'w' ? 'white' : 'black';
+      setTurnColor(activeTurn);
+      setBoardKey((prev) => prev + 1);
+      setFeedback({
+        text: `Your turn! (${activeTurn === 'white' ? 'White' : 'Black'} to move)`,
+        type: 'info',
+      });
     } catch (err) {
       console.error('Error initializing speed puzzle position:', err);
+      setCurrentIndex((prev) => (prev + 1) % Math.max(1, puzzleList.length));
     }
-  }, [currentPuzzle]);
+  }, [currentPuzzle, puzzleList.length]);
 
   // 60s Timer
   useEffect(() => {
@@ -100,6 +206,7 @@ export default function StudentBattleArena({ studentName = 'Student' }: StudentB
     };
   }, [inBattle, timeLeft]);
 
+  // Start 60s Speed Run
   const handleStartDuel = async () => {
     await loadPuzzles();
     setInBattle(true);
@@ -110,14 +217,15 @@ export default function StudentBattleArena({ studentName = 'Student' }: StudentB
     setGameOver(false);
   };
 
-  const advanceToNextPuzzle = () => {
-    if (currentIndex + 1 < puzzleList.length) {
-      setCurrentIndex((prev) => prev + 1);
-    } else {
-      loadPuzzles().then(() => setCurrentIndex(0));
-    }
-  };
+  // Handle Skip Puzzle
+  const handleSkipPuzzle = useCallback(() => {
+    if (!inBattle) return;
+    setTotalAttempts((prev) => prev + 1);
+    setFeedback({ text: '⏭️ Puzzle skipped! Loading next tactic...', type: 'info' });
+    setCurrentIndex((prev) => (prev + 1) % Math.max(1, puzzleList.length));
+  }, [inBattle, puzzleList.length]);
 
+  // Handle User Piece Move Drop
   const handlePieceDrop = (sourceSquare: string, targetSquare: string): boolean => {
     if (!inBattle || !currentPuzzle || solution.length === 0) return false;
 
@@ -129,24 +237,27 @@ export default function StudentBattleArena({ studentName = 'Student' }: StudentB
 
     // Validate if move matches expected solution
     if (sourceSquare === expectedFrom && targetSquare === expectedTo) {
-      // Try playing move on board
-      const temp = new Chess(game.fen());
-      const moveRes = temp.move({ from: sourceSquare, to: targetSquare, promotion: 'q' });
+      try {
+        const temp = new Chess(game.fen());
+        const moveRes = temp.move({ from: sourceSquare, to: targetSquare, promotion: 'q' });
 
-      if (moveRes) {
-        setGame(temp);
-        setPuzzlesSolved((prev) => prev + 1);
-        setFeedback({ text: '✓ Correct! Next puzzle...', type: 'success' });
+        if (moveRes) {
+          setGame(temp);
+          setPuzzlesSolved((prev) => prev + 1);
+          setFeedback({ text: '✓ Correct! Next puzzle loading...', type: 'success' });
 
-        setTimeout(() => {
-          advanceToNextPuzzle();
-        }, 300);
-        return true;
+          setTimeout(() => {
+            setCurrentIndex((prev) => (prev + 1) % Math.max(1, puzzleList.length));
+          }, 350);
+          return true;
+        }
+      } catch (err) {
+        console.error('Error handling move drop:', err);
       }
     }
 
     // Incorrect move
-    setFeedback({ text: '❌ Incorrect move! Try another tactic or skip.', type: 'error' });
+    setFeedback({ text: '❌ Incorrect move! Try another tactic or click Skip.', type: 'error' });
     return false;
   };
 
@@ -216,22 +327,22 @@ export default function StudentBattleArena({ studentName = 'Student' }: StudentB
             </div>
             <button
               type="button"
-              onClick={advanceToNextPuzzle}
-              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold rounded-lg border border-slate-700 transition-colors"
+              onClick={handleSkipPuzzle}
+              className="px-3 py-1.5 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 text-xs font-bold rounded-xl border border-indigo-500/40 transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
             >
-              ⏭️ Skip Puzzle
+              <span>⏭️ Skip Puzzle</span>
             </button>
           </div>
 
           {/* Feedback bar */}
           {feedback && (
             <div
-              className={`p-2 rounded-xl text-center text-xs font-bold transition-all ${
+              className={`p-2.5 rounded-xl text-center text-xs font-bold transition-all shadow-inner ${
                 feedback.type === 'success'
-                  ? 'bg-emerald-950/60 border border-emerald-500/40 text-emerald-300'
+                  ? 'bg-emerald-950/70 border border-emerald-500/50 text-emerald-300'
                   : feedback.type === 'error'
-                  ? 'bg-red-950/60 border border-red-500/40 text-red-300'
-                  : 'bg-indigo-950/60 border border-indigo-500/40 text-indigo-300'
+                  ? 'bg-red-950/70 border border-red-500/50 text-red-300'
+                  : 'bg-indigo-950/70 border border-indigo-500/50 text-indigo-300'
               }`}
             >
               {feedback.text}
@@ -242,6 +353,7 @@ export default function StudentBattleArena({ studentName = 'Student' }: StudentB
           <div className="flex justify-center items-center py-2 bg-slate-950/80 border border-slate-800/80 rounded-2xl p-3">
             <div className="w-full max-w-[420px] aspect-square rounded-xl overflow-hidden shadow-2xl border border-slate-700/60">
               <Chessboard
+                key={boardKey}
                 position={game.fen()}
                 onPieceDrop={(source: string, target: string) => handlePieceDrop(source, target)}
                 boardOrientation={turnColor}

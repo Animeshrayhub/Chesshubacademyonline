@@ -1,9 +1,9 @@
-﻿import React from 'react';
+import React from 'react';
 import { redirect } from 'next/navigation';
 import PageHeader from '@/components/dashboard/ui/PageHeader';
 import { getCurrentUser } from '@/lib/supabase/auth';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
-import LichessPuzzleCsvImporter from '@/features/admin/LichessPuzzleCsvImporter';
+import PuzzleBankRegistry from '@/features/admin/PuzzleBankRegistry';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,10 +27,10 @@ export default async function AdminPuzzlesPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Tactical Puzzle Database Manager"
-        subtitle="Upload, import, and manage Lichess puzzle CSV datasets with FEN positions, solution moves, ratings, and thematic tags."
+        title="Central Tactical Puzzle Bank"
+        subtitle="Manage, create, and bulk-import chess tactical puzzles, FEN positions, solution moves, and theme tags for student practice."
       />
-      <LichessPuzzleCsvImporter />
+      <PuzzleBankRegistry />
     </div>
   );
 }

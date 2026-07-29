@@ -57,8 +57,20 @@ export async function middleware(request: NextRequest) {
       return redirectResponse;
     };
 
+    // 1. Check if Maintenance Mode is active
+    const { data: maintConfig } = await supabase
+      .from('system_config')
+      .select('value')
+      .eq('key', 'MAINTENANCE_MODE')
+      .maybeSingle();
+
+    const isMaintenanceActive = maintConfig?.value === 'true';
+
     // Redirect to login if unauthenticated
     if (error || !user) {
+      if (isMaintenanceActive && pathname !== '/maintenance' && pathname !== '/login') {
+        return redirectWithCookies(new URL('/maintenance', request.url));
+      }
       const loginUrl = new URL('/login', request.url);
       loginUrl.searchParams.set('redirectTo', pathname);
       return redirectWithCookies(loginUrl);
@@ -79,6 +91,12 @@ export async function middleware(request: NextRequest) {
 
     const role = profile.role; // 'ADMIN' | 'COACH' | 'STUDENT'
     console.log(`[Middleware] Path: ${pathname}, User: ${user?.email}, Role: ${role}, Active: ${profile.is_active}`);
+
+    // If Maintenance Mode is active and user is NOT an Admin, redirect to /maintenance notice
+    if (isMaintenanceActive && role !== 'ADMIN' && pathname !== '/maintenance') {
+      console.log(`[Middleware] Redirecting ${role} to /maintenance because Maintenance Mode is ON.`);
+      return redirectWithCookies(new URL('/maintenance', request.url));
+    }
     
     // Redirect /dashboard root to role-specific dashboard path
     if (pathname === '/dashboard' || pathname === '/dashboard/') {
@@ -101,6 +119,17 @@ export async function middleware(request: NextRequest) {
       }
     }
   }
+
+  // Attach security headers
+  response.headers.set('X-Frame-Options', 'SAMEORIGIN');
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  response.headers.set('X-XSS-Protection', '1; mode=block');
+  response.headers.set(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; frame-src 'self' https://meet.ffmuc.net https://meet.jit.si https://drive.google.com https://zoom.us; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; connect-src 'self' https:;"
+  );
 
   return response;
 }

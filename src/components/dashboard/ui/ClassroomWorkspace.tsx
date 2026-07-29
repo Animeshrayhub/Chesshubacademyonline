@@ -8,9 +8,11 @@ import { supabase } from '@/utils/supabaseClient';
 import DashboardIcon from './DashboardIcon';
 import Button from '@/components/ui/Button';
 import ChessWorkspace from './ChessWorkspace';
-import ClassroomRecorder from './ClassroomRecorder';
+import ClassroomRecorder from '@/components/dashboard/ui/ClassroomRecorder';
+import ClassroomLessonDrawer from '@/features/classroom/ClassroomLessonDrawer';
+import type { TeachingPosition } from '@/types/curriculum.types';
 
-import { endClassAction, startClassAction, submitClassEndReportAction } from '@/actions/classes';
+import { endClassAction, startClassAction, submitClassEndReportAction, saveLiveClassRecordingAction } from '@/actions/classes';
 import { getZoomSignatureAction } from '@/actions/zoom';
 import { listHomeworkAction, listChaptersAction, assignChapterToClassAction } from '@/actions/homework';
 
@@ -107,6 +109,81 @@ export default function ClassroomWorkspace({
 
   // Elapsed seconds timer
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  // Recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [recordingSaving, setRecordingSaving] = useState(false);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (isRecording) {
+      timer = setInterval(() => {
+        setRecordingSeconds((prev) => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [isRecording]);
+
+  // Mobile responsive tab state
+  const [mobileTab, setMobileTab] = useState<'video' | 'chessboard' | 'chat'>('video');
+
+  // Curriculum Lesson Drawer & Live Position Stepper states
+  const [showLessonDrawer, setShowLessonDrawer] = useState(false);
+  const [activeLessonPositions, setActiveLessonPositions] = useState<TeachingPosition[]>([]);
+  const [activePositionIndex, setActivePositionIndex] = useState<number>(0);
+  const [activePosition, setActivePosition] = useState<TeachingPosition | null>(null);
+
+  const handleSelectPosition = (pos: TeachingPosition, lessonPositions: TeachingPosition[], index: number) => {
+    setActivePosition(pos);
+    setActiveLessonPositions(lessonPositions);
+    setActivePositionIndex(index);
+
+    const channel = supabase.channel(`classroom-board:${classId}`);
+    channel.send({
+      type: 'broadcast',
+      event: 'load-position',
+      payload: {
+        fen: pos.fen,
+        solution: pos.solution,
+        hint: pos.hint,
+        explanation: pos.explanation,
+        title: pos.title,
+        orientation: pos.boardOrientation,
+        locked: pos.defaultBoardLock,
+      },
+    });
+  };
+
+  const handleStepPosition = (newIndex: number) => {
+    if (newIndex < 0 || newIndex >= activeLessonPositions.length) return;
+    const pos = activeLessonPositions[newIndex];
+    handleSelectPosition(pos, activeLessonPositions, newIndex);
+  };
+
+  // Student Spotlight states for Coach Host
+  const [spotlightedStudentId, setSpotlightedStudentId] = useState<string | null>(null);
+  const [spotlightedStudentName, setSpotlightedStudentName] = useState<string | null>(null);
+
+  const handleToggleSpotlight = (studentId: string, studentName: string) => {
+    if (!isCoach) return;
+    const isAlreadySpotlighted = spotlightedStudentId === studentId;
+    const nextId = isAlreadySpotlighted ? null : studentId;
+    const nextName = isAlreadySpotlighted ? null : studentName;
+
+    setSpotlightedStudentId(nextId);
+    setSpotlightedStudentName(nextName);
+
+    const channel = supabase.channel(`classroom-board:${classId}`);
+    channel.send({
+      type: 'broadcast',
+      event: 'spotlight-student',
+      payload: {
+        studentId: nextId,
+        studentName: nextName,
+      },
+    });
+  };
 
   // Authorization role checks
   const isCoach = role === 'coach' || role === 'admin';
@@ -778,9 +855,12 @@ export default function ClassroomWorkspace({
                 </div>
 
                 {students.map((student, idx) => {
+                  const studentKey = student.studentProfileId || student.email;
                   const isOnline = onlineUserIds.includes(`${student.firstName} ${student.lastName}`);
+                  const isSpotlighted = spotlightedStudentId === studentKey;
+
                   return (
-                    <div key={idx} className="bg-slate-950/40 p-2.5 rounded-xl border border-slate-800/60 flex items-center justify-between">
+                    <div key={idx} className="bg-slate-950/40 p-2.5 rounded-xl border border-slate-800/60 flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-[10px]">
                           {student.firstName[0]}{student.lastName[0]}
@@ -790,7 +870,24 @@ export default function ClassroomWorkspace({
                           <p className="text-[9px] text-slate-500">{student.email}</p>
                         </div>
                       </div>
-                      <span className={`w-2.5 h-2.5 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-slate-700'}`} title={isOnline ? 'Online' : 'Offline'} />
+
+                      <div className="flex items-center gap-1.5">
+                        {isCoach && (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleSpotlight(studentKey, `${student.firstName} ${student.lastName}`)}
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors ${
+                              isSpotlighted
+                                ? 'bg-amber-500 text-slate-950 border-amber-400 font-extrabold animate-pulse'
+                                : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                            }`}
+                            title={isSpotlighted ? 'Click to remove student spotlight' : 'Click to grant student live board move control'}
+                          >
+                            {isSpotlighted ? '🎯 Spotlighted' : '🎯 Spotlight'}
+                          </button>
+                        )}
+                        <span className={`w-2.5 h-2.5 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-slate-700'}`} title={isOnline ? 'Online' : 'Offline'} />
+                      </div>
                     </div>
                   );
                 })}
@@ -802,7 +899,14 @@ export default function ClassroomWorkspace({
       case 'chessboard':
         return (
           <div key={panelId} className="h-full flex items-center justify-center">
-            <ChessWorkspace classId={classId} userRole={role} showEngine={isCoach} />
+            <ChessWorkspace
+              classId={classId}
+              userRole={role}
+              showEngine={isCoach}
+              spotlightedStudentId={spotlightedStudentId}
+              spotlightedStudentName={spotlightedStudentName}
+              userId={userId}
+            />
           </div>
         );
 
@@ -821,7 +925,38 @@ export default function ClassroomWorkspace({
 
         const meetingNumber = getMeetingNumberFromUrl(zoomJoinUrl);
         const passcode = getPasscodeFromJoinUrl(zoomJoinUrl);
-        const zoomEmbedUrl = meetingNumber 
+        const defaultServer = process.env.NEXT_PUBLIC_JITSI_SERVER || 'https://meet.ffmuc.net';
+        const cleanClassId = classId.replace(/[^a-zA-Z0-9]/g, '');
+        const deterministicRoomName = `ChessHub_Class_${cleanClassId}`;
+
+        // Standardized Jitsi resolution: forces Coach, Student, and Admin into the EXACT SAME room
+        const isJitsi = !zoomJoinUrl || zoomJoinUrl.includes('jit.si') || zoomJoinUrl.includes('ffmuc.net') || zoomJoinUrl.toLowerCase().includes('jitsi');
+
+        const hashConfig = `#config.prejoinPageEnabled=false&config.startWithAudioMuted=false&config.startWithVideoMuted=false&config.requireDisplayName=false&config.disableDeepLinking=true&userInfo.displayName="${encodeURIComponent(userName)}"`;
+        const jitsiEmbedUrl = `${defaultServer}/${deterministicRoomName}${hashConfig}`;
+        const jitsiExternalUrl = `${defaultServer}/${deterministicRoomName}${hashConfig}`;
+
+        const rawVideoUrl = jitsiExternalUrl;
+
+        const handleToggleRecording = async () => {
+          if (!isRecording) {
+            setIsRecording(true);
+            setRecordingSeconds(0);
+          } else {
+            setRecordingSaving(true);
+            const duration = recordingSeconds > 0 ? recordingSeconds : 3600;
+            const res = await saveLiveClassRecordingAction(classId, jitsiExternalUrl, duration);
+            setRecordingSaving(false);
+            setIsRecording(false);
+            if (res.success) {
+              alert('🔴 Live Class Recording successfully stored in Admin & Class Recordings registry!');
+            } else {
+              alert(res.error?.message || 'Failed to save class recording.');
+            }
+          }
+        };
+
+        const zoomEmbedUrl = zoomJoinUrl?.includes('zoom.us')
           ? `https://zoom.us/wc/join/${meetingNumber}?pwd=${passcode}&un=${encodeURIComponent(userName)}`
           : zoomJoinUrl;
 
@@ -832,6 +967,37 @@ export default function ClassroomWorkspace({
                 📹 Live Video Classroom
               </span>
               <div className="flex items-center gap-2">
+                {isCoach && (
+                  <button
+                    type="button"
+                    onClick={handleToggleRecording}
+                    disabled={recordingSaving}
+                    className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-all inline-flex items-center gap-1.5 ${
+                      isRecording
+                        ? 'bg-red-600 hover:bg-red-500 text-white border-red-400 animate-pulse'
+                        : 'bg-red-950/80 hover:bg-red-900 text-red-300 border-red-700/50'
+                    }`}
+                    title={isRecording ? 'Click to stop & save recording to Admin database' : 'Click to start recording this live session'}
+                  >
+                    <span>{isRecording ? '⏹️ Stop & Save Record' : '🔴 Record Class'}</span>
+                    {isRecording && (
+                      <span className="font-mono bg-red-950 px-1 py-0.5 rounded text-white text-[9px]">
+                        {Math.floor(recordingSeconds / 60)}:{(recordingSeconds % 60).toString().padStart(2, '0')}
+                      </span>
+                    )}
+                  </button>
+                )}
+                {isJitsi && (
+                  <a
+                    href={jitsiExternalUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2 py-1 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 rounded-lg text-[10px] font-semibold border border-emerald-700/50 transition-colors inline-flex items-center gap-1"
+                    title="Launch video classroom directly in new tab without sign-in"
+                  >
+                    <span>🚀 New Tab</span>
+                  </a>
+                )}
                 {passcode && (
                   <button
                     type="button"
@@ -877,18 +1043,19 @@ export default function ClassroomWorkspace({
 
             <div className="flex-grow flex flex-col justify-center items-center h-full w-full">
               {(() => {
-                const activeVideoUrl = zoomJoinUrl || `https://meet.jit.si/ChessHub-${classId.replace(/[^a-zA-Z0-9]/g, '')}`;
-                const canShowVideo = status === 'LIVE' || isCoach;
+                const canShowVideo = status === 'LIVE' || status === 'IN_PROGRESS' || isCoach;
 
                 if (!canShowVideo) {
                   return (
-                    <div className="p-6 text-center text-slate-400 space-y-2">
-                      <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center mx-auto text-lg mb-2">
+                    <div className="p-6 text-center text-slate-400 space-y-3 bg-slate-950/80 border border-slate-800 rounded-2xl w-full h-full flex flex-col items-center justify-center">
+                      <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-3xl shadow-gold animate-pulse mb-1">
                         ⏳
                       </div>
-                      <p className="text-xs font-bold text-slate-300">Class Session Scheduled</p>
-                      <p className="text-[11px] text-slate-500 max-w-xs leading-relaxed">
-                        Video stream activates as soon as your assigned coach clicks &quot;Start Live Class&quot;.
+                      <h4 className="font-heading font-extrabold text-sm text-white uppercase tracking-wider">
+                        Host Waiting Room Active
+                      </h4>
+                      <p className="text-xs text-slate-300 max-w-sm leading-relaxed">
+                        Your coach has not started this live session yet. Video feed will unlock automatically once your coach joins or starts the class!
                       </p>
                     </div>
                   );
@@ -896,14 +1063,14 @@ export default function ClassroomWorkspace({
 
                 return (
                   <div className="w-full h-full min-h-[350px] bg-slate-950 rounded-xl overflow-hidden relative border border-slate-800 flex-grow flex flex-col">
-                    {/* Provider 1: Jitsi Meet (Native Embedded iFrame) */}
-                    {activeVideoUrl.includes('jit.si') ? (
+                    {/* Provider 1: Jitsi Meet (Native Embedded iFrame - Direct Zero Login) */}
+                    {isJitsi ? (
                       <iframe
-                        src={`${activeVideoUrl}#userInfo.displayName="${encodeURIComponent(userName)}"`}
+                        src={jitsiEmbedUrl}
                         className="w-full h-full absolute inset-0 border-0"
-                        allow="microphone *; camera *; display-capture *; autoplay *; media-record *; fullscreen *"
+                        allow="microphone *; camera *; display-capture *; autoplay *; media-record *; fullscreen *; microphone; camera; display-capture; clipboard-write"
                       />
-                    ) : activeVideoUrl.includes('meet.google.com') || activeVideoUrl.includes('custom') ? (
+                    ) : rawVideoUrl.includes('meet.google.com') || rawVideoUrl.includes('custom') ? (
                       /* Provider 2: Google Meet / Custom External Launcher */
                       <div className="w-full h-full min-h-[300px] p-6 flex flex-col items-center justify-center text-center">
                         <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-300 flex items-center justify-center text-2xl mb-3 border border-amber-500/30">
@@ -914,7 +1081,7 @@ export default function ClassroomWorkspace({
                           Click below to launch your live video classroom session in your browser.
                         </p>
                         <a
-                          href={activeVideoUrl}
+                          href={rawVideoUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs shadow-gold transition-all inline-flex items-center gap-2"
@@ -1174,6 +1341,18 @@ export default function ClassroomWorkspace({
           {/* Local Screen & Audio Recording for Coach and Admin */}
           <ClassroomRecorder classId={classId} isCoachOrAdmin={isCoach} />
 
+          {/* Load Curriculum Lesson Button for Coach */}
+          {isCoach && (
+            <button
+              type="button"
+              onClick={() => setShowLessonDrawer(true)}
+              className="px-3.5 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-extrabold rounded-xl text-xs transition-all shadow-gold flex items-center gap-1.5"
+            >
+              <span>📚</span>
+              <span>Load Lesson</span>
+            </button>
+          )}
+
           {/* Coach start/end actions */}
           {isCoach && status === 'SCHEDULED' && (
             <button
@@ -1197,8 +1376,57 @@ export default function ClassroomWorkspace({
         </div>
       </header>
 
-      {/* Main Workspace Drag-and-Drop Column Layout */}
-      <div className="flex-grow flex overflow-hidden">
+      {/* Mobile Screen Responsive Tab Selector (< md screens) */}
+      <div className="flex md:hidden bg-slate-900 border-b border-slate-800 p-2 gap-2 justify-center sticky top-16 z-20">
+        <button
+          type="button"
+          onClick={() => setMobileTab('video')}
+          className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+            mobileTab === 'video'
+              ? 'bg-amber-500 text-slate-950 shadow-gold font-extrabold'
+              : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+          }`}
+        >
+          <span>📹 Live Video</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileTab('chessboard')}
+          className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+            mobileTab === 'chessboard'
+              ? 'bg-amber-500 text-slate-950 shadow-gold font-extrabold'
+              : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+          }`}
+        >
+          <span>♟️ Board</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileTab('chat')}
+          className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+            mobileTab === 'chat'
+              ? 'bg-amber-500 text-slate-950 shadow-gold font-extrabold'
+              : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+          }`}
+        >
+          <span>💬 Chat &amp; Tools</span>
+        </button>
+      </div>
+
+      {/* Mobile-Only Panel Container */}
+      <div className="flex md:hidden flex-col p-3 flex-grow overflow-y-auto">
+        {mobileTab === 'video' && renderPanel('zoom')}
+        {mobileTab === 'chessboard' && renderPanel('chessboard')}
+        {mobileTab === 'chat' && (
+          <div className="space-y-4">
+            {renderPanel('chat')}
+            {renderPanel('students')}
+          </div>
+        )}
+      </div>
+
+      {/* Main Desktop Workspace Drag-and-Drop Column Layout */}
+      <div className="hidden md:flex flex-grow overflow-hidden">
         {/* LEFT COLUMN */}
         <div
           className="hidden md:flex flex-col gap-4 p-4 border-r border-slate-800 bg-slate-900/30 overflow-y-auto relative"
@@ -1404,6 +1632,12 @@ export default function ClassroomWorkspace({
           </div>
         </div>
       )}
+      {/* Curriculum Lesson Drawer Modal */}
+      <ClassroomLessonDrawer
+        isOpen={showLessonDrawer}
+        onClose={() => setShowLessonDrawer(false)}
+        onSelectPosition={handleSelectPosition}
+      />
     </div>
   );
 }

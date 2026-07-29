@@ -15,9 +15,15 @@ import {
   type StudentPuzzleStats,
 } from '@/lib/puzzles/progress';
 
-// react-chessboard v5 — Chessboard takes a single `options` prop
 const ChessboardComponent = dynamic(
-  () => import('react-chessboard').then((mod) => mod.Chessboard),
+  () =>
+    import('react-chessboard').then((mod) => {
+      const CB = mod.Chessboard;
+      return function BoardWrapper(props: any) {
+        const boardProps = props.options ? { ...props.options, ...props } : props;
+        return <CB {...boardProps} />;
+      };
+    }),
   { ssr: false }
 ) as any;
 

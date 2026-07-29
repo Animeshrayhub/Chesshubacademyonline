@@ -13,6 +13,7 @@ const DEFAULT_CONFIG: Record<string, string> = {
   LOCAL_AI_URL: 'http://localhost:11434',
   LOCAL_AI_MODEL: 'llava',
   PREFERRED_SCANNER_PROVIDER: 'gemini',
+  MAINTENANCE_MODE: 'false',
 };
 
 export async function getSystemConfig(): Promise<Record<string, string>> {
@@ -34,7 +35,7 @@ export async function getSystemConfig(): Promise<Record<string, string>> {
     const { data: configs, error } = await admin
       .from('system_config')
       .select('key, value')
-      .in('key', ['AI_PROVIDER', 'AI_GEMINI_KEY', 'AI_OPENAI_KEY', 'AI_GROQ_KEY', 'AI_API_KEY', 'LOCAL_AI_URL', 'LOCAL_AI_MODEL', 'PREFERRED_SCANNER_PROVIDER']);
+      .in('key', ['AI_PROVIDER', 'AI_GEMINI_KEY', 'AI_OPENAI_KEY', 'AI_GROQ_KEY', 'AI_API_KEY', 'LOCAL_AI_URL', 'LOCAL_AI_MODEL', 'PREFERRED_SCANNER_PROVIDER', 'MAINTENANCE_MODE']);
 
     if (!error && configs && configs.length > 0) {
       configs.forEach((item: any) => {

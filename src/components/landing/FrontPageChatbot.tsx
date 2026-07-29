@@ -403,11 +403,11 @@ export default function FrontPageChatbot() {
           className="min-h-[48px] min-w-[48px] px-4.5 py-3 bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-600 hover:to-yellow-600 text-slate-950 font-extrabold text-xs rounded-full shadow-2xl transition-all active:scale-95 flex items-center gap-2.5 border-2 border-amber-300/60 group"
         >
           <div className="relative">
-            <span className="text-base sm:text-lg">💬</span>
+            <span className="text-base sm:text-lg">🤖</span>
             <span className="w-2.5 h-2.5 bg-emerald-400 border border-slate-950 rounded-full absolute -top-0.5 -right-0.5 animate-pulse"></span>
           </div>
-          <span className="hidden sm:inline">Chat with ChessHub AI</span>
-          <span className="inline sm:hidden font-bold">AI Chat</span>
+          <span className="hidden sm:inline">Ask AI Coach 24/7</span>
+          <span className="inline sm:hidden font-bold">Ask AI Coach</span>
         </button>
       )}
     </div>

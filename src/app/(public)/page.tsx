@@ -65,6 +65,8 @@ const orgSchema = {
   },
 };
 
+import AiLevelEvaluatorWidget from '@/components/landing/AiLevelEvaluatorWidget';
+
 export default function HomePage() {
   return (
     <>
@@ -72,6 +74,9 @@ export default function HomePage() {
       <JsonLd data={orgSchema} />
       <HeroSection />
       <TrustBar />
+      <section className="py-12 px-4 bg-slate-950">
+        <AiLevelEvaluatorWidget />
+      </section>
       <StatisticsSection />
       <ProgramsSection />
       <WhyChooseUsSection />

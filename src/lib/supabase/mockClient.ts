@@ -29,18 +29,7 @@ if (!globalForMock.__mockUsers) {
       created_at: '2026-01-01T00:00:00Z',
       archived_at: null,
     },
-    {
-      id: 'usr-coach-123',
-      username: 'coach_arjun',
-      email: 'coach@chesshub.com',
-      password: 'Coach123!',
-      first_name: 'Arjun',
-      last_name: 'Mehta',
-      role: 'COACH',
-      is_active: true,
-      created_at: '2026-01-01T00:00:00Z',
-      archived_at: null,
-    },
+
     {
       id: 'usr-student-123',
       username: 'student_rahul',
@@ -57,19 +46,7 @@ if (!globalForMock.__mockUsers) {
 }
 
 if (!globalForMock.__mockCoachProfiles) {
-  globalForMock.__mockCoachProfiles = [
-    {
-      id: 'prof-coach-arjun',
-      user_id: 'usr-coach-123',
-      title: 'Grandmaster',
-      photo_url: '',
-      whatsapp: '+919999999999',
-      languages: ['English', 'Hindi'],
-      experience_years: 12,
-      bio: 'FIDE Grandmaster since 2018. Expert junior coach.',
-      created_at: '2026-01-01T00:00:00Z',
-    }
-  ];
+  globalForMock.__mockCoachProfiles = [];
 }
 
 if (!globalForMock.__mockStudentProfiles) {
@@ -89,15 +66,7 @@ if (!globalForMock.__mockStudentProfiles) {
 }
 
 if (!globalForMock.__mockCoachStudentAssignments) {
-  globalForMock.__mockCoachStudentAssignments = [
-    {
-      id: 'assign-1',
-      coach_id: 'prof-coach-arjun',
-      student_id: 'prof-student-rahul',
-      created_at: '2026-01-01T00:00:00Z',
-      archived_at: null,
-    }
-  ];
+  globalForMock.__mockCoachStudentAssignments = [];
 }
 
 if (!globalForMock.__mockClasses) globalForMock.__mockClasses = [];
@@ -191,7 +160,6 @@ export const mockClassroomChat = globalForMock.__mockClassroomChat;
 const mockCredentials: Record<string, { role: 'ADMIN' | 'COACH' | 'STUDENT'; password: string }> = {
   'admin@chesshub.com': { role: 'ADMIN', password: 'Admin123!' },
   'royduguu786@gmail.com': { role: 'ADMIN', password: 'Admin123!' },
-  'coach@chesshub.com': { role: 'COACH', password: 'Coach123!' },
   'student@chesshub.com': { role: 'STUDENT', password: 'Student123!' },
 };
 
@@ -212,8 +180,8 @@ function getMockUserFromCookie(cookieString: string | null): any {
       let firstName = 'Academy';
       let lastName = 'Admin';
       if (role === 'COACH') {
-        firstName = 'Arjun';
-        lastName = 'Mehta';
+        firstName = 'Coach';
+        lastName = 'Alex';
       } else if (role === 'STUDENT') {
         firstName = 'Rahul';
         lastName = 'Patel';
@@ -484,8 +452,8 @@ class MockQueryBuilder {
                 id: role === 'COACH' ? 'usr-coach-456' : role === 'STUDENT' ? 'usr-student-789' : 'usr-admin-roy',
                 username: email.split('@')[0],
                 email,
-                first_name: role === 'COACH' ? 'Arjun' : role === 'STUDENT' ? 'Rahul' : 'Roy',
-                last_name: role === 'COACH' ? 'Mehta' : role === 'STUDENT' ? 'Patel' : 'Duguu',
+                first_name: role === 'COACH' ? 'Coach' : role === 'STUDENT' ? 'Rahul' : 'Roy',
+                last_name: role === 'COACH' ? 'Alex' : role === 'STUDENT' ? 'Patel' : 'Duguu',
                 role,
                 is_active: true,
                 created_at: new Date().toISOString(),
@@ -790,8 +758,8 @@ export function getMockSupabaseClient(options?: any) {
           id: role === 'COACH' ? 'usr-coach-456' : role === 'STUDENT' ? 'usr-student-789' : 'usr-admin-roy',
           username: emailLower.split('@')[0],
           email: emailLower,
-          first_name: role === 'COACH' ? 'Arjun' : role === 'STUDENT' ? 'Rahul' : 'Roy',
-          last_name: role === 'COACH' ? 'Mehta' : role === 'STUDENT' ? 'Patel' : 'Duguu',
+          first_name: role === 'COACH' ? 'Coach' : role === 'STUDENT' ? 'Rahul' : 'Roy',
+          last_name: role === 'COACH' ? 'Alex' : role === 'STUDENT' ? 'Patel' : 'Duguu',
           role: role,
           is_active: true,
           created_at: new Date().toISOString(),
@@ -874,8 +842,8 @@ export function getMockSupabaseClient(options?: any) {
           let firstName = 'Academy';
           let lastName = 'Admin';
           if (role === 'COACH') {
-            firstName = 'Arjun';
-            lastName = 'Mehta';
+            firstName = 'Coach';
+            lastName = 'Alex';
           } else if (role === 'STUDENT') {
             firstName = 'Rahul';
             lastName = 'Patel';

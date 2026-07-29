@@ -6,9 +6,15 @@ import dynamic from 'next/dynamic';
 import { supabase } from '@/utils/supabaseClient';
 import { customChessPieces } from './ChessPieces';
 
-// react-chessboard v5 — Chessboard takes a single `options` prop
 const ChessboardComponent = dynamic(
-  () => import('react-chessboard').then((mod) => mod.Chessboard),
+  () =>
+    import('react-chessboard').then((mod) => {
+      const CB = mod.Chessboard;
+      return function BoardWrapper(props: any) {
+        const boardProps = props.options ? { ...props.options, ...props } : props;
+        return <CB {...boardProps} />;
+      };
+    }),
   { ssr: false }
 ) as any;
 
@@ -30,6 +36,9 @@ interface ChessWorkspaceProps {
   showEngine?: boolean;
   classId?: string;
   userRole?: 'admin' | 'coach' | 'student';
+  spotlightedStudentId?: string | null;
+  spotlightedStudentName?: string | null;
+  userId?: string;
 }
 
 interface StockfishLine {
@@ -150,9 +159,28 @@ export default function ChessWorkspace({
   showEngine = true,
   classId,
   userRole,
+  spotlightedStudentId = null,
+  spotlightedStudentName = null,
+  userId,
 }: ChessWorkspaceProps) {
   // Authorization permissions
   const isCoach = userRole === 'coach' || userRole === 'admin' || !userRole;
+
+  // Student Spotlight states
+  const [activeSpotlightId, setActiveSpotlightId] = useState<string | null>(spotlightedStudentId);
+  const [activeSpotlightName, setActiveSpotlightName] = useState<string | null>(spotlightedStudentName);
+
+  // Loaded Position state & toolbar controls
+  const [loadedPositionTitle, setLoadedPositionTitle] = useState<string | null>(null);
+  const [loadedPositionSolution, setLoadedPositionSolution] = useState<string | null>(null);
+  const [loadedPositionHint, setLoadedPositionHint] = useState<string | null>(null);
+  const [showSolution, setShowSolution] = useState(false);
+  const [showHint, setShowHint] = useState(false);
+
+  useEffect(() => {
+    if (spotlightedStudentId !== undefined) setActiveSpotlightId(spotlightedStudentId);
+    if (spotlightedStudentName !== undefined) setActiveSpotlightName(spotlightedStudentName);
+  }, [spotlightedStudentId, spotlightedStudentName]);
 
   // Feedback states for student interactive moves
   const [moveError, setMoveError] = useState<string | null>(null);
@@ -348,8 +376,9 @@ export default function ChessWorkspace({
   const channelRef = useRef<any>(null);
   const undoneMovesRef = useRef<any[]>([]);
 
-  // Effective read-only status for current user
-  const isReadOnly = readOnly || (!isCoach && isBoardLocked) || reviewIndex !== null;
+  // Effective read-only status for current user (unlocked if user is the spotlighted student)
+  const isSpotlightedUser = Boolean(userId && activeSpotlightId && userId === activeSpotlightId);
+  const isReadOnly = readOnly || (!isCoach && isBoardLocked && !isSpotlightedUser) || reviewIndex !== null;
 
   // Calculate evaluation relative to White for the Evaluation Bar
   const getEvaluationStats = useCallback(() => {
@@ -513,6 +542,31 @@ export default function ChessWorkspace({
       })
       .on('broadcast', { event: 'lock-state' }, ({ payload }: any) => {
         setIsBoardLocked(payload.locked);
+      })
+      .on('broadcast', { event: 'load-position' }, ({ payload }: any) => {
+        const newFen = payload.fen;
+        try {
+          const g = new Chess(newFen);
+          gameRef.current = g;
+          setFen(newFen);
+          setMoveHistory([]);
+          setArrows([]);
+          setHighlights({});
+          setReviewIndex(null);
+          if (payload.orientation) setBoardOrientation(payload.orientation);
+          if (payload.locked !== undefined) setIsBoardLocked(payload.locked);
+          setLoadedPositionTitle(payload.title || null);
+          setLoadedPositionSolution(payload.solution || null);
+          setLoadedPositionHint(payload.hint || null);
+          setShowSolution(false);
+          setShowHint(false);
+        } catch (e) {
+          console.error('Failed to load position FEN:', e);
+        }
+      })
+      .on('broadcast', { event: 'spotlight-student' }, ({ payload }: any) => {
+        setActiveSpotlightId(payload.studentId || null);
+        setActiveSpotlightName(payload.studentName || null);
       })
       .on('broadcast', { event: 'sync-orientation' }, ({ payload }: any) => {
         if (!isCoach) {
@@ -1334,6 +1388,94 @@ export default function ChessWorkspace({
           </div>
         )}
 
+        {/* Student Spotlight Banner */}
+        {activeSpotlightName && (
+          <div className="w-full bg-gradient-to-r from-amber-500/20 via-amber-400/20 to-yellow-500/20 border border-amber-500/40 text-amber-300 rounded-xl p-2.5 mb-3 flex items-center justify-between text-xs shadow-md">
+            <div className="flex items-center gap-2 font-bold">
+              <span className="text-base animate-pulse">🎯</span>
+              <span>Student Spotlight Active: <strong className="text-white font-extrabold">{activeSpotlightName}</strong> has live board move control!</span>
+            </div>
+            {isSpotlightedUser && (
+              <span className="text-[10px] uppercase tracking-wider font-extrabold bg-emerald-500 text-slate-950 px-2 py-0.5 rounded-md animate-pulse">
+                Your Turn to Move
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Loaded Curriculum Position Toolbar */}
+        {(loadedPositionTitle || loadedPositionSolution || loadedPositionHint) && (
+          <div className="w-full bg-slate-900 border border-slate-800 rounded-2xl p-3 mb-3 flex flex-wrap items-center justify-between gap-2 text-xs shadow-lg">
+            <div className="flex items-center gap-2">
+              <span className="text-amber-400 font-bold">🎯 {loadedPositionTitle || 'Loaded Position'}</span>
+              {isBoardLocked ? (
+                <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-300 text-[10px] font-bold border border-red-500/30">
+                  🔒 Board Locked
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30">
+                  🔓 Board Unlocked
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {isCoach && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextLock = !isBoardLocked;
+                    setIsBoardLocked(nextLock);
+                    channelRef.current?.send({
+                      type: 'broadcast',
+                      event: 'lock-state',
+                      payload: { locked: nextLock },
+                    });
+                  }}
+                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold border border-slate-700"
+                >
+                  {isBoardLocked ? '🔓 Unlock Board' : '🔒 Lock Board'}
+                </button>
+              )}
+
+              {loadedPositionHint && (
+                <button
+                  type="button"
+                  onClick={() => setShowHint(!showHint)}
+                  className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded-xl text-xs font-bold border border-amber-500/30"
+                >
+                  💡 {showHint ? 'Hide Hint' : 'Hint'}
+                </button>
+              )}
+
+              {loadedPositionSolution && (
+                <button
+                  type="button"
+                  onClick={() => setShowSolution(!showSolution)}
+                  className="px-2.5 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-xl text-xs font-bold border border-emerald-500/30"
+                >
+                  🔑 {showSolution ? 'Hide Solution' : 'Solution'}
+                </button>
+              )}
+            </div>
+
+            {(showHint || showSolution) && (
+              <div className="w-full pt-2 border-t border-slate-800 space-y-1">
+                {showHint && loadedPositionHint && (
+                  <div className="p-2 bg-amber-950/40 border border-amber-500/30 text-amber-200 rounded-xl text-xs">
+                    💡 <strong>Hint:</strong> {loadedPositionHint}
+                  </div>
+                )}
+                {showSolution && loadedPositionSolution && (
+                  <div className="p-2 bg-emerald-950/40 border border-emerald-500/30 text-emerald-200 rounded-xl text-xs font-mono">
+                    🔑 <strong>Solution:</strong> {loadedPositionSolution}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Chessboard Wrapper with Evaluation Bar */}
         <div className="flex gap-3 items-stretch w-full justify-center" style={{ maxWidth: `${boardSize + (engineActive ? 32 : 0)}px` }}>
           {/* Evaluation Bar */}
@@ -1373,7 +1515,7 @@ export default function ChessWorkspace({
             )}
 
             {/* Lock Banner Overlay for Students */}
-            {!isCoach && isBoardLocked && (
+            {!isCoach && isBoardLocked && !isSpotlightedUser && (
               <div className="absolute inset-0 bg-slate-950/20 backdrop-blur-[0.5px] flex items-center justify-center z-10 pointer-events-none">
                 <div className="bg-slate-900/95 border border-slate-700/80 rounded-2xl px-4 py-2.5 flex items-center gap-2 shadow-2xl pointer-events-auto">
                   <span className="text-red-400 text-sm">🔒</span>

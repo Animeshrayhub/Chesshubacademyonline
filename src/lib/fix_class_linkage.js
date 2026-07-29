@@ -22,7 +22,7 @@ async function run() {
     const { data: coachUser } = await supabase
       .from('users')
       .select('id')
-      .eq('email', 'coach@chesshub.com')
+      .eq('email', 'coach.alex@chesshub.com')
       .single();
       
     const { data: coachProfile } = await supabase
