@@ -9,8 +9,10 @@ export interface DbHomeworkPuzzle {
   fen: string;
   solution: string[];
   theme: string;
-  difficulty: 'beginner' | 'intermediate' | 'advanced' | 'expert' | 'master';
+  difficulty: 'pre_beginner' | 'beginner' | 'intermediate' | 'advanced' | 'expert' | 'master';
   rating: number;
+  track?: string | null;
+  chapter_id?: string | null;
   hint_1?: string | null;
   hint_2?: string | null;
   hint_3?: string | null;
@@ -26,6 +28,8 @@ export interface DbHomeworkPuzzle {
 export interface PuzzleBankFilter {
   theme?: string;
   difficulty?: string;
+  track?: string;
+  chapterId?: string;
   minRating?: number;
   maxRating?: number;
   search?: string;
@@ -38,8 +42,10 @@ export interface CreatePuzzleBankInput {
   fen: string;
   solution: string[];
   theme?: string;
-  difficulty?: 'beginner' | 'intermediate' | 'advanced' | 'expert' | 'master';
+  difficulty?: 'pre_beginner' | 'beginner' | 'intermediate' | 'advanced' | 'expert' | 'master';
   rating?: number;
+  track?: string;
+  chapterId?: string;
   hint1?: string;
   hint2?: string;
   hint3?: string;
@@ -47,6 +53,21 @@ export interface CreatePuzzleBankInput {
   source?: string;
   sourceId?: string;
   createdBy?: string;
+}
+
+export interface UpdatePuzzleBankInput {
+  title?: string;
+  fen?: string;
+  solution?: string[];
+  theme?: string;
+  difficulty?: 'pre_beginner' | 'beginner' | 'intermediate' | 'advanced' | 'expert' | 'master';
+  rating?: number;
+  track?: string;
+  chapterId?: string;
+  hint1?: string;
+  hint2?: string;
+  hint3?: string;
+  explanation?: string;
 }
 
 const CUSTOM_PUZZLES_FILE = path.join(process.cwd(), 'src', 'data', 'custom_puzzles.json');
@@ -138,6 +159,10 @@ export async function getPuzzleBank(
 
     if (filters.difficulty && filters.difficulty !== 'ALL') {
       query = query.eq('difficulty', filters.difficulty.toLowerCase());
+    }
+
+    if (filters.track && filters.track !== 'ALL') {
+      query = query.eq('track', filters.track.toLowerCase());
     }
 
     if (filters.minRating !== undefined) {
@@ -234,6 +259,8 @@ export async function createPuzzleBankEntry(
     theme: data.theme || 'tactics',
     difficulty: data.difficulty || 'intermediate',
     rating: data.rating || 1500,
+    track: data.track || 'beginner',
+    chapter_id: data.chapterId || null,
     hint_1: data.hint1 || null,
     hint_2: data.hint2 || null,
     hint_3: data.hint3 || null,
@@ -262,6 +289,8 @@ export async function createPuzzleBankEntry(
         theme: data.theme || 'tactics',
         difficulty: data.difficulty || 'intermediate',
         rating: data.rating || 1500,
+        track: data.track || 'beginner',
+        chapter_id: data.chapterId || null,
         hint_1: data.hint1 || null,
         hint_2: data.hint2 || null,
         hint_3: data.hint3 || null,
@@ -298,6 +327,8 @@ export async function bulkImportPuzzleBankEntries(
     theme: p.theme || 'tactics',
     difficulty: p.difficulty || 'intermediate',
     rating: p.rating || 1500,
+    track: p.track || 'beginner',
+    chapter_id: p.chapterId || null,
     hint_1: p.hint1 || null,
     hint_2: p.hint2 || null,
     hint_3: p.hint3 || null,
@@ -314,6 +345,89 @@ export async function bulkImportPuzzleBankEntries(
   inMemoryPuzzles = [...newPuzzles, ...inMemoryPuzzles];
 
   return { success: true, data: { insertedCount: puzzles.length } };
+}
+
+/**
+ * Updates an existing puzzle's metadata in disk storage and Supabase.
+ */
+export async function updatePuzzleBankEntry(
+  id: string,
+  data: UpdatePuzzleBankInput
+): Promise<Result<DbHomeworkPuzzle>> {
+  // Update disk JSON store first
+  const diskPuzzles = loadCustomPuzzlesFromDisk();
+  const updatedDiskPuzzles = diskPuzzles.map((p) => {
+    if (p.id !== id) return p;
+    return {
+      ...p,
+      title: data.title ?? p.title,
+      fen: data.fen ?? p.fen,
+      solution: data.solution ?? p.solution,
+      theme: data.theme ?? p.theme,
+      difficulty: data.difficulty ?? p.difficulty,
+      rating: data.rating ?? p.rating,
+      track: data.track ?? p.track,
+      chapter_id: data.chapterId !== undefined ? data.chapterId : p.chapter_id,
+      hint_1: data.hint1 !== undefined ? data.hint1 : p.hint_1,
+      hint_2: data.hint2 !== undefined ? data.hint2 : p.hint_2,
+      hint_3: data.hint3 !== undefined ? data.hint3 : p.hint_3,
+      explanation: data.explanation !== undefined ? data.explanation : p.explanation,
+      updated_at: new Date().toISOString(),
+    };
+  });
+  saveCustomPuzzlesToDisk(updatedDiskPuzzles);
+
+  // Update in-memory fallback
+  inMemoryPuzzles = inMemoryPuzzles.map((p) => {
+    if (p.id !== id) return p;
+    return {
+      ...p,
+      title: data.title ?? p.title,
+      fen: data.fen ?? p.fen,
+      solution: data.solution ?? p.solution,
+      theme: data.theme ?? p.theme,
+      difficulty: data.difficulty ?? p.difficulty,
+      rating: data.rating ?? p.rating,
+      track: data.track ?? p.track,
+      chapter_id: data.chapterId !== undefined ? data.chapterId : p.chapter_id,
+      hint_1: data.hint1 !== undefined ? data.hint1 : p.hint_1,
+      updated_at: new Date().toISOString(),
+    };
+  });
+
+  const updatedLocal = updatedDiskPuzzles.find((p) => p.id === id) || inMemoryPuzzles.find((p) => p.id === id);
+
+  try {
+    const admin = createSupabaseAdmin();
+    const dbPatch: Record<string, any> = {};
+    if (data.title !== undefined) dbPatch.title = data.title;
+    if (data.fen !== undefined) dbPatch.fen = data.fen;
+    if (data.solution !== undefined) dbPatch.solution = data.solution;
+    if (data.theme !== undefined) dbPatch.theme = data.theme;
+    if (data.difficulty !== undefined) dbPatch.difficulty = data.difficulty;
+    if (data.rating !== undefined) dbPatch.rating = data.rating;
+    if (data.track !== undefined) dbPatch.track = data.track;
+    if (data.chapterId !== undefined) dbPatch.chapter_id = data.chapterId;
+    if (data.hint1 !== undefined) dbPatch.hint_1 = data.hint1;
+    if (data.hint2 !== undefined) dbPatch.hint_2 = data.hint2;
+    if (data.hint3 !== undefined) dbPatch.hint_3 = data.hint3;
+    if (data.explanation !== undefined) dbPatch.explanation = data.explanation;
+
+    const { data: updated, error } = await admin
+      .from('homework_puzzles')
+      .update(dbPatch)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (!error && updated) {
+      return { success: true, data: updated as DbHomeworkPuzzle };
+    }
+  } catch (e) {
+    console.warn('[updatePuzzleBankEntry] DB notice (persisted to disk):', e);
+  }
+
+  return { success: true, data: updatedLocal! };
 }
 
 /**

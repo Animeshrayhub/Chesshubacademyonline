@@ -98,17 +98,20 @@ export default function DailyStreakWidget({
           )}
         </div>
         {!solved ? (
-          <button
-            type="button"
+          <a
+            href="/dashboard/student/puzzles"
             onClick={handleClaimDailyPuzzle}
             className="px-4 py-2 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-950 font-bold text-xs rounded-xl transition-all shadow-md active:scale-95 flex items-center gap-1.5"
           >
             <span>🧩 Solve Puzzle</span>
-          </button>
+          </a>
         ) : (
-          <span className="text-[11px] bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 px-3 py-1 rounded-xl font-bold">
-            Completed Today
-          </span>
+          <a
+            href="/dashboard/student/puzzles"
+            className="text-[11px] bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 px-3 py-1 rounded-xl font-bold hover:bg-emerald-500/30 transition-colors"
+          >
+            ✓ Solve More Puzzles
+          </a>
         )}
       </div>
     </div>

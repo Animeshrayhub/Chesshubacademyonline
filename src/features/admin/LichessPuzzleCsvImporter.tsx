@@ -4,14 +4,16 @@ import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { Chess } from 'chess.js';
 import type { PuzzleData } from '@/lib/puzzles/types';
+import { bulkImportPuzzlesAction } from '@/actions/puzzles';
 
 const ChessboardComponent = dynamic(
   () =>
     import('react-chessboard').then((mod) => {
       const CB = mod.Chessboard;
       return function BoardWrapper(props: any) {
-        const boardProps = props.options ? { ...props.options, ...props } : props;
-        return <CB {...boardProps} />;
+        const { options, ...rest } = props;
+        const finalProps = options ? { ...options, ...rest } : rest;
+        return <CB {...finalProps} />;
       };
     }),
   { ssr: false }
@@ -35,6 +37,11 @@ export default function LichessPuzzleCsvImporter({ onImportComplete }: LichessPu
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [filterTheme, setFilterTheme] = useState('ALL');
+  const [minRatingFilter, setMinRatingFilter] = useState<number>(400);
+  const [maxRatingFilter, setMaxRatingFilter] = useState<number>(3000);
+  const [targetTrack, setTargetTrack] = useState<string>('beginner');
+  const [targetChapter, setTargetChapter] = useState<string>('Chapter 1: Foundations');
+  const [isSavingToDb, setIsSavingToDb] = useState(false);
   const [activeBoardPreviewId, setActiveBoardPreviewId] = useState<string | null>(null);
 
   // Load existing stored custom puzzles from localStorage
@@ -291,11 +298,46 @@ export default function LichessPuzzleCsvImporter({ onImportComplete }: LichessPu
     }
   };
 
-  // Filter list by selected theme
+  // Filter list by selected theme and rating range
   const filteredList = importedPuzzles.filter((p) => {
+    const matchesRating = p.rating >= minRatingFilter && p.rating <= maxRatingFilter;
+    if (!matchesRating) return false;
     if (filterTheme === 'ALL') return true;
     return p.themes.some((t) => t.toLowerCase() === filterTheme.toLowerCase());
   });
+
+  const handleBulkSaveToDb = async () => {
+    if (filteredList.length === 0) {
+      setError('No matching puzzles to save in current filter.');
+      return;
+    }
+
+    setIsSavingToDb(true);
+    setError('');
+    setSuccessMsg('');
+
+    const formattedPayload = filteredList.map((p, idx) => ({
+      title: `Puzzle #${p.id} (${p.themes[0] || 'tactics'})`,
+      fen: p.initialFen,
+      solution: p.solution,
+      theme: p.themes.join(' '),
+      difficulty: (p.difficulty.toLowerCase().replace(/\s+/g, '_') as any) || 'beginner',
+      rating: p.rating,
+      track: targetTrack,
+      chapterId: targetChapter.trim() || undefined,
+      source: 'lichess_csv',
+      sourceId: p.id,
+    }));
+
+    const res = await bulkImportPuzzlesAction(formattedPayload);
+    setIsSavingToDb(false);
+
+    if (res.success) {
+      setSuccessMsg(`🎉 Successfully saved ${res.insertedCount} puzzles to Track "${targetTrack.toUpperCase()}" -> Chapter "${targetChapter}" in Database & Disk Backup!`);
+    } else {
+      setError(res.error || 'Failed to save bulk puzzles to database.');
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -377,14 +419,101 @@ export default function LichessPuzzleCsvImporter({ onImportComplete }: LichessPu
 
       {/* Catalog & Theme Filter View */}
       {importedPuzzles.length > 0 && (
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-5 shadow-xl">
+          {/* Track & Chapter Assignment Control Panel */}
+          <div className="bg-slate-950 border border-amber-500/30 p-4 rounded-2xl space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-extrabold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                <span>🎯 Target Track & Chapter Auto-Assignment</span>
+              </h4>
+              <span className="text-[11px] font-bold text-slate-400">
+                Matching Current Filters: <b className="text-amber-300 font-mono text-xs">{filteredList.length} Puzzles</b>
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">Target Track</label>
+                <select
+                  value={targetTrack}
+                  onChange={(e) => setTargetTrack(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 text-white text-xs font-bold rounded-xl p-2.5 focus:outline-none focus:border-amber-400"
+                >
+                  <option value="pre_beginner">🌱 Pre-Beginner (400-800 ELO)</option>
+                  <option value="beginner">☘️ Beginner (800-1200 ELO)</option>
+                  <option value="intermediate">🔥 Intermediate (1200-1600 ELO)</option>
+                  <option value="advanced">⚡ Advanced (1600-2000 ELO)</option>
+                  <option value="master">👑 Master (2000+ ELO)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">Target Chapter</label>
+                <input
+                  type="text"
+                  value={targetChapter}
+                  onChange={(e) => setTargetChapter(e.target.value)}
+                  placeholder="e.g. Chapter 2: Checkmate in 1"
+                  className="w-full bg-slate-900 border border-slate-800 text-white text-xs rounded-xl p-2.5 focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  onClick={handleBulkSaveToDb}
+                  disabled={isSavingToDb || filteredList.length === 0}
+                  className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-extrabold text-xs rounded-xl shadow-gold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                >
+                  {isSavingToDb ? (
+                    <>
+                      <span className="animate-spin text-sm">⏳</span>
+                      <span>Saving to Chapter...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>💾 Save Filtered ({filteredList.length}) to Chapter</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Filter Bar: Min/Max Rating & Theme Tags */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-800 pb-3">
             <div>
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <span>📚 Imported Puzzle Catalog ({importedPuzzles.length} Total)</span>
+                <span>📚 Catalog Filters ({filteredList.length} / {importedPuzzles.length})</span>
               </h3>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Rating Range Inputs */}
+              <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+                <span className="text-[10px] font-bold text-slate-400 px-1">Rating:</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={3500}
+                  step={50}
+                  value={minRatingFilter}
+                  onChange={(e) => setMinRatingFilter(Number(e.target.value))}
+                  className="w-16 bg-slate-900 border border-slate-800 rounded-lg p-1 text-center text-xs font-mono font-bold text-amber-300 focus:outline-none"
+                  title="Min Rating Filter"
+                />
+                <span className="text-slate-500 text-xs">-</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={3500}
+                  step={50}
+                  value={maxRatingFilter}
+                  onChange={(e) => setMaxRatingFilter(Number(e.target.value))}
+                  className="w-16 bg-slate-900 border border-slate-800 rounded-lg p-1 text-center text-xs font-mono font-bold text-amber-300 focus:outline-none"
+                  title="Max Rating Filter"
+                />
+              </div>
+
               <select
                 value={filterTheme}
                 onChange={(e) => setFilterTheme(e.target.value)}
@@ -408,7 +537,7 @@ export default function LichessPuzzleCsvImporter({ onImportComplete }: LichessPu
                 onClick={clearAllPuzzles}
                 className="px-3 py-1.5 bg-red-950/60 hover:bg-red-900 text-red-300 text-xs font-bold rounded-xl border border-red-800/40 transition-colors"
               >
-                Clear Catalog
+                Clear
               </button>
             </div>
           </div>
@@ -440,11 +569,11 @@ export default function LichessPuzzleCsvImporter({ onImportComplete }: LichessPu
                   {isBoardVisible && (
                     <div className="w-full aspect-square bg-slate-900 border-2 border-slate-800 rounded-xl overflow-hidden shadow-inner my-2">
                       <ChessboardComponent
-                        options={{
-                          position: puzzle.initialFen,
-                          boardOrientation: puzzle.playerToMove === 'black' ? 'black' : 'white',
-                          arePiecesDraggable: false,
-                        }}
+                        position={puzzle.initialFen}
+                        boardOrientation={puzzle.playerToMove === 'black' ? 'black' : 'white'}
+                        arePiecesDraggable={false}
+                        customDarkSquareStyle={{ backgroundColor: '#334155' }}
+                        customLightSquareStyle={{ backgroundColor: '#94A3B8' }}
                       />
                     </div>
                   )}

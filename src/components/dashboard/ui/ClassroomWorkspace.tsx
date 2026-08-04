@@ -10,6 +10,7 @@ import Button from '@/components/ui/Button';
 import ChessWorkspace from './ChessWorkspace';
 import ClassroomRecorder from '@/components/dashboard/ui/ClassroomRecorder';
 import ClassroomLessonDrawer from '@/features/classroom/ClassroomLessonDrawer';
+import ClassroomDatabasePanel from '@/components/dashboard/ui/ClassroomDatabasePanel';
 import type { TeachingPosition } from '@/types/curriculum.types';
 
 import { endClassAction, startClassAction, submitClassEndReportAction, saveLiveClassRecordingAction } from '@/actions/classes';
@@ -196,7 +197,7 @@ export default function ClassroomWorkspace({
   const [panelPlacements, setPanelPlacements] = useState<Record<string, string[]>>({
     left: ['participants'],
     center: ['chessboard'],
-    right: ['zoom', 'chat', 'homework', 'notes'],
+    right: ['zoom', 'database', 'chat', 'homework', 'notes'],
     bottom: [],
   });
 
@@ -299,7 +300,7 @@ export default function ClassroomWorkspace({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatUnread, setChatUnread] = useState(0);
-  const [activePanelTab, setActivePanelTab] = useState<'chat' | 'homework' | 'notes'>('chat');
+  const [activePanelTab, setActivePanelTab] = useState<'chat' | 'homework' | 'notes' | 'database'>('chat');
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   // Fetch chat history
@@ -1214,6 +1215,38 @@ export default function ClassroomWorkspace({
                 <p className="text-slate-400 mt-1">Please go to your student dashboard to solve the homework puzzles for this chapter.</p>
               </div>
             )}
+          </div>
+        );
+
+      case 'database':
+        return (
+          <div key={panelId} className="h-full">
+            <ClassroomDatabasePanel
+              onLoadFen={(fen, title) => {
+                const channel = supabase.channel(`classroom-board:${classId}`);
+                channel.send({
+                  type: 'broadcast',
+                  event: 'load-position',
+                  payload: {
+                    fen,
+                    title: title || 'Database Position',
+                    locked: false,
+                  },
+                });
+              }}
+              onLoadPgn={(pgn, title) => {
+                const channel = supabase.channel(`classroom-board:${classId}`);
+                channel.send({
+                  type: 'broadcast',
+                  event: 'load-position',
+                  payload: {
+                    pgn,
+                    title: title || 'Master Game PGN',
+                    locked: false,
+                  },
+                });
+              }}
+            />
           </div>
         );
 

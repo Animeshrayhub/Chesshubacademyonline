@@ -18,8 +18,8 @@ function fixGoogleDriveUrl(url?: string): string {
 
 /**
  * Fetches public coaches list dynamically from Supabase database.
- * Filters out archived/disabled users and Arjun Mehta mock records.
- * Merges with static fallbacks if DB contains fewer than 4 coaches.
+ * Filters out archived/disabled users and test records.
+ * Merges with static fallbacks to guarantee 4 unique certified coaches.
  */
 export async function getPublicCoachesList(): Promise<Coach[]> {
   try {
@@ -34,12 +34,19 @@ export async function getPublicCoachesList(): Promise<Coach[]> {
       .is('archived_at', null);
 
     if (users && users.length > 0) {
-      const filteredUsers = users.filter(
-        (u: any) =>
-          !u.first_name?.toLowerCase().includes('arjun') &&
-          !u.last_name?.toLowerCase().includes('mehta') &&
-          u.email !== 'coach@chesshub.com'
-      );
+      const filteredUsers = users.filter((u: any) => {
+        const fn = u.first_name?.toLowerCase() || '';
+        const ln = u.last_name?.toLowerCase() || '';
+        const em = u.email?.toLowerCase() || '';
+
+        // Exclude test/demo accounts
+        if (fn.includes('arjun') && ln.includes('mehta')) return false;
+        if (em === 'coach@chesshub.com' || em === 'coach.alex@chesshub.com') return false;
+        if (fn === 'coach' && ln === 'alex') return false;
+        if (fn.includes('test') || ln.includes('test')) return false;
+
+        return true;
+      });
 
       if (filteredUsers.length > 0) {
         const userIds = filteredUsers.map((u: any) => u.id);
@@ -64,7 +71,7 @@ export async function getPublicCoachesList(): Promise<Coach[]> {
             try {
               const parsed = JSON.parse(p.bio);
               textBio = parsed.text || textBio;
-              if (parsed.fideId) fideIdStr = String(parsed.fideId);
+              if (parsed.fideId) fideIdStr = String(parsed.fideId).trim();
               if (parsed.fideRating) fideRatingNum = Number(parsed.fideRating);
               if (parsed.country) countryStr = parsed.country;
             } catch {
@@ -72,35 +79,58 @@ export async function getPublicCoachesList(): Promise<Coach[]> {
             }
           }
 
-          const photo = fixGoogleDriveUrl(p?.photo_url) || '/coaches/animesh-ray.jpg';
+          const fullName = `${u.first_name} ${u.last_name}`.trim();
+          const nameLower = fullName.toLowerCase();
+
+          // Match static fallback to get appropriate default photo if photo_url is missing
+          const matchedStatic = COACHES.find((c) => {
+            const staticName = c.name.toLowerCase();
+            return (
+              staticName === nameLower ||
+              (u.last_name && u.last_name.length > 2 && staticName.includes(u.last_name.toLowerCase()))
+            );
+          });
+
+          const defaultPhoto = matchedStatic?.imageUrl || '/coaches/animesh-ray.jpg';
+          const photo = fixGoogleDriveUrl(p?.photo_url) || defaultPhoto;
 
           return {
             id: u.id,
-            name: `${u.first_name} ${u.last_name}`,
-            title: p?.title || 'FIDE Certified Coach',
-            fideRating: fideRatingNum,
-            fideId: fideIdStr,
-            specialization: 'Tactical Fundamentals & Tournament Preparation',
-            experience: p?.experience_years ? `${p.experience_years}+ Years Experience` : 'Certified FIDE Trainer',
-            students: 120,
+            name: fullName,
+            title: p?.title || matchedStatic?.title || 'FIDE Certified Coach',
+            fideRating: fideRatingNum || matchedStatic?.fideRating,
+            fideId: fideIdStr || matchedStatic?.fideId,
+            specialization: matchedStatic?.specialization || 'Tactical Fundamentals & Tournament Preparation',
+            experience: p?.experience_years ? `${p.experience_years}+ Years Experience` : matchedStatic?.experience || 'Certified FIDE Trainer',
+            students: matchedStatic?.students || 120,
             country: countryStr,
             flag: countryStr.toLowerCase() === 'india' ? '🇮🇳' : '🌐',
             imageUrl: photo,
-            bio: textBio,
-            achievements: [
+            bio: textBio || matchedStatic?.bio || '',
+            achievements: matchedStatic?.achievements || [
               p?.title || 'FIDE Certified Coach',
               fideRatingNum ? `FIDE Rating: ${fideRatingNum}` : fideIdStr ? `FIDE ID: ${fideIdStr}` : 'Official Instructor',
               `Languages: ${p?.languages?.join(', ') || 'English, Hindi'}`,
             ],
-            languages: p?.languages || ['English', 'Hindi'],
+            languages: p?.languages || matchedStatic?.languages || ['English', 'Hindi'],
             coachingMode: 'Online • 1-on-1 • Group Classes',
           };
         });
 
         if (dbCoaches.length > 0) {
-          const dbNames = new Set(dbCoaches.map((c) => c.name.toLowerCase()));
-          const fallbackRemaining = COACHES.filter((c) => !dbNames.has(c.name.toLowerCase()));
-          return [...dbCoaches, ...fallbackRemaining];
+          // Normalize names for deduplication
+          const getBaseName = (n: string) => n.toLowerCase().replace(/^(coach|fide|gm)\s+/i, '').trim();
+          const dbNames = new Set(dbCoaches.map((c) => getBaseName(c.name)));
+
+          const fallbackRemaining = COACHES.filter((c) => {
+            const baseCName = getBaseName(c.name);
+            for (const existing of dbNames) {
+              if (existing.includes(baseCName) || baseCName.includes(existing)) return false;
+            }
+            return true;
+          });
+
+          return [...dbCoaches, ...fallbackRemaining].slice(0, 4);
         }
       }
     }
@@ -110,3 +140,4 @@ export async function getPublicCoachesList(): Promise<Coach[]> {
 
   return COACHES;
 }
+

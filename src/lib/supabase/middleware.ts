@@ -4,6 +4,7 @@ import { env } from '../env';
 
 /**
  * Updates and refreshes the Supabase user auth session in Next.js middleware.
+ * Returns the response along with the authenticated user object to eliminate duplicate auth fetches.
  */
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({
@@ -45,8 +46,8 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  // Attempt to fetch user. If it fails, try to refresh using setSession.
-  const { data: { user }, error } = await supabase.auth.getUser();
+  // Fetch user session once
+  let { data: { user }, error } = await supabase.auth.getUser();
 
   if ((error || !user) && refreshToken) {
     try {
@@ -57,6 +58,8 @@ export async function updateSession(request: NextRequest) {
       });
 
       if (!refreshError && refreshData.session) {
+        user = refreshData.user;
+        error = null;
         const session = refreshData.session;
         const serializedCookie = JSON.stringify([
           session.access_token,
@@ -65,7 +68,7 @@ export async function updateSession(request: NextRequest) {
           null
         ]);
 
-        // Update cookie in the request headers so downstream handlers see it
+        // Update cookie in request headers
         request.cookies.set(cookieName, serializedCookie);
         
         response = NextResponse.next({
@@ -74,7 +77,7 @@ export async function updateSession(request: NextRequest) {
           },
         });
 
-        // Set the cookie on the response so the browser stores it
+        // Set cookie on response
         response.cookies.set(cookieName, serializedCookie, {
           path: '/',
           secure: process.env.NODE_ENV === 'production',
@@ -87,5 +90,5 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
-  return response;
+  return { response, user, error, supabase, accessToken };
 }

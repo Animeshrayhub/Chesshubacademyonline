@@ -11,20 +11,36 @@ export function sanitizeFen(rawFen: string): string {
   if (!rawFen || !rawFen.trim()) return DEFAULT_START_FEN;
   let cleaned = rawFen.trim();
 
-  // Strip PGN header tags or quotes if pasted [FEN "8/8/..."]
-  if (cleaned.includes('[FEN') || cleaned.includes('"')) {
-    const match = cleaned.match(/"([^"]+)"/);
-    if (match && match[1]) {
-      cleaned = match[1].trim();
+  // 1. Strip PGN header tags e.g. [Event "..."], [FEN "..."], or quotes
+  if (cleaned.includes('[') || cleaned.includes(']')) {
+    const fenMatch = cleaned.match(/\[FEN\s+"([^"]+)"\]/i);
+    if (fenMatch && fenMatch[1]) {
+      cleaned = fenMatch[1].trim();
     } else {
-      cleaned = cleaned.replace(/\[FEN\s+/i, '').replace(/\]/g, '').replace(/"/g, '').trim();
+      cleaned = cleaned.replace(/\[[^\]]*\]/g, '').replace(/"/g, '').trim();
+    }
+  }
+
+  // Remove non-FEN prefix if present before rank slashes (e.g. Event8/8/...)
+  const slashIdx = cleaned.indexOf('/');
+  if (slashIdx > 0) {
+    const firstSpaceBeforeSlash = cleaned.lastIndexOf(' ', slashIdx);
+    if (firstSpaceBeforeSlash !== -1) {
+      cleaned = cleaned.slice(firstSpaceBeforeSlash + 1);
+    } else {
+      // Find where rank structure starts
+      const match = cleaned.match(/[rnbqkpRNBQKP1-8\/]+/);
+      if (match && match[0].includes('/')) {
+        const remaining = cleaned.slice(cleaned.indexOf(match[0]) + match[0].length);
+        cleaned = `${match[0]}${remaining}`;
+      }
     }
   }
 
   const parts = cleaned.split(/\s+/);
   let placement = parts[0] || '';
 
-  // 1. Ensure exactly 8 ranks separated by slashes
+  // 2. Ensure exactly 8 ranks separated by slashes
   if (placement.includes('/')) {
     const ranks = placement.split('/');
     while (ranks.length < 8) {
@@ -38,7 +54,7 @@ export function sanitizeFen(rawFen: string): string {
     placement = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
   }
 
-  // 2. Ensure presence of Black King (k) and White King (K) for chess.js compatibility
+  // 3. Ensure presence of Black King (k) and White King (K) for chess.js compatibility
   const ranks = placement.split('/');
 
   // Insert Black King on rank 8 (index 0) if missing
@@ -67,12 +83,16 @@ export function sanitizeFen(rawFen: string): string {
 
   placement = ranks.join('/');
 
-  // 3. Ensure valid turn, castling, en passant, halfmove, fullmove
+  // 4. Ensure valid turn, castling, en passant, halfmove, fullmove (prevent NaN)
   const turn = parts[1] === 'b' ? 'b' : 'w';
-  const castling = parts[2] && parts[2] !== '' ? parts[2] : '-';
-  const enPassant = parts[3] && parts[3] !== '' ? parts[3] : '-';
-  const halfMove = parts[4] || '0';
-  const fullMove = parts[5] || '1';
+  const castling = parts[2] && parts[2] !== '' && /^[KQkq-]+$/.test(parts[2]) ? parts[2] : '-';
+  const enPassant = parts[3] && /^[a-h][36]$/.test(parts[3]) ? parts[3] : '-';
+
+  const parsedHalf = parseInt(parts[4] || '0', 10);
+  const halfMove = isNaN(parsedHalf) ? '0' : parsedHalf.toString();
+
+  const parsedFull = parseInt(parts[5] || '1', 10);
+  const fullMove = isNaN(parsedFull) ? '1' : parsedFull.toString();
 
   const sanitized = `${placement} ${turn} ${castling} ${enPassant} ${halfMove} ${fullMove}`;
 
@@ -100,26 +120,55 @@ export interface ParsedPgnResult {
 
 /**
  * Parses PGN strings containing FEN tags and variation lines like `1. Rd4 (1. Ra4) *`.
- * Separates main line moves from variations and returns sanitized FEN and clean PGN.
+ * Separates main line moves from variations and returns sanitized FEN, UCI moves, and clean PGN.
  */
-export function parsePgnWithVariations(pgnText: string): ParsedPgnResult {
+export function parsePgnWithVariations(pgnText: string): ParsedPgnResult & { uciMoves: string[] } {
   if (!pgnText || !pgnText.trim()) {
     return {
       success: false,
       fen: DEFAULT_START_FEN,
       mainMoves: [],
+      uciMoves: [],
       variations: [],
       cleanPgn: '',
       error: 'Empty PGN text provided',
     };
   }
 
+  const trimmed = pgnText.trim();
+
+  // Check if input is a PGN containing move numbers or PGN headers
+  const isPgnWithMoves =
+    trimmed.includes('[Event') ||
+    trimmed.includes('[FEN') ||
+    /\b1\.\s*/.test(trimmed) ||
+    /\b1\.\.\.\s*/.test(trimmed);
+
+  // If NOT a PGN with explicit move markers, treat purely as a FEN position (0 moves)
+  if (!isPgnWithMoves) {
+    const sanitizedFen = sanitizeFen(trimmed);
+    return {
+      success: true,
+      fen: sanitizedFen,
+      mainMoves: [],
+      uciMoves: [],
+      variations: [],
+      cleanPgn: `[Event "ChessHub Game"]\n[FEN "${sanitizedFen}"]\n\n`,
+    };
+  }
+
   let rawFen = DEFAULT_START_FEN;
 
   // Extract FEN tag if present in header [FEN "..."]
-  const fenMatch = pgnText.match(/\[FEN\s+"([^"]+)"\]/i);
+  const fenMatch = trimmed.match(/\[FEN\s+"([^"]+)"\]/i);
   if (fenMatch && fenMatch[1]) {
     rawFen = fenMatch[1];
+  } else {
+    // Check if first line is a FEN tag or FEN string before moves
+    const firstLine = trimmed.split('\n')[0].trim();
+    if (firstLine.includes('/') && firstLine.split(/\s+/).length >= 2) {
+      rawFen = firstLine;
+    }
   }
 
   const sanitizedFen = sanitizeFen(rawFen);
@@ -129,36 +178,66 @@ export function parsePgnWithVariations(pgnText: string): ParsedPgnResult {
   const variationRegex = /\(([^)]+)\)/g;
   let varMatch;
 
-  while ((varMatch = variationRegex.exec(pgnText)) !== null) {
+  while ((varMatch = variationRegex.exec(trimmed)) !== null) {
     const varText = varMatch[1].trim();
     if (varText) {
       variations.push(varText);
     }
   }
 
-  // Strip variations, PGN headers, outcome markers (*, 1-0, 0-1, 1/2-1/2) to get clean move line
-  let moveBody = pgnText
+  // Strip variations, PGN headers, outcome markers (*, 1-0, 0-1, 1/2-1/2), and raw FEN line from moveBody
+  let moveBody = trimmed
     .replace(/\[[^\]]+\]/g, '') // remove header tags
     .replace(/\([^)]+\)/g, '')  // remove variations
     .replace(/\{[^}]+\}/g, '')  // remove comments
     .replace(/\$\d+/g, '')       // remove NAGs
-    .replace(/1-0|0-1|1\/2-1\/2|\*/g, '') // remove result markers
-    .trim();
+    .replace(/1-0|0-1|1\/2-1\/2|\*/g, ''); // remove result markers
 
-  // Extract moves
-  const mainMoves = moveBody
+  // If first line was a FEN string, strip it from moveBody so FEN parts aren't parsed as moves
+  if (rawFen !== DEFAULT_START_FEN && moveBody.includes(rawFen.trim())) {
+    moveBody = moveBody.replace(rawFen.trim(), '');
+  }
+
+  moveBody = moveBody.trim();
+
+  // Extract candidate move tokens
+  const candidateTokens = moveBody
     .replace(/\d+\.+/g, ' ') // remove move numbers like 1. or 1...
     .trim()
     .split(/\s+/)
     .filter(Boolean);
 
+  const mainMoves: string[] = [];
+  const uciMoves: string[] = [];
+
+  // Try playing candidate moves using Chess.js from sanitizedFen
+  try {
+    const chess = new Chess(sanitizedFen);
+    for (const token of candidateTokens) {
+      // Ignore non-move tokens or FEN parts if present
+      if (token === 'w' || token === 'b' || token === '-' || token === '0' || token === '1') continue;
+      try {
+        const mv = chess.move(token);
+        if (mv) {
+          mainMoves.push(mv.san); // SAN notation e.g. e4, Nf3, Qh4#
+          uciMoves.push(`${mv.from}${mv.to}${mv.promotion || ''}`);
+        }
+      } catch {
+        // Skip invalid move token
+      }
+    }
+  } catch {
+    // FEN playback fallback
+  }
+
   // Build clean playable PGN
-  const cleanPgn = `[Event "ChessHub Game"]\n[FEN "${sanitizedFen}"]\n\n${moveBody}`;
+  const cleanPgn = `[Event "ChessHub Game"]\n[FEN "${sanitizedFen}"]\n\n${mainMoves.join(' ')}`;
 
   return {
     success: true,
     fen: sanitizedFen,
     mainMoves,
+    uciMoves,
     variations,
     cleanPgn,
   };

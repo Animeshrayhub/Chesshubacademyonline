@@ -47,12 +47,11 @@ export function useAuth(): UseAuthReturn {
         return;
       }
 
-      // Navigate to role-specific dashboard
+      // Navigate to role-specific dashboard instantly
       const destination = await getDashboardRoute(result.user.role);
-      router.push(destination);
+      window.location.href = destination;
     } catch {
       setErrors({ general: 'An unexpected error occurred. Please try again.' });
-    } finally {
       setLoading(false);
     }
   };
