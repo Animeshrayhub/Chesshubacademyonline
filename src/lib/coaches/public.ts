@@ -118,14 +118,24 @@ export async function getPublicCoachesList(): Promise<Coach[]> {
         });
 
         if (dbCoaches.length > 0) {
-          // Normalize names for deduplication
-          const getBaseName = (n: string) => n.toLowerCase().replace(/^(coach|fide|gm)\s+/i, '').trim();
-          const dbNames = new Set(dbCoaches.map((c) => getBaseName(c.name)));
+          // Robust token-based deduplication
+          const isSimilarName = (nameA: string, nameB: string): boolean => {
+            const cleanA = nameA.toLowerCase().replace(/[^a-z]/g, ' ');
+            const cleanB = nameB.toLowerCase().replace(/[^a-z]/g, ' ');
+            const tokensA = cleanA.split(/\s+/).filter((t) => t.length > 2 && t !== 'coach' && t !== 'fide' && t !== 'gm');
+            const tokensB = cleanB.split(/\s+/).filter((t) => t.length > 2 && t !== 'coach' && t !== 'fide' && t !== 'gm');
 
-          const fallbackRemaining = COACHES.filter((c) => {
-            const baseCName = getBaseName(c.name);
-            for (const existing of dbNames) {
-              if (existing.includes(baseCName) || baseCName.includes(existing)) return false;
+            // Matches if first name and last name tokens overlap (e.g. manoj + rai)
+            const common = tokensA.filter((t) => tokensB.includes(t));
+            return (
+              common.length >= 2 ||
+              (common.length >= 1 && (tokensA.includes('manoj') || tokensA.includes('animesh') || tokensA.includes('ayush') || tokensA.includes('pradipta')))
+            );
+          };
+
+          const fallbackRemaining = COACHES.filter((staticCoach) => {
+            for (const dbCoach of dbCoaches) {
+              if (isSimilarName(dbCoach.name, staticCoach.name)) return false;
             }
             return true;
           });

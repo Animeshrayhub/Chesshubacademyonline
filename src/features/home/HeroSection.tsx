@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import Image from 'next/image';
+import HeroPuzzleWidget from './HeroPuzzleWidget';
 
 export default function HeroSection() {
   return (
@@ -82,65 +83,44 @@ export default function HeroSection() {
             </div>
           </div>
 
-          {/* Right: Premium Image Composition */}
-          <div className="relative hidden lg:block" aria-hidden="true">
-            {/* Main image */}
-            <div className="relative rounded-3xl overflow-hidden shadow-2xl border border-white/10">
-              <Image
-                src="https://images.unsplash.com/photo-1529699211952-734e80c4d42b?w=700&h=800&fit=crop&q=85"
-                alt="Chess coaching session with student and grandmaster coach studying a wooden chess board"
-                width={700}
-                height={800}
-                className="w-full h-[560px] object-cover"
-                priority
-                sizes="(max-width: 1024px) 100vw, 50vw"
-              />
-              {/* Gradient overlay on image */}
-              <div className="absolute inset-0 bg-gradient-to-t from-surface-dark/40 via-transparent to-transparent" />
-            </div>
+          {/* Right: Interactive Playable Puzzle Arena */}
+          <div className="relative w-full">
+            {/* Interactive Puzzle Widget */}
+            <HeroPuzzleWidget />
 
             {/* Achievement badge — floating */}
-            <div className="absolute -top-6 -right-6 animate-float">
-              <div className="bg-white rounded-2xl p-4 shadow-2xl flex items-center gap-3 min-w-[180px]">
-                <div className="w-12 h-12 rounded-xl bg-accent/15 flex items-center justify-center flex-shrink-0">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <div className="absolute -top-6 -right-2 sm:-right-6 animate-float z-10 hidden sm:block pointer-events-none">
+              <div className="bg-white/95 backdrop-blur-md rounded-2xl p-3.5 shadow-2xl flex items-center gap-3 border border-white/40">
+                <div className="w-10 h-10 rounded-xl bg-accent/15 flex items-center justify-center flex-shrink-0">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                     <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z" fill="#D4AF37" />
                   </svg>
                 </div>
                 <div>
-                  <div className="text-xs text-text-secondary font-medium">Top Rated</div>
-                  <div className="font-bold text-text-primary text-sm">5.0 ★ Academy</div>
+                  <div className="text-[10px] text-text-secondary font-medium uppercase tracking-wider">Top Rated</div>
+                  <div className="font-bold text-text-primary text-xs sm:text-sm">5.0 ★ Academy</div>
                 </div>
               </div>
             </div>
 
             {/* Students count chip */}
-            <div className="absolute -bottom-6 -left-6">
-              <div className="bg-primary rounded-2xl px-5 py-4 shadow-blue flex items-center gap-3">
+            <div className="absolute -bottom-6 -left-2 sm:-left-6 z-10 hidden sm:block pointer-events-none">
+              <div className="bg-primary/90 backdrop-blur-md rounded-2xl px-4 py-3 shadow-blue flex items-center gap-3 border border-white/15">
                 <div className="flex -space-x-2">
                   {[
                     'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=40&h=40&fit=crop&q=80',
                     'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=40&h=40&fit=crop&q=80',
                     'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=40&h=40&fit=crop&q=80',
                   ].map((src, i) => (
-                    <div key={i} className="w-8 h-8 rounded-full border-2 border-primary overflow-hidden">
-                      <Image src={src} alt="" width={32} height={32} className="object-cover" />
+                    <div key={i} className="w-7 h-7 rounded-full border-2 border-primary overflow-hidden">
+                      <Image src={src} alt="" width={28} height={28} className="object-cover" />
                     </div>
                   ))}
                 </div>
                 <div>
-                  <div className="text-white font-bold text-sm">500+ Students</div>
-                  <div className="text-white/60 text-xs">from 20+ countries</div>
+                  <div className="text-white font-bold text-xs sm:text-sm">500+ Students</div>
+                  <div className="text-white/60 text-[10px]">from 20+ countries</div>
                 </div>
-              </div>
-            </div>
-
-            {/* Certified badge */}
-            <div className="absolute top-1/2 -right-4 -translate-y-1/2">
-              <div className="bg-surface-dark/90 backdrop-blur-sm border border-white/20 rounded-xl p-3 text-center">
-                <div className="text-accent text-2xl font-bold font-heading">GM</div>
-                <div className="text-white text-xs mt-1 whitespace-nowrap">FIDE Rated</div>
-                <div className="text-white/50 text-xs">Coaches</div>
               </div>
             </div>
           </div>
