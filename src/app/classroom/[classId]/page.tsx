@@ -161,7 +161,7 @@ export default async function ClassroomPage({ params }: { params: { classId: str
 
     if (!cls.zoom_join_url) {
       const safeId = params.classId.replace(/[^a-zA-Z0-9]/g, '');
-      const defaultServer = process.env.NEXT_PUBLIC_JITSI_SERVER || 'https://meet.ffmuc.net';
+      const defaultServer = process.env.NEXT_PUBLIC_JITSI_SERVER || 'https://meet.jit.si';
       cls.zoom_join_url = `${defaultServer}/ChessHub_Class_${safeId}`;
       cls.zoom_start_url = cls.zoom_join_url;
     }

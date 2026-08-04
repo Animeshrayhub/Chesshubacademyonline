@@ -213,7 +213,7 @@ export async function createClass(data: CreateClassInput): Promise<Result<DbClas
       data.zoomJoinUrl || data.customUrl
     );
 
-    const defaultServer = process.env.NEXT_PUBLIC_JITSI_SERVER || 'https://meet.ffmuc.net';
+    const defaultServer = process.env.NEXT_PUBLIC_JITSI_SERVER || 'https://meet.jit.si';
     const videoData = videoRes.data || {
       meetingId: `jitsi_class`,
       joinUrl: `${defaultServer}/ChessHub_Class_temp`,
@@ -317,7 +317,7 @@ export async function updateClass(id: string, data: UpdateClassInput): Promise<R
     if (data.videoProvider) {
       const safeId = id.replace(/[^a-zA-Z0-9]/g, '');
       if (data.videoProvider === 'JITSI') {
-        const defaultServer = process.env.NEXT_PUBLIC_JITSI_SERVER || 'https://meet.ffmuc.net';
+        const defaultServer = process.env.NEXT_PUBLIC_JITSI_SERVER || 'https://meet.jit.si';
         const jitsiUrl = `${defaultServer}/ChessHub_Class_${safeId}`;
         updates.zoom_join_url = jitsiUrl;
         updates.zoom_start_url = jitsiUrl;

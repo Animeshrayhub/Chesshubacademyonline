@@ -926,12 +926,13 @@ export default function ClassroomWorkspace({
 
         const meetingNumber = getMeetingNumberFromUrl(zoomJoinUrl);
         const passcode = getPasscodeFromJoinUrl(zoomJoinUrl);
-        const defaultServer = process.env.NEXT_PUBLIC_JITSI_SERVER || 'https://meet.ffmuc.net';
+        const defaultServer = (process.env.NEXT_PUBLIC_JITSI_SERVER || 'https://meet.jit.si').replace('meet.ffmuc.net', 'meet.jit.si');
         const cleanClassId = classId.replace(/[^a-zA-Z0-9]/g, '');
         const deterministicRoomName = `ChessHub_Class_${cleanClassId}`;
 
         // Standardized Jitsi resolution: forces Coach, Student, and Admin into the EXACT SAME room
-        const isJitsi = !zoomJoinUrl || zoomJoinUrl.includes('jit.si') || zoomJoinUrl.includes('ffmuc.net') || zoomJoinUrl.toLowerCase().includes('jitsi');
+        const activeUrl = zoomJoinUrl ? zoomJoinUrl.replace('meet.ffmuc.net', 'meet.jit.si') : '';
+        const isJitsi = !activeUrl || activeUrl.includes('jit.si') || activeUrl.includes('ffmuc.net') || activeUrl.toLowerCase().includes('jitsi');
 
         const hashConfig = `#config.prejoinPageEnabled=false&config.startWithAudioMuted=false&config.startWithVideoMuted=false&config.requireDisplayName=false&config.disableDeepLinking=true&userInfo.displayName="${encodeURIComponent(userName)}"`;
         const jitsiEmbedUrl = `${defaultServer}/${deterministicRoomName}${hashConfig}`;
