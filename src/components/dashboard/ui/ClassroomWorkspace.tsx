@@ -899,15 +899,78 @@ export default function ClassroomWorkspace({
 
       case 'chessboard':
         return (
-          <div key={panelId} className="h-full flex items-center justify-center">
-            <ChessWorkspace
-              classId={classId}
-              userRole={role}
-              showEngine={isCoach}
-              spotlightedStudentId={spotlightedStudentId}
-              spotlightedStudentName={spotlightedStudentName}
-              userId={userId}
-            />
+          <div key={panelId} className="h-full flex flex-col">
+            {/* ── Puzzle Stepper Toolbar ─────────────────────────────── */}
+            {activeLessonPositions.length > 1 && (
+              <div className="flex items-center gap-1 px-3 py-2 bg-slate-900 border-b border-slate-800 select-none">
+                <button
+                  type="button"
+                  title="First puzzle"
+                  onClick={() => handleStepPosition(0)}
+                  disabled={activePositionIndex === 0}
+                  className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 transition-all"
+                >
+                  |◀
+                </button>
+                <button
+                  type="button"
+                  title="Previous puzzle"
+                  onClick={() => handleStepPosition(activePositionIndex - 1)}
+                  disabled={activePositionIndex === 0}
+                  className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 transition-all"
+                >
+                  ◀ Prev
+                </button>
+
+                <div className="flex-1 flex items-center justify-center gap-2 overflow-hidden">
+                  <span className="text-[10px] font-bold text-amber-400 truncate max-w-[160px]">
+                    {activePosition?.title || `Position ${activePositionIndex + 1}`}
+                  </span>
+                  <span className="text-[10px] text-slate-500 shrink-0">
+                    {activePositionIndex + 1} / {activeLessonPositions.length}
+                  </span>
+                  {activePosition?.difficulty && (
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold border shrink-0 ${
+                      activePosition.difficulty === 'Beginner' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
+                      activePosition.difficulty === 'Advanced' ? 'bg-red-500/20 text-red-300 border-red-500/30' :
+                      'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                    }`}>
+                      {activePosition.difficulty}
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  title="Next puzzle"
+                  onClick={() => handleStepPosition(activePositionIndex + 1)}
+                  disabled={activePositionIndex >= activeLessonPositions.length - 1}
+                  className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 transition-all"
+                >
+                  Next ▶
+                </button>
+                <button
+                  type="button"
+                  title="Last puzzle"
+                  onClick={() => handleStepPosition(activeLessonPositions.length - 1)}
+                  disabled={activePositionIndex >= activeLessonPositions.length - 1}
+                  className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 transition-all"
+                >
+                  ▶|
+                </button>
+              </div>
+            )}
+
+            <div className="flex-1 flex items-center justify-center">
+              <ChessWorkspace
+                classId={classId}
+                userRole={role}
+                showEngine={isCoach}
+                spotlightedStudentId={spotlightedStudentId}
+                spotlightedStudentName={spotlightedStudentName}
+                userId={userId}
+              />
+            </div>
           </div>
         );
 
@@ -1669,8 +1732,12 @@ export default function ClassroomWorkspace({
       {/* Curriculum Lesson Drawer Modal */}
       <ClassroomLessonDrawer
         isOpen={showLessonDrawer}
+        isCoach={isCoach}
         onClose={() => setShowLessonDrawer(false)}
         onSelectPosition={handleSelectPosition}
+        onPushPosition={(pos) => {
+          handleSelectPosition(pos, activeLessonPositions.length > 0 ? activeLessonPositions : [pos], 0);
+        }}
       />
     </div>
   );
