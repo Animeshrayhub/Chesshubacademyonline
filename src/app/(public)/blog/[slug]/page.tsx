@@ -6,21 +6,18 @@ import Container from '@/components/ui/Container';
 import Badge from '@/components/ui/Badge';
 import JsonLd from '@/components/seo/JsonLd';
 import BookDemoCTASection from '@/features/home/BookDemoCTASection';
-import { BLOG_POSTS } from '@/constants/BLOG_POSTS';
+import { getBlogPostBySlug, getPublicBlogPosts } from '@/lib/blog/service';
 import { SITE_URL, SITE_OG_IMAGE } from '@/constants/SITE';
 import { formatDate } from '@/utils/formatDate';
 import BlogChessboard from '@/components/ui/BlogChessboard';
+import SafeImage from '@/components/ui/SafeImage';
 
 interface Props {
   params: { slug: string };
 }
 
-export function generateStaticParams() {
-  return BLOG_POSTS.map((post) => ({ slug: post.slug }));
-}
-
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const post = BLOG_POSTS.find((p) => p.slug === params.slug);
+  const post = await getBlogPostBySlug(params.slug);
   if (!post) return { title: 'Post Not Found' };
 
   return {
@@ -45,11 +42,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default function BlogPostPage({ params }: Props) {
-  const post = BLOG_POSTS.find((p) => p.slug === params.slug);
+export default async function BlogPostPage({ params }: Props) {
+  const post = await getBlogPostBySlug(params.slug);
   if (!post) notFound();
 
-  const related = BLOG_POSTS.filter(
+  const allPosts = await getPublicBlogPosts();
+  const related = allPosts.filter(
     (p) => p.id !== post.id && p.category === post.category
   ).slice(0, 3);
 
@@ -96,13 +94,12 @@ export default function BlogPostPage({ params }: Props) {
             </h1>
             <p className="text-white/60 text-xl mb-8 leading-relaxed">{post.excerpt}</p>
             <div className="flex items-center justify-center gap-4">
-              <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-white/20">
-                <Image
+              <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white/30 shadow-md bg-white/10 flex-shrink-0">
+                <SafeImage
                   src={post.authorImageUrl}
                   alt={post.author}
-                  fill
-                  className="object-cover"
-                  sizes="48px"
+                  fallbackSrc="/coaches/animesh-ray.jpg"
+                  className="w-full h-full object-cover"
                 />
               </div>
               <div className="text-left">
@@ -116,16 +113,13 @@ export default function BlogPostPage({ params }: Props) {
         </Container>
 
         {/* Cover image */}
-        <div className="relative h-72 lg:h-[480px] w-full overflow-hidden">
-          <Image
+        <div className="relative w-full max-w-5xl mx-auto h-72 lg:h-[480px] rounded-3xl overflow-hidden shadow-2xl border border-white/20 bg-slate-900 mb-8">
+          <SafeImage
             src={post.imageUrl}
             alt={post.title}
-            fill
-            className="object-cover opacity-70"
-            sizes="100vw"
-            priority
+            fallbackSrc="https://images.unsplash.com/photo-1529699211952-734e80c4d42b?w=800&h=500&fit=crop&q=85"
+            className="w-full h-full object-cover"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-surface-dark via-surface-dark/20 to-transparent" />
         </div>
       </section>
 
@@ -214,13 +208,12 @@ export default function BlogPostPage({ params }: Props) {
               <div className="card-premium p-6 mb-6 sticky top-24">
                 <h3 className="font-heading font-bold text-text-primary mb-4">About the Author</h3>
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="relative w-14 h-14 rounded-full overflow-hidden flex-shrink-0">
-                    <Image
+                  <div className="w-14 h-14 rounded-full overflow-hidden flex-shrink-0 border border-border shadow-sm">
+                    <SafeImage
                       src={post.authorImageUrl}
                       alt={post.author}
-                      fill
-                      className="object-cover"
-                      sizes="56px"
+                      fallbackSrc="/coaches/animesh-ray.jpg"
+                      className="w-full h-full object-cover"
                     />
                   </div>
                   <div>

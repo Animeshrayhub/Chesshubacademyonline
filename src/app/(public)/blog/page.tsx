@@ -6,10 +6,11 @@ import SectionTitle from '@/components/ui/SectionTitle';
 import Badge from '@/components/ui/Badge';
 import JsonLd from '@/components/seo/JsonLd';
 import NewsletterForm from '@/components/ui/NewsletterForm';
-import { BLOG_POSTS } from '@/constants/BLOG_POSTS';
+import SafeImage from '@/components/ui/SafeImage';
+import { getPublicBlogPosts } from '@/lib/blog/service';
 import { SITE_URL, SITE_OG_IMAGE } from '@/constants/SITE';
 import { formatDate } from '@/utils/formatDate';
-import type { BlogCategory } from '@/types';
+import type { BlogCategory, BlogPost } from '@/types';
 
 export const metadata: Metadata = {
   title: 'Blog',
@@ -33,9 +34,10 @@ const CATEGORIES: BlogCategory[] = [
   'Chess Strategy',
 ];
 
-export default function BlogPage() {
-  const featured = BLOG_POSTS.find((p) => p.featured);
-  const others = BLOG_POSTS.filter((p) => !p.featured);
+export default async function BlogPage() {
+  const posts: BlogPost[] = await getPublicBlogPosts();
+  const featured = posts.find((p) => p.featured) || posts[0];
+  const others = featured ? posts.filter((p) => p.id !== featured.id) : posts;
 
   const blogSchema = {
     '@context': 'https://schema.org',
@@ -77,13 +79,11 @@ export default function BlogPage() {
               </div>
               <Link href={`/blog/${featured.slug}`} className="group block">
                 <article className="grid grid-cols-1 lg:grid-cols-2 gap-0 rounded-3xl overflow-hidden border border-border shadow-card hover:shadow-card-hover transition-shadow duration-300">
-                  <div className="relative h-72 lg:h-auto overflow-hidden">
-                    <Image
+                  <div className="relative h-72 lg:h-full min-h-[300px] overflow-hidden bg-slate-900">
+                    <SafeImage
                       src={featured.imageUrl}
                       alt={featured.title}
-                      fill
-                      className="object-cover transition-transform duration-300 group-hover:scale-105"
-                      sizes="(max-width: 1024px) 100vw, 50vw"
+                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                     />
                   </div>
                   <div className="p-8 lg:p-10 flex flex-col justify-center">
@@ -95,13 +95,12 @@ export default function BlogPage() {
                     </h2>
                     <p className="text-text-secondary leading-relaxed mb-6">{featured.excerpt}</p>
                     <div className="flex items-center gap-4 pt-6 border-t border-border">
-                      <div className="relative w-10 h-10 rounded-full overflow-hidden">
-                        <Image
+                      <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border border-border shadow-sm">
+                        <SafeImage
                           src={featured.authorImageUrl}
                           alt={featured.author}
-                          fill
-                          className="object-cover"
-                          sizes="40px"
+                          fallbackSrc="/coaches/animesh-ray.jpg"
+                          className="w-full h-full object-cover"
                         />
                       </div>
                       <div>
@@ -124,7 +123,7 @@ export default function BlogPage() {
           )}
 
           {/* Empty state when no blog posts exist */}
-          {BLOG_POSTS.length === 0 ? (
+          {posts.length === 0 ? (
             <div className="py-20 text-center max-w-md mx-auto">
               <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-5 text-3xl">
                 📝
@@ -165,13 +164,11 @@ export default function BlogPage() {
                 {others.map((post) => (
                   <Link key={post.id} href={`/blog/${post.slug}`} className="group block">
                     <article className="card-premium overflow-hidden h-full flex flex-col">
-                      <div className="relative h-52 overflow-hidden">
-                        <Image
+                      <div className="relative h-52 overflow-hidden bg-slate-900">
+                        <SafeImage
                           src={post.imageUrl}
                           alt={post.title}
-                          fill
-                          className="object-cover transition-transform duration-300 group-hover:scale-105"
-                          sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                         />
                       </div>
                       <div className="p-6 flex flex-col flex-1">
@@ -185,13 +182,12 @@ export default function BlogPage() {
                           {post.excerpt}
                         </p>
                         <div className="flex items-center gap-3 pt-4 border-t border-border">
-                          <div className="relative w-8 h-8 rounded-full overflow-hidden">
-                            <Image
+                          <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 border border-border shadow-sm">
+                            <SafeImage
                               src={post.authorImageUrl}
                               alt={post.author}
-                              fill
-                              className="object-cover"
-                              sizes="32px"
+                              fallbackSrc="/coaches/animesh-ray.jpg"
+                              className="w-full h-full object-cover"
                             />
                           </div>
                           <div className="flex-1 min-w-0">
