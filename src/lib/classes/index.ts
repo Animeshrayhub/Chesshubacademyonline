@@ -236,27 +236,11 @@ export async function createClass(data: CreateClassInput): Promise<Result<DbClas
       zoom_start_url: finalStartUrl,
     };
 
-    if (data.recordingUrl) {
-      insertPayload.recording_url = data.recordingUrl;
-    }
-
-    let { data: inserted, error } = await admin
+    const { data: inserted, error } = await admin
       .from('classes')
       .insert(insertPayload)
       .select()
       .single();
-
-    // Fallback if recording_url column doesn't exist in DB schema
-    if (error && (error.message?.includes('recording_url') || error.code === 'PGRST204')) {
-      delete insertPayload.recording_url;
-      const retry = await admin
-        .from('classes')
-        .insert(insertPayload)
-        .select()
-        .single();
-      inserted = retry.data;
-      error = retry.error;
-    }
 
     if (error || !inserted) {
       return { success: false, error: new DatabaseError('Failed to create class in database', error) };
@@ -348,7 +332,6 @@ export async function updateClass(id: string, data: UpdateClassInput): Promise<R
 
     if (data.zoomJoinUrl !== undefined) updates.zoom_join_url = data.zoomJoinUrl;
     if (data.zoomStartUrl !== undefined) updates.zoom_start_url = data.zoomStartUrl;
-    if (data.recordingUrl !== undefined) updates.recording_url = data.recordingUrl;
 
     if (data.coachUserId !== undefined) {
       const { data: coachProfile } = await admin
@@ -364,25 +347,12 @@ export async function updateClass(id: string, data: UpdateClassInput): Promise<R
     }
 
     // Update class details
-    let { data: updated, error } = await admin
+    const { data: updated, error } = await admin
       .from('classes')
       .update(updates)
       .eq('id', id)
       .select()
       .single();
-
-    // Fallback if recording_url column is missing
-    if (error && (error.message?.includes('recording_url') || error.code === 'PGRST204')) {
-      delete updates.recording_url;
-      const retry = await admin
-        .from('classes')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-      updated = retry.data;
-      error = retry.error;
-    }
 
     if (error || !updated) {
       return { success: false, error: new DatabaseError('Failed to update class', error) };
