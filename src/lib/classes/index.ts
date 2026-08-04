@@ -225,24 +225,56 @@ export async function createClass(data: CreateClassInput): Promise<Result<DbClas
     const finalStartUrl = data.zoomStartUrl || videoData.startUrl;
 
     // Insert class with meeting details
-    const { data: inserted, error } = await admin
+    const insertPayload: Record<string, unknown> = {
+      coach_id: coachProfile.id,
+      scheduled_start: data.scheduledStart,
+      duration_minutes: data.durationMinutes,
+      class_type: data.classType,
+      status: data.status ?? 'SCHEDULED',
+      zoom_meeting_id: videoData.meetingId,
+      zoom_join_url: finalJoinUrl,
+      zoom_start_url: finalStartUrl,
+    };
+
+    if (data.recordingUrl) {
+      insertPayload.recording_url = data.recordingUrl;
+    }
+
+    let { data: inserted, error } = await admin
       .from('classes')
-      .insert({
-        coach_id: coachProfile.id,
-        scheduled_start: data.scheduledStart,
-        duration_minutes: data.durationMinutes,
-        class_type: data.classType,
-        status: data.status ?? 'SCHEDULED',
-        zoom_meeting_id: videoData.meetingId,
-        zoom_join_url: finalJoinUrl,
-        zoom_start_url: finalStartUrl,
-        recording_url: data.recordingUrl || null,
-      })
+      .insert(insertPayload)
       .select()
       .single();
 
+    // Fallback if recording_url column doesn't exist in DB schema
+    if (error && (error.message?.includes('recording_url') || error.code === 'PGRST204')) {
+      delete insertPayload.recording_url;
+      const retry = await admin
+        .from('classes')
+        .insert(insertPayload)
+        .select()
+        .single();
+      inserted = retry.data;
+      error = retry.error;
+    }
+
     if (error || !inserted) {
       return { success: false, error: new DatabaseError('Failed to create class in database', error) };
+    }
+
+    // Save recording in class_recordings table if provided
+    if (data.recordingUrl && inserted?.id) {
+      try {
+        await admin.from('class_recordings').insert({
+          class_id: inserted.id,
+          recording_url: data.recordingUrl,
+          recording_source: data.recordingUrl.includes('drive.google.com') ? 'GOOGLE_DRIVE' : 'CUSTOM',
+          recorded_date: new Date(data.scheduledStart).toISOString().split('T')[0],
+          duration_seconds: (data.durationMinutes || 60) * 60,
+        });
+      } catch (recErr) {
+        console.warn('[createClass] Could not save recording entry:', recErr);
+      }
     }
 
     let finalClass = inserted;
@@ -332,12 +364,25 @@ export async function updateClass(id: string, data: UpdateClassInput): Promise<R
     }
 
     // Update class details
-    const { data: updated, error } = await admin
+    let { data: updated, error } = await admin
       .from('classes')
       .update(updates)
       .eq('id', id)
       .select()
       .single();
+
+    // Fallback if recording_url column is missing
+    if (error && (error.message?.includes('recording_url') || error.code === 'PGRST204')) {
+      delete updates.recording_url;
+      const retry = await admin
+        .from('classes')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+      updated = retry.data;
+      error = retry.error;
+    }
 
     if (error || !updated) {
       return { success: false, error: new DatabaseError('Failed to update class', error) };
