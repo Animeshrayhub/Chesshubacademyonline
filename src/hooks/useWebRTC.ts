@@ -42,21 +42,50 @@ export function useWebRTC({ classId, userName, userRole }: UseWebRTCOptions) {
   const localStreamRef = useRef<MediaStream | null>(null);
   const channelRef = useRef<any>(null);
 
-  // Initialize local camera and microphone stream
+  // Initialize local camera and microphone stream with fallback for separate track failures
   const initLocalStream = useCallback(async () => {
+    if (typeof window === 'undefined' || !navigator?.mediaDevices?.getUserMedia) return null;
+    if (localStreamRef.current && localStreamRef.current.getTracks().length > 0) {
+      return localStreamRef.current;
+    }
+
+    let stream: MediaStream | null = null;
     try {
-      if (typeof window === 'undefined' || !navigator?.mediaDevices?.getUserMedia) return;
-      const stream = await navigator.mediaDevices.getUserMedia({
+      stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { max: 30 } },
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
+    } catch (err) {
+      console.warn('Joint audio/video request failed, attempting separate track acquisition:', err);
+      stream = new MediaStream();
+
+      // Separate audio acquisition
+      try {
+        const audioStream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true },
+        });
+        audioStream.getAudioTracks().forEach((t) => stream!.addTrack(t));
+      } catch (audioErr) {
+        console.warn('Audio device access failed:', audioErr);
+      }
+
+      // Separate video acquisition
+      try {
+        const videoStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 360 } },
+        });
+        videoStream.getVideoTracks().forEach((t) => stream!.addTrack(t));
+      } catch (videoErr) {
+        console.warn('Video device access failed:', videoErr);
+      }
+    }
+
+    if (stream && stream.getTracks().length > 0) {
       localStreamRef.current = stream;
       setLocalStream(stream);
       return stream;
-    } catch (err) {
-      console.warn('Failed to access camera/mic for WebRTC:', err);
-      return null;
     }
+    return null;
   }, []);
 
   // Create peer connection to another participant
@@ -277,23 +306,36 @@ export function useWebRTC({ classId, userName, userRole }: UseWebRTCOptions) {
     if (!localStreamRef.current) {
       await initLocalStream();
     }
-    if (!localStreamRef.current) return;
 
     const explicitState = typeof forceState === 'boolean' ? forceState : undefined;
-    const videoTrack = localStreamRef.current.getVideoTracks()[0];
+    let videoTrack = localStreamRef.current?.getVideoTracks()[0];
+
+    if (!videoTrack) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 360 } },
+        });
+        const newTrack = stream.getVideoTracks()[0];
+        if (newTrack) {
+          if (!localStreamRef.current) {
+            localStreamRef.current = new MediaStream();
+            setLocalStream(localStreamRef.current);
+          }
+          localStreamRef.current.addTrack(newTrack);
+          videoTrack = newTrack;
+          Object.values(peerConnectionsRef.current).forEach((pc) => {
+            pc.addTrack(newTrack, localStreamRef.current!);
+          });
+        }
+      } catch (e) {
+        console.warn('Camera access failed:', e);
+      }
+    }
+
     if (videoTrack) {
       const nextEnabled = explicitState !== undefined ? explicitState : !videoTrack.enabled;
       videoTrack.enabled = nextEnabled;
       setIsVideoMuted(!nextEnabled);
-    } else {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        const newTrack = stream.getVideoTracks()[0];
-        if (newTrack && localStreamRef.current) {
-          localStreamRef.current.addTrack(newTrack);
-          setIsVideoMuted(false);
-        }
-      } catch (e) {}
     }
   };
 

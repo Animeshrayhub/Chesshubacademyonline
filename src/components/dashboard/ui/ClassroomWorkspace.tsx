@@ -1153,8 +1153,8 @@ export default function ClassroomWorkspace({
         userRole={role}
         onJoin={({ isAudioMuted, isVideoMuted, bgType: selectedBg, customBgUrl: selectedCustom }) => {
           setShowPreJoinModal(false);
-          if (isAudioMuted !== webRTC.isAudioMuted) webRTC.toggleAudio();
-          if (isVideoMuted !== webRTC.isVideoMuted) webRTC.toggleVideo();
+          webRTC.toggleAudio(!isAudioMuted);
+          webRTC.toggleVideo(!isVideoMuted);
           setBgType(selectedBg);
           if (selectedCustom) setCustomBgUrl(selectedCustom);
         }}

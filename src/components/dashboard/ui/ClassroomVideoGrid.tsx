@@ -59,6 +59,20 @@ function VideoElement({
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
       videoRef.current.play().catch(() => {});
+
+      const handleTrackChange = () => {
+        if (videoRef.current && stream) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(() => {});
+        }
+      };
+
+      stream.addEventListener('addtrack', handleTrackChange);
+      stream.addEventListener('removetrack', handleTrackChange);
+      return () => {
+        stream.removeEventListener('addtrack', handleTrackChange);
+        stream.removeEventListener('removetrack', handleTrackChange);
+      };
     }
   }, [stream]);
 

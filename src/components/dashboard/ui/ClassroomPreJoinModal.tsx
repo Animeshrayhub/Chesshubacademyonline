@@ -29,8 +29,27 @@ export default function ClassroomPreJoinModal({
 
   useEffect(() => {
     if (isOpen) {
-      navigator.mediaDevices?.getUserMedia({ video: true, audio: true })
+      const getResilientStream = async (): Promise<MediaStream | null> => {
+        if (!navigator?.mediaDevices?.getUserMedia) return null;
+        try {
+          return await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        } catch {
+          const fallbackStream = new MediaStream();
+          try {
+            const videoOnly = await navigator.mediaDevices.getUserMedia({ video: true });
+            videoOnly.getVideoTracks().forEach((t) => fallbackStream.addTrack(t));
+          } catch {}
+          try {
+            const audioOnly = await navigator.mediaDevices.getUserMedia({ audio: true });
+            audioOnly.getAudioTracks().forEach((t) => fallbackStream.addTrack(t));
+          } catch {}
+          return fallbackStream.getTracks().length > 0 ? fallbackStream : null;
+        }
+      };
+
+      getResilientStream()
         .then((stream) => {
+          if (!stream) return;
           streamRef.current = stream;
           if (videoRef.current) {
             videoRef.current.srcObject = stream;
