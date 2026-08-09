@@ -13,8 +13,12 @@ export const metadata: Metadata = {
 
 export default async function CoachLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
+  let userName = user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : undefined;
+  if (user && user.firstName && user.lastName && user.firstName.toLowerCase() === user.lastName.toLowerCase()) {
+    userName = user.firstName;
+  }
   const userData = user
-    ? { name: `${user.firstName} ${user.lastName}`, email: user.email }
+    ? { name: userName || 'Coach', email: user.email }
     : undefined;
 
   return (

@@ -3,6 +3,42 @@ import { Chess } from 'chess.js';
 export const DEFAULT_START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 /**
+ * Extracts FEN placement or full FEN string from any PGN text block, headers, or raw input.
+ */
+export function extractFenFromText(text: string): string {
+  if (!text || !text.trim()) return DEFAULT_START_FEN;
+  const trimmed = text.trim();
+
+  // 1. Check for [FEN "xxx"] or [SetUpFen "xxx"] header with any quote style
+  const fenHeaderMatch = trimmed.match(/\[(?:FEN|SetUpFen)\s+["']([^"']+)["']\]/i);
+  if (fenHeaderMatch && fenHeaderMatch[1]) {
+    return fenHeaderMatch[1].trim();
+  }
+
+  // 2. Scan lines for rank slashes (7 slashes = 8 ranks)
+  const lines = trimmed.split('\n');
+  for (const line of lines) {
+    const l = line.trim();
+    if (l.startsWith('[') && !l.toLowerCase().includes('fen')) continue;
+    if (l.startsWith('*') || l.startsWith('1-0') || l.startsWith('0-1')) continue;
+
+    if ((l.match(/\//g) || []).length >= 7) {
+      const cleanLine = l.replace(/^\[(?:FEN|SetUpFen)\s+["']/i, '').replace(/["']\]$/, '').trim();
+      return cleanLine;
+    }
+  }
+
+  // 3. Fallback regex for FEN placement anywhere in string
+  const fenRegex = /(?:[rnbqkpRNBQKP1-8]+\/){7}[rnbqkpRNBQKP1-8]+(?:\s+[wb]\s+[KQkq-]+\s+[a-h36-]+\s+\d+\s+\d+)?/;
+  const match = trimmed.match(fenRegex);
+  if (match && match[0]) {
+    return match[0].trim();
+  }
+
+  return DEFAULT_START_FEN;
+}
+
+/**
  * Universal FEN Sanitizer that guarantees valid, crash-free FEN string.
  * Auto-corrects missing ranks, missing halfmove fields, and auto-inserts
  * White (K) and Black (k) Kings if missing in custom piece setups.

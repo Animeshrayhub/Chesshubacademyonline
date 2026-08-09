@@ -159,6 +159,32 @@ export default async function StudentOverviewPage() {
         subtitle="Access scheduled live interactive classes, daily tactical assignments, and curriculum libraries."
       />
 
+      {/* 🚀 PROMINENT TOP ENTER CLASSROOM HERO BANNER */}
+      <div className="relative overflow-hidden bg-gradient-to-r from-indigo-950 via-slate-900 to-purple-950 rounded-2xl p-6 border-2 border-indigo-500/40 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6 group hover:border-indigo-400 transition-all">
+        <div className="absolute -right-10 -bottom-10 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl group-hover:bg-indigo-500/20 transition-all pointer-events-none" />
+        <div className="space-y-1.5 z-10 text-center md:text-left">
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-extrabold rounded-full tracking-wide uppercase">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <span>Interactive Live Board</span>
+          </div>
+          <h2 className="text-xl md:text-2xl font-black text-white tracking-tight">
+            Ready to Join Your Live Session?
+          </h2>
+          <p className="text-xs md:text-sm text-slate-300 max-w-xl font-medium">
+            Connect directly with your GM/Coach, solve interactive puzzles on the live board, and practice moves in real-time.
+          </p>
+        </div>
+
+        <a
+          href="/dashboard/student/classes"
+          className="z-10 px-6 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white text-sm font-black rounded-xl shadow-lg shadow-emerald-900/50 hover:shadow-emerald-900/80 transform hover:-translate-y-0.5 transition-all flex items-center gap-2.5 whitespace-nowrap uppercase tracking-wider group"
+        >
+          <span className="text-base group-hover:scale-125 transition-transform">📹</span>
+          <span>ENTER CLASSROOM</span>
+          <span className="text-base group-hover:translate-x-1 transition-transform">➔</span>
+        </a>
+      </div>
+
       {/* 📣 Broadcast Announcement Banner (Only rendered if published by Admin) */}
       {activeAnnouncement && (
         <AcademyAnnouncementBanner
@@ -166,6 +192,31 @@ export default async function StudentOverviewPage() {
           message={activeAnnouncement.body}
           date={activeAnnouncement.published_at ? new Date(activeAnnouncement.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : undefined}
         />
+      )}
+
+      {/* 🧩 Pending Homework Action Card */}
+      {stats.activeAssignments > 0 && (
+        <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 rounded-2xl p-4 flex items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-xl font-bold flex-shrink-0">
+              🧩
+            </div>
+            <div>
+              <h3 className="text-sm font-extrabold text-white">
+                {stats.activeAssignments} Pending Tactical Homework Assignment{stats.activeAssignments > 1 ? 's' : ''}
+              </h3>
+              <p className="text-xs text-slate-300 font-medium">
+                Complete your assigned tactics & chapters before your next class session.
+              </p>
+            </div>
+          </div>
+          <a
+            href="/dashboard/student/homework/puzzles"
+            className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl transition-all shadow-md whitespace-nowrap uppercase tracking-wider"
+          >
+            SOLVE NOW ➔
+          </a>
+        </div>
       )}
 
 

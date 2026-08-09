@@ -1,24 +1,123 @@
 [
   {
-    "id": "puz-custom-1785394558897",
-    "title": "mate in 1",
-    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1",
+    "id": "puz-custom-1786222441678",
+    "title": "Fork",
+    "fen": "r2qk2r/p1p2pp1/1p3n1p/4Nb2/1b1P4/6BP/PP2BPP1/R2Q1RK1 w kq - 0 1",
     "solution": [
-      "Ne6#"
+      "Nc6",
+      "Qd7",
+      "Nxb4"
     ],
-    "theme": "mateIn1",
+    "theme": "tactics",
     "difficulty": "beginner",
     "rating": 1000,
     "track": "beginner",
-    "chapter_id": "Mate in 1",
+    "chapter_id": "Custom Studies",
     "hint_1": null,
     "hint_2": null,
     "hint_3": null,
     "explanation": null,
-    "source": "custom",
+    "source": "custom_builder",
     "source_id": null,
     "created_by": null,
     "is_active": true,
-    "created_at": "2026-07-30T06:55:58.897Z"
+    "created_at": "2026-08-08T20:54:01.678Z",
+    "updated_at": "2026-08-08T20:54:18.460Z"
+  },
+  {
+    "id": "puz-custom-1786222422904-0",
+    "title": "PGN Tactical Study",
+    "fen": "r1r5/1p3kpp/1q3n2/5N2/5Q1P/3N2P1/1P3P2/4R1K1 w - - 0 1",
+    "solution": [
+      "Nd6+",
+      "Kg8",
+      "Nxc8"
+    ],
+    "theme": "pgnStudy tactics",
+    "difficulty": "intermediate",
+    "rating": 1500,
+    "track": "beginner",
+    "chapter_id": "PGN Studies",
+    "hint_1": null,
+    "hint_2": null,
+    "hint_3": null,
+    "explanation": "\n[Result \"*\"]\n[FEN \"r1r5/1p3kpp/1q3n2/5N2/5Q1P/3N2P1/1P3P2/4R1K1 w - - 0 1\"]\n\n1. Nd6+ Kg8 2. Nxc8 *",
+    "source": "pgn_import",
+    "source_id": null,
+    "created_by": null,
+    "is_active": true,
+    "created_at": "2026-08-08T20:53:42.904Z"
+  },
+  {
+    "id": "puz-custom-1786217545116",
+    "title": "Fork",
+    "fen": "r1b1kb1r/ppp2pp1/2np2qp/3Np3/2B1P3/3P1N2/PPP2PPP/R2QK2R w KQkq - 0 1",
+    "solution": [
+      "Nxc7+",
+      "Kd8",
+      "Nxa8"
+    ],
+    "theme": "tactics",
+    "difficulty": "beginner",
+    "rating": 1000,
+    "track": "beginner",
+    "chapter_id": "Custom Studies",
+    "hint_1": null,
+    "hint_2": null,
+    "hint_3": null,
+    "explanation": null,
+    "source": "custom_builder",
+    "source_id": null,
+    "created_by": null,
+    "is_active": true,
+    "created_at": "2026-08-08T19:32:25.116Z"
+  },
+  {
+    "id": "puz-custom-1786217480902",
+    "title": "fork with knight",
+    "fen": "r7/4b2p/2p4k/1p6/8/1P2N1P1/2P4K/2R5 w - - 0 1",
+    "solution": [
+      "Nf5+",
+      "Kg5",
+      "Nxe7"
+    ],
+    "theme": "fork",
+    "difficulty": "beginner",
+    "rating": 1000,
+    "track": "beginner",
+    "chapter_id": "Custom Studies",
+    "hint_1": null,
+    "hint_2": null,
+    "hint_3": null,
+    "explanation": null,
+    "source": "custom_builder",
+    "source_id": null,
+    "created_by": null,
+    "is_active": true,
+    "created_at": "2026-08-08T19:31:20.902Z"
+  },
+  {
+    "id": "puz-custom-1786217112377",
+    "title": "Knight fork",
+    "fen": "8/2k5/3N4/8/3q4/8/8/7K w - - 0 1",
+    "solution": [
+      "Nb5+",
+      "Kd8",
+      "Nxd4"
+    ],
+    "theme": "fork",
+    "difficulty": "beginner",
+    "rating": 1000,
+    "track": "beginner",
+    "chapter_id": "Custom Studies",
+    "hint_1": null,
+    "hint_2": null,
+    "hint_3": null,
+    "explanation": null,
+    "source": "custom_builder",
+    "source_id": null,
+    "created_by": null,
+    "is_active": true,
+    "created_at": "2026-08-08T19:25:12.377Z"
   }
 ]

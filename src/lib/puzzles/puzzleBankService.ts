@@ -97,48 +97,21 @@ function saveCustomPuzzlesToDisk(puzzles: DbHomeworkPuzzle[]) {
   }
 }
 
-// Fallback in-memory dataset to ensure zero UI crashes
-let inMemoryPuzzles: DbHomeworkPuzzle[] = [
-  {
-    id: 'puz-fallback-1',
-    title: 'Scholar\'s Mate Threat',
-    fen: 'r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5Q2/PPPP1PPP/RNB1K2R w KQkq - 4 4',
-    solution: ['f3f7#'],
-    theme: 'mate mateIn1 opening',
-    difficulty: 'beginner',
-    rating: 800,
-    hint_1: 'Target the unprotected f7 square!',
-    explanation: 'Scholar\'s mate attacking f7 with queen and bishop.',
-    source: 'lichess',
-    is_active: true,
-  },
-  {
-    id: 'puz-fallback-2',
-    title: 'Back-Rank Checkmate',
-    fen: '6k1/5ppp/8/8/8/8/5PPP/1R4K1 w - - 0 1',
-    solution: ['b1b8#'],
-    theme: 'mate mateIn1 endgame backRank',
-    difficulty: 'beginner',
-    rating: 900,
-    hint_1: 'The enemy king is trapped on the back rank.',
-    explanation: 'Classic back-rank mate with single rook.',
-    source: 'lichess',
-    is_active: true,
-  },
-  {
-    id: 'puz-fallback-3',
-    title: 'Greek Gift Sacrifice',
-    fen: 'r2q1rk1/ppp2ppp/2n5/3p4/3P4/2PB1Q2/P1P2PPP/R4RK1 w - - 0 1',
-    solution: ['d3h7+', 'g8h7', 'f3h5+', 'h7g8'],
-    theme: 'sacrifice attackingKing',
-    difficulty: 'intermediate',
-    rating: 1400,
-    hint_1: 'Sacrifice the bishop on h7 to expose the king.',
-    explanation: 'Greek gift bishop sacrifice opening the h-file.',
-    source: 'lichess',
-    is_active: true,
-  },
-];
+// Fallback in-memory dataset to ensure zero UI crashes (empty for clean slate)
+let inMemoryPuzzles: DbHomeworkPuzzle[] = [];
+
+/**
+ * Completely clears all custom & disk puzzles from Central Puzzle Bank.
+ */
+export async function clearAllPuzzleBankEntries(): Promise<boolean> {
+  inMemoryPuzzles = [];
+  saveCustomPuzzlesToDisk([]);
+  try {
+    const admin = createSupabaseAdmin();
+    await admin.from('homework_puzzles').delete().neq('id', '');
+  } catch {}
+  return true;
+}
 
 /**
  * Retrieves tactical puzzles from central Puzzle Bank database with filtering & search.

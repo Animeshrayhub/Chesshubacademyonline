@@ -57,7 +57,13 @@ export default function Sidebar({ role, navItems }: SidebarProps) {
       {/* Nav List */}
       <nav className="flex-1 overflow-y-auto py-4 px-2.5 space-y-1 scrollbar-none">
         {navItems.map((item) => {
-          const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+          const isBaseDashboard =
+            item.href === '/dashboard/coach' ||
+            item.href === '/dashboard/admin' ||
+            item.href === '/dashboard/student';
+          const isActive = isBaseDashboard
+            ? pathname === item.href
+            : pathname === item.href || pathname.startsWith(item.href + '/');
           return (
             <Link
               key={item.href}

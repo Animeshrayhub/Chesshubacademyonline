@@ -6,16 +6,11 @@ import { Chess } from 'chess.js';
 import type { PuzzleData } from '@/lib/puzzles/types';
 import { bulkImportPuzzlesAction } from '@/actions/puzzles';
 
+import { wrapChessboard } from '@/components/dashboard/ui/ChessboardWrapper';
+
 const ChessboardComponent = dynamic(
   () =>
-    import('react-chessboard').then((mod) => {
-      const CB = mod.Chessboard;
-      return function BoardWrapper(props: any) {
-        const { options, ...rest } = props;
-        const finalProps = options ? { ...options, ...rest } : rest;
-        return <CB {...finalProps} />;
-      };
-    }),
+    import('react-chessboard').then((mod) => wrapChessboard(mod.Chessboard)),
   { ssr: false }
 ) as any;
 

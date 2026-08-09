@@ -99,37 +99,44 @@ export default function ClassAttendanceTracker({
                       <span
                         className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                           isPresent
-                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                            : 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                            : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
                         }`}
                       >
                         {isPresent ? '🟢 Present' : '🔴 Absent'}
                       </span>
                     </h4>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      {st.email}
-                      {st.firstJoinedAt && (
-                        <span className="text-slate-500 text-[10px] ml-2">
-                          (Joined: {new Date(st.firstJoinedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
-                        </span>
-                      )}
-                    </p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">{st.email}</p>
                   </div>
                 </div>
 
                 {isCoach && (
-                  <button
-                    type="button"
-                    disabled={isLoadingThis}
-                    onClick={() => handleToggleAttendance(st.studentProfileId, isPresent)}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer disabled:opacity-50 ${
-                      isPresent
-                        ? 'bg-slate-800 hover:bg-rose-950/40 text-slate-300 hover:text-rose-400 border border-slate-700 hover:border-rose-800'
-                        : 'bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black'
-                    }`}
-                  >
-                    {isLoadingThis ? 'Updating...' : isPresent ? 'Mark Absent' : '✓ Mark Present'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={isLoadingThis}
+                      onClick={() => handleToggleAttendance(st.studentProfileId, false)}
+                      className={`px-3 py-1 rounded-xl text-xs font-bold transition-all border ${
+                        isPresent
+                          ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                      }`}
+                    >
+                      🟢 Present
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isLoadingThis}
+                      onClick={() => handleToggleAttendance(st.studentProfileId, true)}
+                      className={`px-3 py-1 rounded-xl text-xs font-bold transition-all border ${
+                        !isPresent
+                          ? 'bg-rose-600 text-white border-rose-500 shadow-sm'
+                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                      }`}
+                    >
+                      🔴 Absent
+                    </button>
+                  </div>
                 )}
               </div>
             );

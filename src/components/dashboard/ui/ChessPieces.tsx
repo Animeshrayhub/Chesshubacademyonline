@@ -18,7 +18,7 @@ const pieceUrls: Record<string, string> = {
 
 // Create a component for each piece
 const makePiece = (code: string) => {
-  const Component = (props?: { svgStyle?: React.CSSProperties }) => (
+  const Component = (props: any) => (
     <img
       src={pieceUrls[code]}
       alt={code}
@@ -27,7 +27,7 @@ const makePiece = (code: string) => {
         height: '100%',
         objectFit: 'contain',
         filter: 'drop-shadow(0px 2.5px 2px rgba(0, 0, 0, 0.45))',
-        ...props?.svgStyle,
+        ...(props?.svgStyle || {}),
       }}
       draggable={false}
     />

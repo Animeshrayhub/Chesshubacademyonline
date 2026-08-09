@@ -1,0 +1,2546 @@
+<testsuites id="" name="" tests="78" failures="1" skipped="0" errors="75" time="33.772839">
+<testsuite name="01-login.spec.ts" timestamp="2026-08-06T15:57:54.423Z" hostname="iPhone" tests="7" failures="0" skipped="0" time="0.043" errors="7">
+<testcase name="Section 4: Login Tests › ✓ Admin Login" classname="01-login.spec.ts" time="0.009">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\01-login-Section-4-Login-Tests-✓-Admin-Login-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\01-login-Section-4-Login-Tests-✓-Admin-Login-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 01-login.spec.ts:9:7 › Section 4: Login Tests › ✓ Admin Login ─────────────────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\01-login-Section-4-Login-Tests-✓-Admin-Login-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\01-login-Section-4-Login-Tests-✓-Admin-Login-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\01-login-Section-4-Login-Tests-✓-Admin-Login-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 4: Login Tests › ✓ Coach Login" classname="01-login.spec.ts" time="0.005">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\01-login-Section-4-Login-Tests-✓-Coach-Login-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\01-login-Section-4-Login-Tests-✓-Coach-Login-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 01-login.spec.ts:14:7 › Section 4: Login Tests › ✓ Coach Login ────────────────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\01-login-Section-4-Login-Tests-✓-Coach-Login-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\01-login-Section-4-Login-Tests-✓-Coach-Login-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\01-login-Section-4-Login-Tests-✓-Coach-Login-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 4: Login Tests › ✓ Student Login" classname="01-login.spec.ts" time="0.007">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\01-login-Section-4-Login-Tests-✓-Student-Login-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\01-login-Section-4-Login-Tests-✓-Student-Login-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 01-login.spec.ts:19:7 › Section 4: Login Tests › ✓ Student Login ──────────────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\01-login-Section-4-Login-Tests-✓-Student-Login-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\01-login-Section-4-Login-Tests-✓-Student-Login-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\01-login-Section-4-Login-Tests-✓-Student-Login-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 4: Login Tests › ✓ Invalid Password" classname="01-login.spec.ts" time="0.004">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\01-login-Section-4-Login-Tests-✓-Invalid-Password-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\01-login-Section-4-Login-Tests-✓-Invalid-Password-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 01-login.spec.ts:24:7 › Section 4: Login Tests › ✓ Invalid Password ───────────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\01-login-Section-4-Login-Tests-✓-Invalid-Password-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\01-login-Section-4-Login-Tests-✓-Invalid-Password-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\01-login-Section-4-Login-Tests-✓-Invalid-Password-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 4: Login Tests › ✓ Empty Fields" classname="01-login.spec.ts" time="0.005">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\01-login-Section-4-Login-Tests-✓-Empty-Fields-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\01-login-Section-4-Login-Tests-✓-Empty-Fields-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 01-login.spec.ts:29:7 › Section 4: Login Tests › ✓ Empty Fields ───────────────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\01-login-Section-4-Login-Tests-✓-Empty-Fields-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\01-login-Section-4-Login-Tests-✓-Empty-Fields-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\01-login-Section-4-Login-Tests-✓-Empty-Fields-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 4: Login Tests › ✓ Logout" classname="01-login.spec.ts" time="0.007">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\01-login-Section-4-Login-Tests-✓-Logout-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\01-login-Section-4-Login-Tests-✓-Logout-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 01-login.spec.ts:34:7 › Section 4: Login Tests › ✓ Logout ─────────────────────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\01-login-Section-4-Login-Tests-✓-Logout-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\01-login-Section-4-Login-Tests-✓-Logout-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\01-login-Section-4-Login-Tests-✓-Logout-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 4: Login Tests › ✓ Session Expiry / Protected Route Redirect" classname="01-login.spec.ts" time="0.006">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\01-login-Section-4-Login-T-cb418-ry-Protected-Route-Redirect-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\01-login-Section-4-Login-T-cb418-ry-Protected-Route-Redirect-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 01-login.spec.ts:40:7 › Section 4: Login Tests › ✓ Session Expiry / Protected Route Redirect 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\01-login-Section-4-Login-T-cb418-ry-Protected-Route-Redirect-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\01-login-Section-4-Login-T-cb418-ry-Protected-Route-Redirect-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\01-login-Section-4-Login-T-cb418-ry-Protected-Route-Redirect-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+</testsuite>
+<testsuite name="02-book-demo.spec.ts" timestamp="2026-08-06T15:57:54.423Z" hostname="iPhone" tests="6" failures="0" skipped="0" time="0.029" errors="6">
+<testcase name="Section 5: Book Demo Tests › ✓ Form Opens" classname="02-book-demo.spec.ts" time="0.003">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\02-book-demo-Section-5-Book-Demo-Tests-✓-Form-Opens-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\02-book-demo-Section-5-Book-Demo-Tests-✓-Form-Opens-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 02-book-demo.spec.ts:14:7 › Section 5: Book Demo Tests › ✓ Form Opens ─────────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\02-book-demo-Section-5-Book-Demo-Tests-✓-Form-Opens-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\02-book-demo-Section-5-Book-Demo-Tests-✓-Form-Opens-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\02-book-demo-Section-5-Book-Demo-Tests-✓-Form-Opens-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 5: Book Demo Tests › ✓ Validation Works &amp; Required Fields" classname="02-book-demo.spec.ts" time="0.005">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\02-book-demo-Section-5-Boo-24de3-ation-Works-Required-Fields-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\02-book-demo-Section-5-Boo-24de3-ation-Works-Required-Fields-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 02-book-demo.spec.ts:18:7 › Section 5: Book Demo Tests › ✓ Validation Works & Required Fields 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\02-book-demo-Section-5-Boo-24de3-ation-Works-Required-Fields-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\02-book-demo-Section-5-Boo-24de3-ation-Works-Required-Fields-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\02-book-demo-Section-5-Boo-24de3-ation-Works-Required-Fields-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 5: Book Demo Tests › ✓ Email Validation" classname="02-book-demo.spec.ts" time="0.008">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\02-book-demo-Section-5-Book-Demo-Tests-✓-Email-Validation-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\02-book-demo-Section-5-Book-Demo-Tests-✓-Email-Validation-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 02-book-demo.spec.ts:24:7 › Section 5: Book Demo Tests › ✓ Email Validation ───────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\02-book-demo-Section-5-Book-Demo-Tests-✓-Email-Validation-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\02-book-demo-Section-5-Book-Demo-Tests-✓-Email-Validation-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\02-book-demo-Section-5-Book-Demo-Tests-✓-Email-Validation-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 5: Book Demo Tests › ✓ Mobile Number Validation" classname="02-book-demo.spec.ts" time="0.005">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\02-book-demo-Section-5-Boo-52740--✓-Mobile-Number-Validation-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\02-book-demo-Section-5-Boo-52740--✓-Mobile-Number-Validation-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 02-book-demo.spec.ts:30:7 › Section 5: Book Demo Tests › ✓ Mobile Number Validation ───
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\02-book-demo-Section-5-Boo-52740--✓-Mobile-Number-Validation-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\02-book-demo-Section-5-Boo-52740--✓-Mobile-Number-Validation-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\02-book-demo-Section-5-Boo-52740--✓-Mobile-Number-Validation-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 5: Book Demo Tests › ✓ Success Message &amp; Database Entry Created" classname="02-book-demo.spec.ts" time="0.004">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\02-book-demo-Section-5-Boo-36948-sage-Database-Entry-Created-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\02-book-demo-Section-5-Boo-36948-sage-Database-Entry-Created-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 02-book-demo.spec.ts:36:7 › Section 5: Book Demo Tests › ✓ Success Message & Database Entry Created 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\02-book-demo-Section-5-Boo-36948-sage-Database-Entry-Created-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\02-book-demo-Section-5-Boo-36948-sage-Database-Entry-Created-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\02-book-demo-Section-5-Boo-36948-sage-Database-Entry-Created-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 5: Book Demo Tests › ✓ Duplicate Submission Prevention" classname="02-book-demo.spec.ts" time="0.004">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\02-book-demo-Section-5-Boo-8e129-icate-Submission-Prevention-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\02-book-demo-Section-5-Boo-8e129-icate-Submission-Prevention-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 02-book-demo.spec.ts:46:7 › Section 5: Book Demo Tests › ✓ Duplicate Submission Prevention 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\02-book-demo-Section-5-Boo-8e129-icate-Submission-Prevention-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\02-book-demo-Section-5-Boo-8e129-icate-Submission-Prevention-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\02-book-demo-Section-5-Boo-8e129-icate-Submission-Prevention-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+</testsuite>
+<testsuite name="03-student-dashboard.spec.ts" timestamp="2026-08-06T15:57:54.423Z" hostname="iPhone" tests="6" failures="0" skipped="0" time="0.035" errors="6">
+<testcase name="Section 6: Student Dashboard › ✓ Homework List" classname="03-student-dashboard.spec.ts" time="0.006">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\03-student-dashboard-Secti-3878c-t-Dashboard-✓-Homework-List-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\03-student-dashboard-Secti-3878c-t-Dashboard-✓-Homework-List-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 03-student-dashboard.spec.ts:10:7 › Section 6: Student Dashboard › ✓ Homework List ────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\03-student-dashboard-Secti-3878c-t-Dashboard-✓-Homework-List-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\03-student-dashboard-Secti-3878c-t-Dashboard-✓-Homework-List-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\03-student-dashboard-Secti-3878c-t-Dashboard-✓-Homework-List-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 6: Student Dashboard › ✓ Puzzle Progress" classname="03-student-dashboard.spec.ts" time="0.005">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\03-student-dashboard-Secti-8805c-Dashboard-✓-Puzzle-Progress-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\03-student-dashboard-Secti-8805c-Dashboard-✓-Puzzle-Progress-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 03-student-dashboard.spec.ts:15:7 › Section 6: Student Dashboard › ✓ Puzzle Progress ──
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\03-student-dashboard-Secti-8805c-Dashboard-✓-Puzzle-Progress-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\03-student-dashboard-Secti-8805c-Dashboard-✓-Puzzle-Progress-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\03-student-dashboard-Secti-8805c-Dashboard-✓-Puzzle-Progress-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 6: Student Dashboard › ✓ Attendance" classname="03-student-dashboard.spec.ts" time="0.009">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\03-student-dashboard-Secti-f3f18-dent-Dashboard-✓-Attendance-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\03-student-dashboard-Secti-f3f18-dent-Dashboard-✓-Attendance-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 03-student-dashboard.spec.ts:20:7 › Section 6: Student Dashboard › ✓ Attendance ───────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\03-student-dashboard-Secti-f3f18-dent-Dashboard-✓-Attendance-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\03-student-dashboard-Secti-f3f18-dent-Dashboard-✓-Attendance-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\03-student-dashboard-Secti-f3f18-dent-Dashboard-✓-Attendance-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 6: Student Dashboard › ✓ Class Schedule" classname="03-student-dashboard.spec.ts" time="0.006">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\03-student-dashboard-Secti-a31fe--Dashboard-✓-Class-Schedule-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\03-student-dashboard-Secti-a31fe--Dashboard-✓-Class-Schedule-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 03-student-dashboard.spec.ts:24:7 › Section 6: Student Dashboard › ✓ Class Schedule ───
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\03-student-dashboard-Secti-a31fe--Dashboard-✓-Class-Schedule-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\03-student-dashboard-Secti-a31fe--Dashboard-✓-Class-Schedule-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\03-student-dashboard-Secti-a31fe--Dashboard-✓-Class-Schedule-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 6: Student Dashboard › ✓ Certificates" classname="03-student-dashboard.spec.ts" time="0.005">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\03-student-dashboard-Secti-fe537-nt-Dashboard-✓-Certificates-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\03-student-dashboard-Secti-fe537-nt-Dashboard-✓-Certificates-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 03-student-dashboard.spec.ts:28:7 › Section 6: Student Dashboard › ✓ Certificates ─────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\03-student-dashboard-Secti-fe537-nt-Dashboard-✓-Certificates-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\03-student-dashboard-Secti-fe537-nt-Dashboard-✓-Certificates-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\03-student-dashboard-Secti-fe537-nt-Dashboard-✓-Certificates-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 6: Student Dashboard › ✓ Notifications" classname="03-student-dashboard.spec.ts" time="0.004">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\03-student-dashboard-Secti-c0a98-t-Dashboard-✓-Notifications-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\03-student-dashboard-Secti-c0a98-t-Dashboard-✓-Notifications-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 03-student-dashboard.spec.ts:33:7 › Section 6: Student Dashboard › ✓ Notifications ────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\03-student-dashboard-Secti-c0a98-t-Dashboard-✓-Notifications-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\03-student-dashboard-Secti-c0a98-t-Dashboard-✓-Notifications-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\03-student-dashboard-Secti-c0a98-t-Dashboard-✓-Notifications-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+</testsuite>
+<testsuite name="04-coach-dashboard.spec.ts" timestamp="2026-08-06T15:57:54.423Z" hostname="iPhone" tests="5" failures="0" skipped="0" time="0.036" errors="5">
+<testcase name="Section 7: Coach Dashboard › ✓ Student List" classname="04-coach-dashboard.spec.ts" time="0.008">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\04-coach-dashboard-Section-7-Coach-Dashboard-✓-Student-List-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\04-coach-dashboard-Section-7-Coach-Dashboard-✓-Student-List-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 04-coach-dashboard.spec.ts:10:7 › Section 7: Coach Dashboard › ✓ Student List ─────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\04-coach-dashboard-Section-7-Coach-Dashboard-✓-Student-List-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\04-coach-dashboard-Section-7-Coach-Dashboard-✓-Student-List-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\04-coach-dashboard-Section-7-Coach-Dashboard-✓-Student-List-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 7: Coach Dashboard › ✓ Homework Creation" classname="04-coach-dashboard.spec.ts" time="0.009">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\04-coach-dashboard-Section-f2973-shboard-✓-Homework-Creation-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\04-coach-dashboard-Section-f2973-shboard-✓-Homework-Creation-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 04-coach-dashboard.spec.ts:14:7 › Section 7: Coach Dashboard › ✓ Homework Creation ────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\04-coach-dashboard-Section-f2973-shboard-✓-Homework-Creation-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\04-coach-dashboard-Section-f2973-shboard-✓-Homework-Creation-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\04-coach-dashboard-Section-f2973-shboard-✓-Homework-Creation-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 7: Coach Dashboard › ✓ Attendance Marking" classname="04-coach-dashboard.spec.ts" time="0.008">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\04-coach-dashboard-Section-9d0fc-hboard-✓-Attendance-Marking-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\04-coach-dashboard-Section-9d0fc-hboard-✓-Attendance-Marking-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 04-coach-dashboard.spec.ts:18:7 › Section 7: Coach Dashboard › ✓ Attendance Marking ───
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\04-coach-dashboard-Section-9d0fc-hboard-✓-Attendance-Marking-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\04-coach-dashboard-Section-9d0fc-hboard-✓-Attendance-Marking-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\04-coach-dashboard-Section-9d0fc-hboard-✓-Attendance-Marking-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 7: Coach Dashboard › ✓ Puzzle Assignment" classname="04-coach-dashboard.spec.ts" time="0.005">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\04-coach-dashboard-Section-0126d-shboard-✓-Puzzle-Assignment-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\04-coach-dashboard-Section-0126d-shboard-✓-Puzzle-Assignment-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 04-coach-dashboard.spec.ts:22:7 › Section 7: Coach Dashboard › ✓ Puzzle Assignment ────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\04-coach-dashboard-Section-0126d-shboard-✓-Puzzle-Assignment-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\04-coach-dashboard-Section-0126d-shboard-✓-Puzzle-Assignment-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\04-coach-dashboard-Section-0126d-shboard-✓-Puzzle-Assignment-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 7: Coach Dashboard › ✓ Feedback Submission" classname="04-coach-dashboard.spec.ts" time="0.006">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\04-coach-dashboard-Section-85a1d-board-✓-Feedback-Submission-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\04-coach-dashboard-Section-85a1d-board-✓-Feedback-Submission-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 04-coach-dashboard.spec.ts:28:7 › Section 7: Coach Dashboard › ✓ Feedback Submission ──
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\04-coach-dashboard-Section-85a1d-board-✓-Feedback-Submission-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\04-coach-dashboard-Section-85a1d-board-✓-Feedback-Submission-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\04-coach-dashboard-Section-85a1d-board-✓-Feedback-Submission-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+</testsuite>
+<testsuite name="05-admin-dashboard.spec.ts" timestamp="2026-08-06T15:57:54.423Z" hostname="iPhone" tests="7" failures="0" skipped="0" time="0.039" errors="7">
+<testcase name="Section 8: Admin Dashboard › ✓ Dashboard Loads" classname="05-admin-dashboard.spec.ts" time="0.004">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\05-admin-dashboard-Section-c57aa-Dashboard-✓-Dashboard-Loads-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\05-admin-dashboard-Section-c57aa-Dashboard-✓-Dashboard-Loads-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 05-admin-dashboard.spec.ts:10:7 › Section 8: Admin Dashboard › ✓ Dashboard Loads ──────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\05-admin-dashboard-Section-c57aa-Dashboard-✓-Dashboard-Loads-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\05-admin-dashboard-Section-c57aa-Dashboard-✓-Dashboard-Loads-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\05-admin-dashboard-Section-c57aa-Dashboard-✓-Dashboard-Loads-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 8: Admin Dashboard › ✓ Create Student" classname="05-admin-dashboard.spec.ts" time="0.004">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\05-admin-dashboard-Section-f24d6--Dashboard-✓-Create-Student-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\05-admin-dashboard-Section-f24d6--Dashboard-✓-Create-Student-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 05-admin-dashboard.spec.ts:14:7 › Section 8: Admin Dashboard › ✓ Create Student ───────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\05-admin-dashboard-Section-f24d6--Dashboard-✓-Create-Student-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\05-admin-dashboard-Section-f24d6--Dashboard-✓-Create-Student-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\05-admin-dashboard-Section-f24d6--Dashboard-✓-Create-Student-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 8: Admin Dashboard › ✓ Edit Student" classname="05-admin-dashboard.spec.ts" time="0.006">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\05-admin-dashboard-Section-8-Admin-Dashboard-✓-Edit-Student-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\05-admin-dashboard-Section-8-Admin-Dashboard-✓-Edit-Student-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 05-admin-dashboard.spec.ts:18:7 › Section 8: Admin Dashboard › ✓ Edit Student ─────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\05-admin-dashboard-Section-8-Admin-Dashboard-✓-Edit-Student-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\05-admin-dashboard-Section-8-Admin-Dashboard-✓-Edit-Student-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\05-admin-dashboard-Section-8-Admin-Dashboard-✓-Edit-Student-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 8: Admin Dashboard › ✓ Delete Student" classname="05-admin-dashboard.spec.ts" time="0.006">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\05-admin-dashboard-Section-abdbf--Dashboard-✓-Delete-Student-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\05-admin-dashboard-Section-abdbf--Dashboard-✓-Delete-Student-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 05-admin-dashboard.spec.ts:22:7 › Section 8: Admin Dashboard › ✓ Delete Student ───────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\05-admin-dashboard-Section-abdbf--Dashboard-✓-Delete-Student-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\05-admin-dashboard-Section-abdbf--Dashboard-✓-Delete-Student-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\05-admin-dashboard-Section-abdbf--Dashboard-✓-Delete-Student-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 8: Admin Dashboard › ✓ Create Coach" classname="05-admin-dashboard.spec.ts" time="0.009">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\05-admin-dashboard-Section-8-Admin-Dashboard-✓-Create-Coach-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\05-admin-dashboard-Section-8-Admin-Dashboard-✓-Create-Coach-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 05-admin-dashboard.spec.ts:26:7 › Section 8: Admin Dashboard › ✓ Create Coach ─────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\05-admin-dashboard-Section-8-Admin-Dashboard-✓-Create-Coach-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\05-admin-dashboard-Section-8-Admin-Dashboard-✓-Create-Coach-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\05-admin-dashboard-Section-8-Admin-Dashboard-✓-Create-Coach-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 8: Admin Dashboard › ✓ Analytics" classname="05-admin-dashboard.spec.ts" time="0.005">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\05-admin-dashboard-Section-8-Admin-Dashboard-✓-Analytics-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\05-admin-dashboard-Section-8-Admin-Dashboard-✓-Analytics-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 05-admin-dashboard.spec.ts:30:7 › Section 8: Admin Dashboard › ✓ Analytics ────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\05-admin-dashboard-Section-8-Admin-Dashboard-✓-Analytics-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\05-admin-dashboard-Section-8-Admin-Dashboard-✓-Analytics-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\05-admin-dashboard-Section-8-Admin-Dashboard-✓-Analytics-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 8: Admin Dashboard › ✓ Reports" classname="05-admin-dashboard.spec.ts" time="0.005">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\05-admin-dashboard-Section-8-Admin-Dashboard-✓-Reports-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\05-admin-dashboard-Section-8-Admin-Dashboard-✓-Reports-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 05-admin-dashboard.spec.ts:34:7 › Section 8: Admin Dashboard › ✓ Reports ──────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\05-admin-dashboard-Section-8-Admin-Dashboard-✓-Reports-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\05-admin-dashboard-Section-8-Admin-Dashboard-✓-Reports-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\05-admin-dashboard-Section-8-Admin-Dashboard-✓-Reports-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+</testsuite>
+<testsuite name="06-chess-features.spec.ts" timestamp="2026-08-06T15:57:54.423Z" hostname="iPhone" tests="9" failures="0" skipped="0" time="0.053" errors="9">
+<testcase name="Section 9: Chess Features › ✓ Chessboard Loads" classname="06-chess-features.spec.ts" time="0.004">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\06-chess-features-Section--3ebbb-Features-✓-Chessboard-Loads-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\06-chess-features-Section--3ebbb-Features-✓-Chessboard-Loads-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 06-chess-features.spec.ts:11:7 › Section 9: Chess Features › ✓ Chessboard Loads ───────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\06-chess-features-Section--3ebbb-Features-✓-Chessboard-Loads-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\06-chess-features-Section--3ebbb-Features-✓-Chessboard-Loads-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\06-chess-features-Section--3ebbb-Features-✓-Chessboard-Loads-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 9: Chess Features › ✓ Pieces Move &amp; Legal Moves" classname="06-chess-features.spec.ts" time="0.005">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\06-chess-features-Section--81dc9-s-✓-Pieces-Move-Legal-Moves-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\06-chess-features-Section--81dc9-s-✓-Pieces-Move-Legal-Moves-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 06-chess-features.spec.ts:15:7 › Section 9: Chess Features › ✓ Pieces Move & Legal Moves 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\06-chess-features-Section--81dc9-s-✓-Pieces-Move-Legal-Moves-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\06-chess-features-Section--81dc9-s-✓-Pieces-Move-Legal-Moves-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\06-chess-features-Section--81dc9-s-✓-Pieces-Move-Legal-Moves-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 9: Chess Features › ✓ Timer Works" classname="06-chess-features.spec.ts" time="0.006">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\06-chess-features-Section-9-Chess-Features-✓-Timer-Works-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\06-chess-features-Section-9-Chess-Features-✓-Timer-Works-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 06-chess-features.spec.ts:26:7 › Section 9: Chess Features › ✓ Timer Works ────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\06-chess-features-Section-9-Chess-Features-✓-Timer-Works-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\06-chess-features-Section-9-Chess-Features-✓-Timer-Works-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\06-chess-features-Section-9-Chess-Features-✓-Timer-Works-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 9: Chess Features › ✓ Board Flip" classname="06-chess-features.spec.ts" time="0.006">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\06-chess-features-Section-9-Chess-Features-✓-Board-Flip-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\06-chess-features-Section-9-Chess-Features-✓-Board-Flip-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 06-chess-features.spec.ts:30:7 › Section 9: Chess Features › ✓ Board Flip ─────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\06-chess-features-Section-9-Chess-Features-✓-Board-Flip-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\06-chess-features-Section-9-Chess-Features-✓-Board-Flip-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\06-chess-features-Section-9-Chess-Features-✓-Board-Flip-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 9: Chess Features › ✓ PGN Import" classname="06-chess-features.spec.ts" time="0.005">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\06-chess-features-Section-9-Chess-Features-✓-PGN-Import-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\06-chess-features-Section-9-Chess-Features-✓-PGN-Import-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 06-chess-features.spec.ts:34:7 › Section 9: Chess Features › ✓ PGN Import ─────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\06-chess-features-Section-9-Chess-Features-✓-PGN-Import-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\06-chess-features-Section-9-Chess-Features-✓-PGN-Import-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\06-chess-features-Section-9-Chess-Features-✓-PGN-Import-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 9: Chess Features › ✓ FEN Import" classname="06-chess-features.spec.ts" time="0.005">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\06-chess-features-Section-9-Chess-Features-✓-FEN-Import-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\06-chess-features-Section-9-Chess-Features-✓-FEN-Import-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 06-chess-features.spec.ts:38:7 › Section 9: Chess Features › ✓ FEN Import ─────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\06-chess-features-Section-9-Chess-Features-✓-FEN-Import-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\06-chess-features-Section-9-Chess-Features-✓-FEN-Import-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\06-chess-features-Section-9-Chess-Features-✓-FEN-Import-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 9: Chess Features › ✓ Puzzle Hint" classname="06-chess-features.spec.ts" time="0.006">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\06-chess-features-Section-9-Chess-Features-✓-Puzzle-Hint-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\06-chess-features-Section-9-Chess-Features-✓-Puzzle-Hint-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 06-chess-features.spec.ts:42:7 › Section 9: Chess Features › ✓ Puzzle Hint ────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\06-chess-features-Section-9-Chess-Features-✓-Puzzle-Hint-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\06-chess-features-Section-9-Chess-Features-✓-Puzzle-Hint-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\06-chess-features-Section-9-Chess-Features-✓-Puzzle-Hint-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 9: Chess Features › ✓ Puzzle Solution" classname="06-chess-features.spec.ts" time="0.01">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\06-chess-features-Section-9-Chess-Features-✓-Puzzle-Solution-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\06-chess-features-Section-9-Chess-Features-✓-Puzzle-Solution-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 06-chess-features.spec.ts:46:7 › Section 9: Chess Features › ✓ Puzzle Solution ────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\06-chess-features-Section-9-Chess-Features-✓-Puzzle-Solution-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\06-chess-features-Section-9-Chess-Features-✓-Puzzle-Solution-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\06-chess-features-Section-9-Chess-Features-✓-Puzzle-Solution-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 9: Chess Features › ✓ Analysis Board" classname="06-chess-features.spec.ts" time="0.006">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\06-chess-features-Section-9-Chess-Features-✓-Analysis-Board-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\06-chess-features-Section-9-Chess-Features-✓-Analysis-Board-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 06-chess-features.spec.ts:50:7 › Section 9: Chess Features › ✓ Analysis Board ─────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\06-chess-features-Section-9-Chess-Features-✓-Analysis-Board-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\06-chess-features-Section-9-Chess-Features-✓-Analysis-Board-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\06-chess-features-Section-9-Chess-Features-✓-Analysis-Board-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+</testsuite>
+<testsuite name="07-tournaments.spec.ts" timestamp="2026-08-06T15:57:54.423Z" hostname="iPhone" tests="6" failures="0" skipped="0" time="0.037" errors="6">
+<testcase name="Section 10: Tournaments › ✓ Join Tournament" classname="07-tournaments.spec.ts" time="0.008">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\07-tournaments-Section-10-Tournaments-✓-Join-Tournament-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\07-tournaments-Section-10-Tournaments-✓-Join-Tournament-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 07-tournaments.spec.ts:10:7 › Section 10: Tournaments › ✓ Join Tournament ─────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\07-tournaments-Section-10-Tournaments-✓-Join-Tournament-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\07-tournaments-Section-10-Tournaments-✓-Join-Tournament-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\07-tournaments-Section-10-Tournaments-✓-Join-Tournament-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 10: Tournaments › ✓ Leave Tournament" classname="07-tournaments.spec.ts" time="0.004">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\07-tournaments-Section-10-Tournaments-✓-Leave-Tournament-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\07-tournaments-Section-10-Tournaments-✓-Leave-Tournament-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 07-tournaments.spec.ts:14:7 › Section 10: Tournaments › ✓ Leave Tournament ────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\07-tournaments-Section-10-Tournaments-✓-Leave-Tournament-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\07-tournaments-Section-10-Tournaments-✓-Leave-Tournament-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\07-tournaments-Section-10-Tournaments-✓-Leave-Tournament-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 10: Tournaments › ✓ Countdown Timer" classname="07-tournaments.spec.ts" time="0.007">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\07-tournaments-Section-10-Tournaments-✓-Countdown-Timer-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\07-tournaments-Section-10-Tournaments-✓-Countdown-Timer-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 07-tournaments.spec.ts:18:7 › Section 10: Tournaments › ✓ Countdown Timer ─────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\07-tournaments-Section-10-Tournaments-✓-Countdown-Timer-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\07-tournaments-Section-10-Tournaments-✓-Countdown-Timer-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\07-tournaments-Section-10-Tournaments-✓-Countdown-Timer-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 10: Tournaments › ✓ Pairings" classname="07-tournaments.spec.ts" time="0.006">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\07-tournaments-Section-10-Tournaments-✓-Pairings-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\07-tournaments-Section-10-Tournaments-✓-Pairings-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 07-tournaments.spec.ts:22:7 › Section 10: Tournaments › ✓ Pairings ────────────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\07-tournaments-Section-10-Tournaments-✓-Pairings-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\07-tournaments-Section-10-Tournaments-✓-Pairings-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\07-tournaments-Section-10-Tournaments-✓-Pairings-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 10: Tournaments › ✓ Results" classname="07-tournaments.spec.ts" time="0.006">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\07-tournaments-Section-10-Tournaments-✓-Results-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\07-tournaments-Section-10-Tournaments-✓-Results-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 07-tournaments.spec.ts:26:7 › Section 10: Tournaments › ✓ Results ─────────────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\07-tournaments-Section-10-Tournaments-✓-Results-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\07-tournaments-Section-10-Tournaments-✓-Results-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\07-tournaments-Section-10-Tournaments-✓-Results-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 10: Tournaments › ✓ Standings" classname="07-tournaments.spec.ts" time="0.006">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\07-tournaments-Section-10-Tournaments-✓-Standings-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\07-tournaments-Section-10-Tournaments-✓-Standings-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 07-tournaments.spec.ts:30:7 › Section 10: Tournaments › ✓ Standings ───────────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\07-tournaments-Section-10-Tournaments-✓-Standings-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\07-tournaments-Section-10-Tournaments-✓-Standings-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\07-tournaments-Section-10-Tournaments-✓-Standings-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+</testsuite>
+<testsuite name="08-payment.spec.ts" timestamp="2026-08-06T15:57:54.423Z" hostname="iPhone" tests="4" failures="0" skipped="0" time="0.027" errors="4">
+<testcase name="Section 11: Payment › ✓ Payment Success" classname="08-payment.spec.ts" time="0.007">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\08-payment-Section-11-Payment-✓-Payment-Success-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\08-payment-Section-11-Payment-✓-Payment-Success-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 08-payment.spec.ts:9:7 › Section 11: Payment › ✓ Payment Success ──────────────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\08-payment-Section-11-Payment-✓-Payment-Success-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\08-payment-Section-11-Payment-✓-Payment-Success-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\08-payment-Section-11-Payment-✓-Payment-Success-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 11: Payment › ✓ Payment Failure" classname="08-payment.spec.ts" time="0.006">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\08-payment-Section-11-Payment-✓-Payment-Failure-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\08-payment-Section-11-Payment-✓-Payment-Failure-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 08-payment.spec.ts:25:7 › Section 11: Payment › ✓ Payment Failure ─────────────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\08-payment-Section-11-Payment-✓-Payment-Failure-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\08-payment-Section-11-Payment-✓-Payment-Failure-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\08-payment-Section-11-Payment-✓-Payment-Failure-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 11: Payment › ✓ Cancel Payment" classname="08-payment.spec.ts" time="0.006">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\08-payment-Section-11-Payment-✓-Cancel-Payment-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\08-payment-Section-11-Payment-✓-Cancel-Payment-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 08-payment.spec.ts:40:7 › Section 11: Payment › ✓ Cancel Payment ──────────────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\08-payment-Section-11-Payment-✓-Cancel-Payment-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\08-payment-Section-11-Payment-✓-Cancel-Payment-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\08-payment-Section-11-Payment-✓-Cancel-Payment-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 11: Payment › ✓ Receipt Generated" classname="08-payment.spec.ts" time="0.008">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\08-payment-Section-11-Payment-✓-Receipt-Generated-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\08-payment-Section-11-Payment-✓-Receipt-Generated-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 08-payment.spec.ts:45:7 › Section 11: Payment › ✓ Receipt Generated ───────────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\08-payment-Section-11-Payment-✓-Receipt-Generated-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\08-payment-Section-11-Payment-✓-Receipt-Generated-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\08-payment-Section-11-Payment-✓-Receipt-Generated-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+</testsuite>
+<testsuite name="09-responsive.spec.ts" timestamp="2026-08-06T15:57:54.423Z" hostname="iPhone" tests="5" failures="0" skipped="0" time="0.027" errors="5">
+<testcase name="Section 12: Responsive Testing › ✓ Responsive Layout sanity check on /" classname="09-responsive.spec.ts" time="0.007">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\09-responsive-Section-12-R-70c5f-ive-Layout-sanity-check-on--iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\09-responsive-Section-12-R-70c5f-ive-Layout-sanity-check-on--iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 09-responsive.spec.ts:7:9 › Section 12: Responsive Testing › ✓ Responsive Layout sanity check on / 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\09-responsive-Section-12-R-70c5f-ive-Layout-sanity-check-on--iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\09-responsive-Section-12-R-70c5f-ive-Layout-sanity-check-on--iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\09-responsive-Section-12-R-70c5f-ive-Layout-sanity-check-on--iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 12: Responsive Testing › ✓ Responsive Layout sanity check on /book-demo" classname="09-responsive.spec.ts" time="0.005">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\09-responsive-Section-12-R-0687f-t-sanity-check-on-book-demo-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\09-responsive-Section-12-R-0687f-t-sanity-check-on-book-demo-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 09-responsive.spec.ts:7:9 › Section 12: Responsive Testing › ✓ Responsive Layout sanity check on /book-demo 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\09-responsive-Section-12-R-0687f-t-sanity-check-on-book-demo-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\09-responsive-Section-12-R-0687f-t-sanity-check-on-book-demo-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\09-responsive-Section-12-R-0687f-t-sanity-check-on-book-demo-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 12: Responsive Testing › ✓ Responsive Layout sanity check on /login" classname="09-responsive.spec.ts" time="0.005">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\09-responsive-Section-12-R-41a79-ayout-sanity-check-on-login-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\09-responsive-Section-12-R-41a79-ayout-sanity-check-on-login-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 09-responsive.spec.ts:7:9 › Section 12: Responsive Testing › ✓ Responsive Layout sanity check on /login 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\09-responsive-Section-12-R-41a79-ayout-sanity-check-on-login-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\09-responsive-Section-12-R-41a79-ayout-sanity-check-on-login-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\09-responsive-Section-12-R-41a79-ayout-sanity-check-on-login-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 12: Responsive Testing › ✓ Responsive Layout sanity check on /programs" classname="09-responsive.spec.ts" time="0.005">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\09-responsive-Section-12-R-9051a-ut-sanity-check-on-programs-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\09-responsive-Section-12-R-9051a-ut-sanity-check-on-programs-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 09-responsive.spec.ts:7:9 › Section 12: Responsive Testing › ✓ Responsive Layout sanity check on /programs 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\09-responsive-Section-12-R-9051a-ut-sanity-check-on-programs-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\09-responsive-Section-12-R-9051a-ut-sanity-check-on-programs-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\09-responsive-Section-12-R-9051a-ut-sanity-check-on-programs-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 12: Responsive Testing › ✓ Responsive Layout sanity check on /about" classname="09-responsive.spec.ts" time="0.005">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\09-responsive-Section-12-R-071cf-ayout-sanity-check-on-about-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\09-responsive-Section-12-R-071cf-ayout-sanity-check-on-about-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 09-responsive.spec.ts:7:9 › Section 12: Responsive Testing › ✓ Responsive Layout sanity check on /about 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\09-responsive-Section-12-R-071cf-ayout-sanity-check-on-about-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\09-responsive-Section-12-R-071cf-ayout-sanity-check-on-about-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\09-responsive-Section-12-R-071cf-ayout-sanity-check-on-about-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+</testsuite>
+<testsuite name="10-visual.spec.ts" timestamp="2026-08-06T15:57:54.423Z" hostname="iPhone" tests="4" failures="0" skipped="0" time="0.024" errors="4">
+<testcase name="Section 13: Visual Testing › ✓ Home Page Baseline Snapshot" classname="10-visual.spec.ts" time="0.004">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\10-visual-Section-13-Visua-73bed-Home-Page-Baseline-Snapshot-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\10-visual-Section-13-Visua-73bed-Home-Page-Baseline-Snapshot-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 10-visual.spec.ts:4:7 › Section 13: Visual Testing › ✓ Home Page Baseline Snapshot ────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\10-visual-Section-13-Visua-73bed-Home-Page-Baseline-Snapshot-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\10-visual-Section-13-Visua-73bed-Home-Page-Baseline-Snapshot-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\10-visual-Section-13-Visua-73bed-Home-Page-Baseline-Snapshot-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 13: Visual Testing › ✓ Book Demo Page Baseline Snapshot" classname="10-visual.spec.ts" time="0.009">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\10-visual-Section-13-Visua-3f7bd-Demo-Page-Baseline-Snapshot-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\10-visual-Section-13-Visua-3f7bd-Demo-Page-Baseline-Snapshot-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 10-visual.spec.ts:12:7 › Section 13: Visual Testing › ✓ Book Demo Page Baseline Snapshot 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\10-visual-Section-13-Visua-3f7bd-Demo-Page-Baseline-Snapshot-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\10-visual-Section-13-Visua-3f7bd-Demo-Page-Baseline-Snapshot-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\10-visual-Section-13-Visua-3f7bd-Demo-Page-Baseline-Snapshot-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 13: Visual Testing › ✓ Login Page Baseline Snapshot" classname="10-visual.spec.ts" time="0.005">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\10-visual-Section-13-Visua-36fe1-ogin-Page-Baseline-Snapshot-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\10-visual-Section-13-Visua-36fe1-ogin-Page-Baseline-Snapshot-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 10-visual.spec.ts:20:7 › Section 13: Visual Testing › ✓ Login Page Baseline Snapshot ──
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\10-visual-Section-13-Visua-36fe1-ogin-Page-Baseline-Snapshot-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\10-visual-Section-13-Visua-36fe1-ogin-Page-Baseline-Snapshot-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\10-visual-Section-13-Visua-36fe1-ogin-Page-Baseline-Snapshot-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 13: Visual Testing › ✓ Detect UI Health (Broken Images, Overflows)" classname="10-visual.spec.ts" time="0.006">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\10-visual-Section-13-Visua-0fb0d-th-Broken-Images-Overflows--iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\10-visual-Section-13-Visua-0fb0d-th-Broken-Images-Overflows--iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 10-visual.spec.ts:27:7 › Section 13: Visual Testing › ✓ Detect UI Health (Broken Images, Overflows) 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\10-visual-Section-13-Visua-0fb0d-th-Broken-Images-Overflows--iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\10-visual-Section-13-Visua-0fb0d-th-Broken-Images-Overflows--iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\10-visual-Section-13-Visua-0fb0d-th-Broken-Images-Overflows--iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+</testsuite>
+<testsuite name="11-performance.spec.ts" timestamp="2026-08-06T15:57:54.423Z" hostname="iPhone" tests="4" failures="0" skipped="0" time="0.018" errors="4">
+<testcase name="Section 14: Performance SLA Tests › ✓ Measure metrics and assert &lt; 3s SLA on /" classname="11-performance.spec.ts" time="0.004">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\11-performance-Section-14--c624c-trics-and-assert-3s-SLA-on--iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\11-performance-Section-14--c624c-trics-and-assert-3s-SLA-on--iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 11-performance.spec.ts:7:9 › Section 14: Performance SLA Tests › ✓ Measure metrics and assert < 3s SLA on / 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\11-performance-Section-14--c624c-trics-and-assert-3s-SLA-on--iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\11-performance-Section-14--c624c-trics-and-assert-3s-SLA-on--iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\11-performance-Section-14--c624c-trics-and-assert-3s-SLA-on--iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 14: Performance SLA Tests › ✓ Measure metrics and assert &lt; 3s SLA on /book-demo" classname="11-performance.spec.ts" time="0.005">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\11-performance-Section-14--bc250--assert-3s-SLA-on-book-demo-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\11-performance-Section-14--bc250--assert-3s-SLA-on-book-demo-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 11-performance.spec.ts:7:9 › Section 14: Performance SLA Tests › ✓ Measure metrics and assert < 3s SLA on /book-demo 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\11-performance-Section-14--bc250--assert-3s-SLA-on-book-demo-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\11-performance-Section-14--bc250--assert-3s-SLA-on-book-demo-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\11-performance-Section-14--bc250--assert-3s-SLA-on-book-demo-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 14: Performance SLA Tests › ✓ Measure metrics and assert &lt; 3s SLA on /login" classname="11-performance.spec.ts" time="0.005">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\11-performance-Section-14--32952--and-assert-3s-SLA-on-login-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\11-performance-Section-14--32952--and-assert-3s-SLA-on-login-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 11-performance.spec.ts:7:9 › Section 14: Performance SLA Tests › ✓ Measure metrics and assert < 3s SLA on /login 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\11-performance-Section-14--32952--and-assert-3s-SLA-on-login-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\11-performance-Section-14--32952--and-assert-3s-SLA-on-login-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\11-performance-Section-14--32952--and-assert-3s-SLA-on-login-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 14: Performance SLA Tests › ✓ Measure metrics and assert &lt; 3s SLA on /programs" classname="11-performance.spec.ts" time="0.004">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\11-performance-Section-14--202c0-d-assert-3s-SLA-on-programs-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\11-performance-Section-14--202c0-d-assert-3s-SLA-on-programs-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 11-performance.spec.ts:7:9 › Section 14: Performance SLA Tests › ✓ Measure metrics and assert < 3s SLA on /programs 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\11-performance-Section-14--202c0-d-assert-3s-SLA-on-programs-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\11-performance-Section-14--202c0-d-assert-3s-SLA-on-programs-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\11-performance-Section-14--202c0-d-assert-3s-SLA-on-programs-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+</testsuite>
+<testsuite name="12-accessibility.spec.ts" timestamp="2026-08-06T15:57:54.423Z" hostname="iPhone" tests="5" failures="0" skipped="0" time="0.03" errors="5">
+<testcase name="Section 15: Accessibility Audits (WCAG 2.1 AA) › ✓ ARIA Labels &amp; Color Contrast Audit (Home Page)" classname="12-accessibility.spec.ts" time="0.005">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\12-accessibility-Section-1-b2acd-r-Contrast-Audit-Home-Page--iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\12-accessibility-Section-1-b2acd-r-Contrast-Audit-Home-Page--iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 12-accessibility.spec.ts:4:7 › Section 15: Accessibility Audits (WCAG 2.1 AA) › ✓ ARIA Labels & Color Contrast Audit (Home Page) 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\12-accessibility-Section-1-b2acd-r-Contrast-Audit-Home-Page--iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\12-accessibility-Section-1-b2acd-r-Contrast-Audit-Home-Page--iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\12-accessibility-Section-1-b2acd-r-Contrast-Audit-Home-Page--iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 15: Accessibility Audits (WCAG 2.1 AA) › ✓ ARIA Labels &amp; Color Contrast Audit (Book Demo)" classname="12-accessibility.spec.ts" time="0.009">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\12-accessibility-Section-1-59132-r-Contrast-Audit-Book-Demo--iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\12-accessibility-Section-1-59132-r-Contrast-Audit-Book-Demo--iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 12-accessibility.spec.ts:9:7 › Section 15: Accessibility Audits (WCAG 2.1 AA) › ✓ ARIA Labels & Color Contrast Audit (Book Demo) 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\12-accessibility-Section-1-59132-r-Contrast-Audit-Book-Demo--iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\12-accessibility-Section-1-59132-r-Contrast-Audit-Book-Demo--iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\12-accessibility-Section-1-59132-r-Contrast-Audit-Book-Demo--iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 15: Accessibility Audits (WCAG 2.1 AA) › ✓ Heading Order Verification" classname="12-accessibility.spec.ts" time="0.006">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\12-accessibility-Section-1-85e79--Heading-Order-Verification-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\12-accessibility-Section-1-85e79--Heading-Order-Verification-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 12-accessibility.spec.ts:14:7 › Section 15: Accessibility Audits (WCAG 2.1 AA) › ✓ Heading Order Verification 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\12-accessibility-Section-1-85e79--Heading-Order-Verification-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\12-accessibility-Section-1-85e79--Heading-Order-Verification-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\12-accessibility-Section-1-85e79--Heading-Order-Verification-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 15: Accessibility Audits (WCAG 2.1 AA) › ✓ Image Alt Text Verification" classname="12-accessibility.spec.ts" time="0.005">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\12-accessibility-Section-1-8f916-Image-Alt-Text-Verification-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\12-accessibility-Section-1-8f916-Image-Alt-Text-Verification-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 12-accessibility.spec.ts:19:7 › Section 15: Accessibility Audits (WCAG 2.1 AA) › ✓ Image Alt Text Verification 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\12-accessibility-Section-1-8f916-Image-Alt-Text-Verification-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\12-accessibility-Section-1-8f916-Image-Alt-Text-Verification-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\12-accessibility-Section-1-8f916-Image-Alt-Text-Verification-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 15: Accessibility Audits (WCAG 2.1 AA) › ✓ Keyboard Navigation Audit" classname="12-accessibility.spec.ts" time="0.005">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\12-accessibility-Section-1-6c1a2-✓-Keyboard-Navigation-Audit-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\12-accessibility-Section-1-6c1a2-✓-Keyboard-Navigation-Audit-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 12-accessibility.spec.ts:24:7 › Section 15: Accessibility Audits (WCAG 2.1 AA) › ✓ Keyboard Navigation Audit 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\12-accessibility-Section-1-6c1a2-✓-Keyboard-Navigation-Audit-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\12-accessibility-Section-1-6c1a2-✓-Keyboard-Navigation-Audit-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\12-accessibility-Section-1-6c1a2-✓-Keyboard-Navigation-Audit-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+</testsuite>
+<testsuite name="13-seo.spec.ts" timestamp="2026-08-06T15:57:54.423Z" hostname="iPhone" tests="6" failures="0" skipped="0" time="0.316" errors="4">
+<testcase name="Section 16: SEO Audits › ✓ Meta Title &amp; Meta Description" classname="13-seo.spec.ts" time="0.006">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\13-seo-Section-16-SEO-Audits-✓-Meta-Title-Meta-Description-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\13-seo-Section-16-SEO-Audits-✓-Meta-Title-Meta-Description-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 13-seo.spec.ts:4:7 › Section 16: SEO Audits › ✓ Meta Title & Meta Description ─────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\13-seo-Section-16-SEO-Audits-✓-Meta-Title-Meta-Description-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\13-seo-Section-16-SEO-Audits-✓-Meta-Title-Meta-Description-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\13-seo-Section-16-SEO-Audits-✓-Meta-Title-Meta-Description-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 16: SEO Audits › ✓ Canonical URL" classname="13-seo.spec.ts" time="0.004">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\13-seo-Section-16-SEO-Audits-✓-Canonical-URL-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\13-seo-Section-16-SEO-Audits-✓-Canonical-URL-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 13-seo.spec.ts:12:7 › Section 16: SEO Audits › ✓ Canonical URL ────────────────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\13-seo-Section-16-SEO-Audits-✓-Canonical-URL-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\13-seo-Section-16-SEO-Audits-✓-Canonical-URL-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\13-seo-Section-16-SEO-Audits-✓-Canonical-URL-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 16: SEO Audits › ✓ OpenGraph Tags" classname="13-seo.spec.ts" time="0.009">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\13-seo-Section-16-SEO-Audits-✓-OpenGraph-Tags-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\13-seo-Section-16-SEO-Audits-✓-OpenGraph-Tags-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 13-seo.spec.ts:20:7 › Section 16: SEO Audits › ✓ OpenGraph Tags ───────────────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\13-seo-Section-16-SEO-Audits-✓-OpenGraph-Tags-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\13-seo-Section-16-SEO-Audits-✓-OpenGraph-Tags-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\13-seo-Section-16-SEO-Audits-✓-OpenGraph-Tags-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 16: SEO Audits › ✓ Twitter Tags" classname="13-seo.spec.ts" time="0.005">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\13-seo-Section-16-SEO-Audits-✓-Twitter-Tags-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\13-seo-Section-16-SEO-Audits-✓-Twitter-Tags-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 13-seo.spec.ts:28:7 › Section 16: SEO Audits › ✓ Twitter Tags ─────────────────────────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\13-seo-Section-16-SEO-Audits-✓-Twitter-Tags-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\13-seo-Section-16-SEO-Audits-✓-Twitter-Tags-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\13-seo-Section-16-SEO-Audits-✓-Twitter-Tags-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 16: SEO Audits › ✓ robots.txt Accessible" classname="13-seo.spec.ts" time="0.181">
+</testcase>
+<testcase name="Section 16: SEO Audits › ✓ sitemap.xml Accessible" classname="13-seo.spec.ts" time="0.111">
+</testcase>
+</testsuite>
+<testsuite name="14-security.spec.ts" timestamp="2026-08-06T15:57:54.423Z" hostname="iPhone" tests="4" failures="1" skipped="0" time="0.884" errors="3">
+<testcase name="Section 17: Security Audits › ✓ Protected Routes Redirect Unauthenticated Users" classname="14-security.spec.ts" time="0.007">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\14-security-Section-17-Sec-0a298-irect-Unauthenticated-Users-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\14-security-Section-17-Sec-0a298-irect-Unauthenticated-Users-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 14-security.spec.ts:5:7 › Section 17: Security Audits › ✓ Protected Routes Redirect Unauthenticated Users 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\14-security-Section-17-Sec-0a298-irect-Unauthenticated-Users-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\14-security-Section-17-Sec-0a298-irect-Unauthenticated-Users-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\14-security-Section-17-Sec-0a298-irect-Unauthenticated-Users-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 17: Security Audits › ✓ Unauthorized Role Access Blocked (Student accessing Admin)" classname="14-security.spec.ts" time="0.006">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\14-security-Section-17-Sec-ad283-ed-Student-accessing-Admin--iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\14-security-Section-17-Sec-ad283-ed-Student-accessing-Admin--iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 14-security.spec.ts:11:7 › Section 17: Security Audits › ✓ Unauthorized Role Access Blocked (Student accessing Admin) 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\14-security-Section-17-Sec-ad283-ed-Student-accessing-Admin--iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\14-security-Section-17-Sec-ad283-ed-Student-accessing-Admin--iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\14-security-Section-17-Sec-ad283-ed-Student-accessing-Admin--iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 17: Security Audits › ✓ XSS Prevention in Form Inputs" classname="14-security.spec.ts" time="0.005">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\14-security-Section-17-Sec-0d0a7-S-Prevention-in-Form-Inputs-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\14-security-Section-17-Sec-0d0a7-S-Prevention-in-Form-Inputs-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="browserType.launch: Executable doesn&apos;t exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe" type="Error">
+<![CDATA[  [iPhone] › 14-security.spec.ts:18:7 › Section 17: Security Audits › ✓ XSS Prevention in Form Inputs 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\anime\AppData\Local\ms-playwright\webkit-2336\Playwright.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\reports\test-results\14-security-Section-17-Sec-0d0a7-S-Prevention-in-Form-Inputs-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\14-security-Section-17-Sec-0d0a7-S-Prevention-in-Form-Inputs-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\14-security-Section-17-Sec-0d0a7-S-Prevention-in-Form-Inputs-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="Section 17: Security Audits › ✓ CSRF Protection / Headers Verification" classname="14-security.spec.ts" time="0.866">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\14-security-Section-17-Sec-4ab97-ection-Headers-Verification-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\14-security-Section-17-Sec-4ab97-ection-Headers-Verification-iPhone\trace.zip]]
+]]>
+</system-out>
+<failure message="expect(received).toContain(expected) // indexOf" type="expect.toContain">
+<![CDATA[  [iPhone] › 14-security.spec.ts:35:7 › Section 17: Security Audits › ✓ CSRF Protection / Headers Verification 
+
+    Error: expect(received).toContain(expected) // indexOf
+
+    Expected value: 404
+    Received array: [200, 400, 401, 403, 422]
+
+      42 |
+      43 |     // Should require validation or appropriate response
+    > 44 |     expect([200, 400, 401, 403, 422]).toContain(response.status());
+         |                                       ^
+      45 |   });
+      46 | });
+      47 |
+        at D:\newchesshub\playwright\tests\14-security.spec.ts:44:39
+
+    Error Context: ..\reports\test-results\14-security-Section-17-Sec-4ab97-ection-Headers-Verification-iPhone\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\14-security-Section-17-Sec-4ab97-ection-Headers-Verification-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\14-security-Section-17-Sec-4ab97-ection-Headers-Verification-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+</testsuite>
+</testsuites>

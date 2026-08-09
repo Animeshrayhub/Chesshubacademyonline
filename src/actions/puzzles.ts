@@ -7,6 +7,7 @@ import {
   bulkImportPuzzleBankEntries,
   deletePuzzleBankEntry,
   updatePuzzleBankEntry,
+  clearAllPuzzleBankEntries,
   type PuzzleBankFilter,
   type CreatePuzzleBankInput,
   type UpdatePuzzleBankInput,
@@ -97,4 +98,14 @@ export async function scanChessboardImageAction(
 ) {
   const { scanChessboardImageAction: _scan } = await import('@/actions/homework');
   return _scan(base64Image, options);
+}
+
+export async function clearAllPuzzlesAction() {
+  const ok = await clearAllPuzzleBankEntries();
+  if (ok) {
+    revalidatePath('/dashboard/admin/puzzles');
+    revalidatePath('/dashboard/coach/puzzles');
+    revalidatePath('/dashboard/student/puzzles');
+  }
+  return { success: ok };
 }

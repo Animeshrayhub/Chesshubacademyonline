@@ -1,17 +1,34 @@
+export type DifficultyLevel = 'Beginner' | 'Intermediate' | 'Advanced' | 'Master';
+export type BoardOrientation = 'white' | 'black';
+export type BoardControlMode = 'COACH_ONLY' | 'ONE_STUDENT' | 'SELECTED_STUDENTS' | 'EVERYONE';
+
+export interface TeachingTag {
+  id: string;
+  name: string;
+  color?: string;
+  createdAt?: string;
+}
+
 export interface TeachingPosition {
   id: string;
   lessonId: string;
+  positionNumber?: number;
   title: string;
   fen: string;
   solution?: string;
+  alternativeSolution?: string;
   hint?: string;
   explanation?: string;
-  difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
+  difficulty: DifficultyLevel;
+  theme?: string;
   tags: string[];
-  orderNumber: number;
-  boardOrientation: 'white' | 'black';
+  boardOrientation: BoardOrientation;
   defaultBoardLock: boolean;
+  stockfishEval?: string;
+  coachNotes?: string;
   notes?: string;
+  orderNumber: number;
+  isArchived?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -31,7 +48,14 @@ export interface CurriculumLesson {
   chapterId: string;
   title: string;
   description?: string;
+  objectives?: string;
+  coachNotes?: string;
+  estimatedDuration: number; // minutes
+  difficulty: DifficultyLevel;
+  tags: string[];
   orderNumber: number;
+  isArchived?: boolean;
+  version?: number;
   positionsCount?: number;
   positions?: TeachingPosition[];
   media?: LessonMedia[];
@@ -45,6 +69,7 @@ export interface CurriculumChapter {
   title: string;
   description?: string;
   orderNumber: number;
+  isArchived?: boolean;
   lessonsCount?: number;
   lessons?: CurriculumLesson[];
   createdAt: string;
@@ -57,6 +82,7 @@ export interface CurriculumCourse {
   title: string;
   description?: string;
   orderNumber: number;
+  isArchived?: boolean;
   chaptersCount?: number;
   chapters?: CurriculumChapter[];
   createdAt: string;
@@ -67,10 +93,64 @@ export interface CurriculumProgram {
   id: string;
   title: string;
   description?: string;
-  targetLevel: 'Beginner' | 'Intermediate' | 'Advanced' | 'Master';
+  targetLevel: DifficultyLevel;
   orderNumber: number;
+  isArchived?: boolean;
+  version?: number;
   coursesCount?: number;
   courses?: CurriculumCourse[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CurriculumVersionHistory {
+  id: string;
+  entityType: 'program' | 'course' | 'chapter' | 'lesson' | 'position';
+  entityId: string;
+  version: number;
+  snapshot: any;
+  changedBy?: string;
+  createdAt: string;
+}
+
+export interface ScoringRules {
+  wrongMovePenalty: number;   // default -5
+  illegalMovePenalty: number; // default -2
+  hintUsedPenalty: number;    // default -10
+  solutionViewedPenalty: number; // default 0
+}
+
+export interface ClassroomTeachingSession {
+  id: string;
+  classId: string;
+  lessonId?: string;
+  currentPositionIndex: number;
+  boardControlMode: BoardControlMode;
+  practiceMode: boolean;
+  attemptLimit: number;
+  timerSeconds: number;
+  scoringRules: ScoringRules;
+  savedState?: any;
+  endedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StudentClassroomAttempt {
+  id: string;
+  sessionId: string;
+  positionId: string;
+  studentId: string;
+  studentName?: string;
+  moves: string[];
+  currentFen?: string;
+  status: 'thinking' | 'solved' | 'failed';
+  attemptsCount: number;
+  hintsUsed: number;
+  solutionViewed: boolean;
+  timeTakenSeconds: number;
+  score: number;
+  accuracy: number;
   createdAt: string;
   updatedAt: string;
 }

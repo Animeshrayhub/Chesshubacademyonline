@@ -187,6 +187,8 @@ export default async function ClassroomPage({ params }: { params: { classId: str
       zoomStartUrl={cls.zoom_start_url || ''}
       zoomJoinUrl={cls.zoom_join_url || ''}
       userId={user.id}
+      startedAt={cls.started_at || null}
+      endedAt={cls.ended_at || null}
     />
   );
 }

@@ -23,7 +23,7 @@ export default function HeroSection() {
         aria-hidden="true"
       />
 
-      <div className="relative z-10 mx-auto max-w-[1280px] px-6 lg:px-8 w-full py-28 lg:py-0 lg:min-h-screen lg:flex lg:items-center">
+      <div className="relative z-10 mx-auto max-w-[1280px] px-6 lg:px-8 w-full pt-28 lg:pt-32 pb-16 lg:min-h-screen lg:flex lg:items-center">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center w-full">
           {/* Left: Content */}
           <div className="text-white">

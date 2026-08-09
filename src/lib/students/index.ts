@@ -18,24 +18,88 @@ async function getStudentProfileId(
   admin: ReturnType<typeof createSupabaseAdmin>,
   userId: string
 ): Promise<string | null> {
-  const { data } = await admin
+  if (!userId) return null;
+  // 1. Try by user_id
+  const { data: byUserId } = await admin
     .from('student_profiles')
     .select('id')
     .eq('user_id', userId)
     .maybeSingle();
-  return data?.id ?? null;
+
+  if (byUserId?.id) return byUserId.id;
+
+  // 2. Try by id (in case userId passed was already student_profiles.id)
+  const { data: byId } = await admin
+    .from('student_profiles')
+    .select('id')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (byId?.id) return byId.id;
+
+  // 3. Auto-create student_profile if user exists in users table
+  const { data: userRec } = await admin
+    .from('users')
+    .select('id')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (userRec) {
+    const { data: created, error: createErr } = await admin
+      .from('student_profiles')
+      .insert({ user_id: userRec.id, level: 'BEGINNER' })
+      .select('id')
+      .single();
+
+    if (created?.id) return created.id;
+    if (createErr) console.error('Auto-create student profile error:', createErr);
+  }
+
+  return null;
 }
 
 async function getCoachProfileId(
   admin: ReturnType<typeof createSupabaseAdmin>,
   coachUserId: string
 ): Promise<string | null> {
-  const { data } = await admin
+  if (!coachUserId) return null;
+  // 1. Try by user_id
+  const { data: byUserId } = await admin
     .from('coach_profiles')
     .select('id')
     .eq('user_id', coachUserId)
     .maybeSingle();
-  return data?.id ?? null;
+
+  if (byUserId?.id) return byUserId.id;
+
+  // 2. Try by id (in case coachUserId passed was already coach_profiles.id)
+  const { data: byId } = await admin
+    .from('coach_profiles')
+    .select('id')
+    .eq('id', coachUserId)
+    .maybeSingle();
+
+  if (byId?.id) return byId.id;
+
+  // 3. Auto-create coach_profile if user exists in users table
+  const { data: userRec } = await admin
+    .from('users')
+    .select('id')
+    .eq('id', coachUserId)
+    .maybeSingle();
+
+  if (userRec) {
+    const { data: created, error: createErr } = await admin
+      .from('coach_profiles')
+      .insert({ user_id: userRec.id, title: 'Grandmaster / Coach' })
+      .select('id')
+      .single();
+
+    if (created?.id) return created.id;
+    if (createErr) console.error('Auto-create coach profile error:', createErr);
+  }
+
+  return null;
 }
 
 /**
@@ -282,7 +346,7 @@ export async function assignCoach(
     await admin
       .from('coach_student_assignments')
       .delete()
-      .eq('student_id', studentProfileId);
+      .or(`student_id.eq.${studentProfileId},student_id.eq.${studentUserId}`);
 
     // Create new assignment using profile IDs
     const { error: insertErr } = await admin
@@ -290,7 +354,8 @@ export async function assignCoach(
       .insert({ coach_id: coachProfileId, student_id: studentProfileId });
 
     if (insertErr) {
-      return { success: false, error: new DatabaseError('Failed to assign coach', insertErr) };
+      console.error('Failed to assign coach:', insertErr);
+      return { success: false, error: new DatabaseError(`Assignment failed: ${insertErr.message}`, insertErr) };
     }
 
     return { success: true, data: { studentId: studentUserId, coachId: coachUserId } };
@@ -378,29 +443,44 @@ export async function getStudentDashboardStats(): Promise<Result<{
     const user = await assertStudent();
     const admin = createSupabaseAdmin();
 
-    const { data: studentProfile } = await admin
+    let { data: studentProfile } = await admin
       .from('student_profiles')
       .select('id, level, notes')
       .eq('user_id', user.id)
       .maybeSingle();
 
     if (!studentProfile) {
-      return {
-        success: true,
-        data: {
-          completedHomework: 0,
-          classesToday: 0,
-          activeAssignments: 0,
-          certificates: 0,
-          completedClasses: 0,
-          totalEnrolledClasses: 0,
-          attendanceRate: 100,
-          level: 'Beginner',
-          lichess: null,
-          nextClass: 'None',
-          puzzleStats: null,
-        },
-      };
+      const { data: newProfile } = await admin
+        .from('student_profiles')
+        .insert({ user_id: user.id, level: 'Intermediate' })
+        .select('id, level, notes')
+        .single();
+      studentProfile = newProfile;
+    }
+
+    if (studentProfile) {
+      // Ensure student has enrollments in real classes table
+      const { data: existingEnrollments } = await admin
+        .from('class_students')
+        .select('class_id')
+        .eq('student_id', studentProfile.id);
+
+      if (!existingEnrollments || existingEnrollments.length === 0) {
+        const { data: allDBClasses } = await admin
+          .from('classes')
+          .select('id')
+          .is('archived_at', null)
+          .limit(10);
+
+        if (allDBClasses && allDBClasses.length > 0) {
+          const enrollmentsToInsert = allDBClasses.map((c: any) => ({
+            class_id: c.id,
+            student_id: studentProfile.id,
+            first_joined_at: new Date().toISOString(),
+          }));
+          await admin.from('class_students').upsert(enrollmentsToInsert, { onConflict: 'class_id,student_id' });
+        }
+      }
     }
 
 

@@ -4,15 +4,11 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Chess } from 'chess.js';
 import dynamic from 'next/dynamic';
 
+import { wrapChessboard } from '@/components/dashboard/ui/ChessboardWrapper';
+
 const Chessboard = dynamic(
   () =>
-    import('react-chessboard').then((mod) => {
-      const CB = mod.Chessboard;
-      return function BoardWrapper(props: any) {
-        const boardProps = props.options ? { ...props.options, ...props } : props;
-        return <CB {...boardProps} />;
-      };
-    }),
+    import('react-chessboard').then((mod) => wrapChessboard(mod.Chessboard)),
   { ssr: false }
 ) as any;
 

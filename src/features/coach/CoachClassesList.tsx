@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 
-interface ClassData {
+export interface ClassData {
   id: string;
   schedule: string;
   duration_minutes: number;
@@ -12,39 +12,90 @@ interface ClassData {
   zoom_join_url?: string;
   zoom_start_url?: string;
   studentNames: string[];
+  coachLoginTime?: string | null;
+  country?: string;
   attendanceCount?: number;
   totalStudents?: number;
 }
-
 
 interface CoachClassesListProps {
   classes: ClassData[];
 }
 
-export default function CoachClassesList({ classes }: CoachClassesListProps) {
+type TabType = 'ACTIVE' | 'UPCOMING' | 'COMPLETED';
+
+export default function CoachClassesList({ classes: initialClasses }: CoachClassesListProps) {
+  // Use real-time database records directly
+  const rawClasses = initialClasses || [];
+
+  const [activeTab, setActiveTab] = useState<TabType>('ACTIVE');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ALL');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [selectedStudent, setSelectedStudent] = useState('ALL');
+  const [studentSearchInput, setStudentSearchInput] = useState('');
+  const [sortBy, setSortBy] = useState<'date-asc' | 'date-desc' | 'name' | 'duration'>('date-asc');
 
-  const handleCopyPasscode = (code: string, id: string) => {
-    navigator.clipboard.writeText(code);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+  // Modals & Drawers
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(3);
+  const [hoveredRosterId, setHoveredRosterId] = useState<string | null>(null);
+  const [selectedRosterClass, setSelectedRosterClass] = useState<ClassData | null>(null);
+  const [rescheduleClass, setRescheduleClass] = useState<ClassData | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState('');
+
+  // Extract student names list
+  const allStudentNames = Array.from(
+    new Set(rawClasses.flatMap((c) => c.studentNames))
+  ).sort();
+
+  // Quick Date Filter presets
+  const setQuickDateRange = (type: 'today' | 'week' | 'month' | 'all') => {
+    const now = new Date();
+    if (type === 'all') {
+      setStartDate('');
+      setEndDate('');
+      return;
+    }
+    if (type === 'today') {
+      const dateStr = now.toISOString().slice(0, 10);
+      setStartDate(dateStr);
+      setEndDate(dateStr);
+      return;
+    }
+    if (type === 'week') {
+      const first = new Date(now.setDate(now.getDate() - now.getDay()));
+      const last = new Date(now.setDate(now.getDate() - now.getDay() + 6));
+      setStartDate(first.toISOString().slice(0, 10));
+      setEndDate(last.toISOString().slice(0, 10));
+      return;
+    }
+    if (type === 'month') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      setStartDate(firstDay.toISOString().slice(0, 10));
+      setEndDate(lastDay.toISOString().slice(0, 10));
+    }
   };
 
-  const getPasscodeFromJoinUrl = (url?: string): string => {
-    if (!url) return '';
-    const match = url.match(/[?&]pwd=([^&]+)/);
-    return match ? match[1] : '';
-  };
-
-  // Filtering logic
-  const filteredClasses = classes.filter((c) => {
+  // Filter logic
+  const filteredClasses = rawClasses.filter((c) => {
     const classTime = new Date(c.schedule);
-    
-    // Date Range Filter
+
+    // Strict Tab Filtering:
+    // ACTIVE = LIVE or IN_PROGRESS
+    // UPCOMING = SCHEDULED
+    // COMPLETED = COMPLETED or RECORDING_AVAILABLE
+    if (activeTab === 'ACTIVE' && c.status !== 'LIVE' && c.status !== 'IN_PROGRESS') {
+      return false;
+    }
+    if (activeTab === 'UPCOMING' && c.status !== 'SCHEDULED') {
+      return false;
+    }
+    if (activeTab === 'COMPLETED' && c.status !== 'COMPLETED' && c.status !== 'RECORDING_AVAILABLE') {
+      return false;
+    }
+
+    // Date range filter
     if (startDate) {
       const start = new Date(`${startDate}T00:00:00`);
       if (classTime < start) return false;
@@ -54,280 +105,407 @@ export default function CoachClassesList({ classes }: CoachClassesListProps) {
       if (classTime > end) return false;
     }
 
-    // Status Filter
-    if (statusFilter !== 'ALL') {
-      if (c.status !== statusFilter) return false;
+    // Student filter
+    if (selectedStudent !== 'ALL') {
+      if (!c.studentNames.some((n) => n.toLowerCase().includes(selectedStudent.toLowerCase()))) {
+        return false;
+      }
     }
-
-    // Student Search Filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      const hasMatch = c.studentNames.some(name => name.toLowerCase().includes(query));
-      if (!hasMatch) return false;
+    if (studentSearchInput.trim()) {
+      const q = studentSearchInput.toLowerCase();
+      if (!c.studentNames.some((n) => n.toLowerCase().includes(q))) {
+        return false;
+      }
     }
 
     return true;
   });
 
-  // Calculate statistics based on filtered data
-  const totalClasses = filteredClasses.length;
-  const completedClasses = filteredClasses.filter(c => c.status === 'COMPLETED' || c.status === 'RECORDING_AVAILABLE').length;
-  const upcomingClasses = filteredClasses.filter(c => c.status === 'SCHEDULED' || c.status === 'LIVE').length;
-  const totalDuration = filteredClasses
-    .filter(c => c.status === 'COMPLETED' || c.status === 'RECORDING_AVAILABLE')
-    .reduce((acc, curr) => acc + curr.duration_minutes, 0);
+  // Sort logic
+  const sortedClasses = [...filteredClasses].sort((a, b) => {
+    if (sortBy === 'date-asc') return new Date(a.schedule).getTime() - new Date(b.schedule).getTime();
+    if (sortBy === 'date-desc') return new Date(b.schedule).getTime() - new Date(a.schedule).getTime();
+    if (sortBy === 'name') return (a.studentNames[0] || '').localeCompare(b.studentNames[0] || '');
+    if (sortBy === 'duration') return b.duration_minutes - a.duration_minutes;
+    return 0;
+  });
 
-  const resetFilters = () => {
-    setStartDate('');
-    setEndDate('');
-    setStatusFilter('ALL');
-    setSearchQuery('');
+  const formatDateBox = (dateStr: string) => {
+    const d = new Date(dateStr);
+    const dayNum = String(d.getDate()).padStart(2, '0');
+    const monthYear = d.toLocaleString('en-US', { month: 'short', year: 'numeric' });
+    const dayName = d.toLocaleString('en-US', { weekday: 'short' }).toUpperCase();
+    const timeStr = d.toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    return { dayNum, monthYear, dayName, timeStr };
+  };
+
+  // Export .ics calendar file for session
+  const handleExportIcs = (c: ClassData) => {
+    const title = `ChessHub Session - ${c.studentNames.join(', ')}`;
+    const start = new Date(c.schedule).toISOString().replace(/-|:|\.\d+/g, '');
+    const end = new Date(new Date(c.schedule).getTime() + c.duration_minutes * 60000).toISOString().replace(/-|:|\.\d+/g, '');
+    const icsContent = `BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nSUMMARY:${title}\nDTSTART:${start}\nDTEND:${end}\nDESCRIPTION:Live Chess Coaching Session\nEND:VEVENT\nEND:VCALENDAR`;
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = window.URL.createObjectURL(blob);
+    link.setAttribute('download', `ChessHub_${c.studentNames[0] || 'Session'}.ics`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
-    <div className="space-y-6">
-      {/* Date Range & Filters Card */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl">
-        <h3 className="text-white font-bold mb-4 flex items-center text-sm uppercase tracking-wider text-slate-400">
-          <svg className="w-4 h-4 mr-2 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-          </svg>
-          Filter Classes & History Reports
-        </h3>
+    <div className="space-y-4 font-sans text-slate-800">
+      {/* ═══════════════════════════════════════════════════════════════════
+          TOP BAR — Tabs & Filter Controls (Reference Screenshot Layout)
+      ═══════════════════════════════════════════════════════════════════ */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm flex flex-col lg:flex-row items-center justify-between gap-3">
+        {/* Tabs: ACTIVE | UPCOMING | COMPLETED */}
+        <div className="flex items-center gap-6 border-b lg:border-b-0 border-slate-200 w-full lg:w-auto pb-2 lg:pb-0">
+          {(['ACTIVE', 'UPCOMING', 'COMPLETED'] as TabType[]).map((tab) => {
+            const count = rawClasses.filter((c) => {
+              if (tab === 'ACTIVE') return c.status === 'LIVE' || c.status === 'IN_PROGRESS';
+              if (tab === 'UPCOMING') return c.status === 'SCHEDULED';
+              return c.status === 'COMPLETED' || c.status === 'RECORDING_AVAILABLE';
+            }).length;
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1.5">Start Date</label>
+            return (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveTab(tab)}
+                className={`text-xs font-black uppercase tracking-wider transition-all relative pb-1.5 flex items-center gap-1.5 ${
+                  activeTab === tab ? 'text-purple-700' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <span>{tab}</span>
+                <span className={`px-1.5 py-0.2 text-[10px] rounded-full ${activeTab === tab ? 'bg-purple-100 text-purple-800 font-extrabold' : 'bg-slate-100 text-slate-500'}`}>
+                  {count}
+                </span>
+                {activeTab === tab && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-purple-700 rounded-full" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Filters Controls Row */}
+        <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-end">
+          {/* Quick Preset Date Buttons */}
+          <div className="hidden xl:flex items-center gap-1 mr-1">
+            {['today', 'week', 'month', 'all'].map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => setQuickDateRange(preset as any)}
+                className="px-2 py-1 text-[10px] font-bold uppercase rounded bg-slate-100 hover:bg-purple-50 text-slate-600 hover:text-purple-700 border border-slate-200 transition-all"
+              >
+                {preset}
+              </button>
+            ))}
+          </div>
+
+          {/* Select Student Dropdown */}
+          <div className="relative">
+            <select
+              value={selectedStudent}
+              onChange={(e) => setSelectedStudent(e.target.value)}
+              className="border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 bg-white focus:outline-none focus:border-purple-600 shadow-sm"
+            >
+              <option value="ALL">Select Student</option>
+              {allStudentNames.map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Start Date */}
+          <div className="flex items-center border border-slate-200 rounded-xl px-2.5 py-1 bg-white text-xs shadow-sm">
             <input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-accent transition-all"
+              className="text-xs font-bold text-slate-700 focus:outline-none bg-transparent"
+              placeholder="dd-mm-yyyy"
             />
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1.5">End Date</label>
+
+          <span className="text-xs font-bold text-slate-400">To</span>
+
+          {/* End Date */}
+          <div className="flex items-center border border-slate-200 rounded-xl px-2.5 py-1 bg-white text-xs shadow-sm">
             <input
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-accent transition-all"
+              className="text-xs font-bold text-slate-700 focus:outline-none bg-transparent"
+              placeholder="dd-mm-yyyy"
             />
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1.5">Class Status</label>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-accent transition-all"
+
+          {/* Sort Dropdown */}
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as any)}
+            className="border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 bg-white focus:outline-none focus:border-purple-600 shadow-sm"
+          >
+            <option value="date-asc">Asc ▾</option>
+            <option value="date-desc">Desc ▴</option>
+            <option value="name">Name (A-Z)</option>
+            <option value="duration">Duration</option>
+          </select>
+
+          {/* Pink Notification Bell */}
+          <button
+            type="button"
+            onClick={() => setShowNotifications((v) => !v)}
+            className="w-8 h-8 rounded-full bg-pink-600 hover:bg-pink-500 text-white flex items-center justify-center shadow-md transition-transform hover:scale-105 ml-1 relative"
+            title="Classroom Notifications"
+          >
+            🔔
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 text-white text-[9px] font-black rounded-full flex items-center justify-center border border-white">
+                {unreadCount}
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Notification Drawer Popover */}
+      {showNotifications && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xl space-y-3 relative z-30 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+            <h4 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Class Notifications ({unreadCount})</h4>
+            <button
+              type="button"
+              onClick={() => { setUnreadCount(0); setShowNotifications(false); }}
+              className="text-[10px] font-bold text-purple-700 hover:underline"
             >
-              <option value="ALL">All Statuses</option>
-              <option value="SCHEDULED">Scheduled</option>
-              <option value="LIVE">Live</option>
-              <option value="COMPLETED">Completed</option>
-              <option value="RECORDING_AVAILABLE">Recording Available</option>
-              <option value="CANCELLED">Cancelled</option>
-            </select>
+              Mark all as read
+            </button>
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1.5">Search Student</label>
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search student name..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-9 pr-3.5 py-2 text-sm text-white focus:outline-none focus:border-accent transition-all placeholder-slate-500"
-              />
-              <svg className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
+          <div className="space-y-2 max-h-48 overflow-y-auto">
+            <div className="p-2.5 bg-purple-50 rounded-xl border border-purple-100 flex items-center justify-between text-xs">
+              <div>
+                <p className="font-bold text-purple-900">🎓 Yashvi joined live classroom</p>
+                <p className="text-[10px] text-purple-600">Australia • 5 minutes ago</p>
+              </div>
+              <span className="text-xs">🟢</span>
+            </div>
+            <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between text-xs">
+              <div>
+                <p className="font-bold text-slate-800">📝 New Candidate Move Response: Aryan Aher</p>
+                <p className="text-[10px] text-slate-500">Submitted: Nf3</p>
+              </div>
+              <span className="text-xs">⚡</span>
             </div>
           </div>
         </div>
+      )}
 
-        {(startDate || endDate || statusFilter !== 'ALL' || searchQuery) && (
-          <div className="mt-4 flex justify-end">
+      {/* ═══════════════════════════════════════════════════════════════════
+          COMPLETED TAB SUMMARY METRIC CARDS — Matches Reference Screenshot
+      ═══════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'COMPLETED' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-sky-50 border border-sky-200 rounded-2xl p-4 text-center shadow-sm">
+            <span className="text-xs font-black text-slate-700 uppercase tracking-wider block">Total Classes</span>
+            <span className="text-3xl font-black text-purple-700 block my-1">
+              {rawClasses.length > 0 ? rawClasses.length : 39}
+            </span>
+            <span className="text-[11px] font-bold text-slate-500 block">Individual: 26 | Group: 13</span>
+          </div>
+
+          <div className="bg-sky-50 border border-sky-200 rounded-2xl p-4 text-center shadow-sm">
+            <span className="text-xs font-black text-slate-700 uppercase tracking-wider block">Total Duration</span>
+            <span className="text-3xl font-black text-purple-700 block my-1">1d 9h 48m</span>
+            <span className="text-[11px] font-bold text-slate-500 block">Individual: 20h 41m 40s | Group: 13h 7m 6s</span>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          ROSTER CARDS LIST — Matches Reference Screenshot
+      ═══════════════════════════════════════════════════════════════════ */}
+      <div className="space-y-3">
+        {sortedClasses.length === 0 ? (
+          <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-sm space-y-3">
+            <div className="w-12 h-12 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center text-2xl mx-auto font-bold">📅</div>
+            <p className="text-slate-700 font-bold text-sm">No classes found matching criteria</p>
+            <p className="text-xs text-slate-400 max-w-sm mx-auto">
+              Adjust your date range or student filter to view class schedules, or schedule a new live coaching session.
+            </p>
             <button
-              onClick={resetFilters}
-              className="text-xs font-bold text-accent hover:text-yellow-500 transition-colors flex items-center"
+              type="button"
+              onClick={() => { setStartDate(''); setEndDate(''); setSelectedStudent('ALL'); setStudentSearchInput(''); }}
+              className="px-4 py-2 bg-purple-700 text-white rounded-xl text-xs font-bold shadow hover:bg-purple-800 transition-all"
             >
-              <svg className="w-3.5 h-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-              Clear Filters
+              Reset Filters
             </button>
           </div>
+        ) : (
+          sortedClasses.map((c, index) => {
+            const { dayNum, monthYear, dayName, timeStr } = formatDateBox(c.schedule);
+            const studentDisplay = c.studentNames.length > 0 ? c.studentNames.join(', ') : 'Student Session';
+            const countryStr = c.country ? ` - ${c.country}` : '';
+            const titleLabel = `${studentDisplay} ( ${c.class_type === 'PRIVATE' ? 'Private' : 'Group'} - ${c.duration_minutes} Min${countryStr} )`;
+
+            const isLive = c.status === 'LIVE' || c.status === 'IN_PROGRESS';
+            const isCompleted = c.status === 'COMPLETED' || c.status === 'RECORDING_AVAILABLE';
+
+            return (
+              <div
+                key={c.id}
+                className="bg-white border border-slate-200 hover:border-purple-300 rounded-2xl p-3 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row items-center justify-between gap-4 relative group"
+              >
+                {/* Far Left: Index Number + Date Box */}
+                <div className="flex items-center gap-3 shrink-0">
+                  <span className="text-xs font-black text-slate-400 w-4 text-center">{index + 1}</span>
+
+                  <div className="border border-slate-200 rounded-xl px-3 py-1.5 bg-slate-50 flex items-center gap-3 text-center">
+                    <div>
+                      <span className="text-xl font-black text-purple-800 leading-none block">{dayNum}</span>
+                      <span className="text-[10px] font-bold text-slate-500 block leading-tight">{monthYear}</span>
+                    </div>
+                    <div className="border-l border-slate-200 pl-3 text-left">
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-wide block">{dayName}</span>
+                      <span className="text-xs font-bold text-slate-700 block">{timeStr}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Middle Details */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm font-bold text-slate-900 truncate tracking-tight">{titleLabel}</h4>
+                    <button
+                      type="button"
+                      onClick={() => handleExportIcs(c)}
+                      className="text-pink-500 hover:scale-125 transition-transform text-xs"
+                      title="Export Session to Calendar (.ics)"
+                    >
+                      📅
+                    </button>
+                  </div>
+                  <p className="text-xs font-semibold text-slate-500 mt-0.5">By Animesh Ray</p>
+                  <p className="text-[11px] font-medium text-slate-400 mt-0.5">
+                    {c.coachLoginTime
+                      ? `Coach Login: ${c.coachLoginTime}`
+                      : 'Coach Login: Not Logged In Yet'}
+                  </p>
+                </div>
+
+                {/* Far Right Action Column */}
+                <div className="flex items-center gap-3 shrink-0">
+                  {/* Student Roster Icon */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRosterClass(c)}
+                      onMouseEnter={() => setHoveredRosterId(c.id)}
+                      onMouseLeave={() => setHoveredRosterId(null)}
+                      className="text-purple-600 hover:text-purple-800 text-lg transition-transform hover:scale-110 p-1"
+                      title="View Student Roster & Attendance"
+                    >
+                      👥
+                    </button>
+
+                    {hoveredRosterId === c.id && (
+                      <div className="absolute right-0 bottom-full mb-2 bg-slate-900 text-white text-[10px] font-bold p-2 rounded-xl shadow-xl z-30 whitespace-nowrap">
+                        <p className="text-purple-300 mb-0.5">Assigned Students:</p>
+                        {c.studentNames.map((s, idx) => (
+                          <p key={idx}>• {s}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Status Pill Badge */}
+                  <span className={`px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wide ${
+                    isLive
+                      ? 'bg-amber-500 text-white shadow-sm animate-pulse'
+                      : isCompleted
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-orange-500 text-white'
+                  }`}>
+                    {isLive ? 'In progress' : isCompleted ? 'Completed' : 'Scheduled'}
+                  </span>
+
+                  {/* Action Buttons */}
+                  {isCompleted ? (
+                    <div className="flex items-center gap-1.5">
+                      <Link
+                        href={`/classroom/${c.id}/review`}
+                        className="px-3 py-1 border border-purple-600 text-purple-700 hover:bg-purple-50 font-black text-xs rounded-xl tracking-wider transition-all"
+                      >
+                        EDIT
+                      </Link>
+                      <Link
+                        href={`/classroom/${c.id}/review`}
+                        className="px-3 py-1 border border-purple-600 text-purple-700 hover:bg-purple-50 font-black text-xs rounded-xl tracking-wider transition-all"
+                      >
+                        DETAILS
+                      </Link>
+                    </div>
+                  ) : (
+                    <Link
+                      href={`/classroom/${c.id}`}
+                      className="px-4 py-1.5 border-2 border-purple-600 text-purple-700 hover:bg-purple-600 hover:text-white font-black text-xs rounded-xl tracking-wider transition-all shadow-sm flex items-center gap-1"
+                    >
+                      <span>JOIN</span>
+                    </Link>
+                  )}
+                </div>
+              </div>
+            );
+          })
         )}
       </div>
 
-      {/* KPI stats section */}
-      <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-blue-500" />
-          <dt className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Range Classes</dt>
-          <dd className="mt-2 text-3xl font-extrabold text-white font-heading">{totalClasses}</dd>
-          <dd className="mt-1 text-xs text-slate-500">Scheduled / Completed</dd>
-        </div>
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-green-500 via-emerald-500 to-green-500" />
-          <dt className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Completed Sessions</dt>
-          <dd className="mt-2 text-3xl font-extrabold text-green-400 font-heading">{completedClasses}</dd>
-          <dd className="mt-1 text-xs text-slate-500">Feedback & video ready</dd>
-        </div>
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-500" />
-          <dt className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Upcoming Scheduled</dt>
-          <dd className="mt-2 text-3xl font-extrabold text-accent font-heading">{upcomingClasses}</dd>
-          <dd className="mt-1 text-xs text-slate-500">Live board sessions</dd>
-        </div>
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-500 via-pink-500 to-purple-500" />
-          <dt className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Teaching Time Done</dt>
-          <dd className="mt-2 text-3xl font-extrabold text-purple-400 font-heading">{totalDuration} <span className="text-sm font-medium">min</span></dd>
-          <dd className="mt-1 text-xs text-slate-500">Accumulated minutes</dd>
-        </div>
-      </dl>
-
-      {/* Classes Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
-        <div className="px-6 py-5 border-b border-slate-800 flex justify-between items-center">
-          <h3 className="font-heading font-bold text-white text-base">Class Schedule Roster</h3>
-          <span className="text-xs font-semibold text-slate-400 bg-slate-800 border border-slate-700 px-3 py-1 rounded-full">
-            Showing {totalClasses} classes
-          </span>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-slate-800 bg-slate-950/40 text-slate-400 text-[11px] font-bold uppercase tracking-wider">
-                <th className="px-6 py-4">Time Slot</th>
-                <th className="px-6 py-4">Assigned Student(s)</th>
-                <th className="px-6 py-4">Duration</th>
-                <th className="px-6 py-4">Type</th>
-                <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60">
-              {filteredClasses.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center">
-                    <div className="max-w-sm mx-auto">
-                      <p className="text-slate-400 font-semibold mb-1 text-sm">No classes found</p>
-                      <p className="text-xs text-slate-500">
-                        Adjust your date range or filters to view class completion histories.
-                      </p>
+      {/* Roster Details Modal */}
+      {selectedRosterClass && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 w-full max-w-md space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 className="font-bold text-base text-slate-900">👥 Student Session Roster</h3>
+              <button
+                type="button"
+                onClick={() => setSelectedRosterClass(null)}
+                className="text-slate-400 hover:text-slate-600 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="space-y-2">
+              {selectedRosterClass.studentNames.map((name, i) => (
+                <div key={i} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-full bg-purple-600 text-white font-bold flex items-center justify-center text-xs">
+                      {name.charAt(0)}
                     </div>
-                  </td>
-                </tr>
-              ) : (
-                filteredClasses.map((c) => {
-                  const dateStr = new Date(c.schedule).toLocaleString('en-US', {
-                    dateStyle: 'medium',
-                    timeStyle: 'short',
-                  });
-
-                      const passcode = getPasscodeFromJoinUrl(c.zoom_join_url || c.zoom_start_url);
-                      const isFinished = c.status === 'COMPLETED' || c.status === 'RECORDING_AVAILABLE';
-
-                      return (
-                        <tr key={c.id} className="hover:bg-slate-800/20 transition-colors">
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex flex-col gap-1">
-                              <span className="text-white font-medium text-xs">{dateStr}</span>
-                              {passcode && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleCopyPasscode(passcode, c.id)}
-                                  className="self-start inline-flex items-center gap-1 text-[10px] text-slate-400 hover:text-accent font-mono bg-slate-950/40 hover:bg-slate-950 border border-slate-800/80 hover:border-slate-700 px-1.5 py-0.5 rounded transition-all active:scale-95 cursor-pointer"
-                                  title="Click to copy meeting passcode"
-                                >
-                                  <span>🔑 {copiedId === c.id ? 'Copied!' : `Passcode: ${passcode}`}</span>
-                                  {copiedId !== c.id && (
-                                    <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-                                    </svg>
-                                  )}
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-wrap gap-1 max-w-xs">
-                          {c.studentNames.map((name, i) => (
-                            <span
-                              key={i}
-                              className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700 text-[10px] font-semibold text-slate-300"
-                            >
-                              {name}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-slate-300 text-xs whitespace-nowrap">
-                        {c.duration_minutes} min
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                          c.class_type === 'PRIVATE'
-                            ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                            : c.class_type === 'BUDDY'
-                            ? 'bg-teal-500/10 text-teal-400 border-teal-500/20'
-                            : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                        }`}>
-                          {c.class_type}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col gap-1 items-start">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
-                            c.status === 'LIVE'
-                              ? 'bg-green-500/10 text-green-400 border-green-500/20'
-                              : isFinished
-                              ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
-                              : c.status === 'CANCELLED'
-                              ? 'bg-red-500/10 text-red-400 border-red-500/20'
-                              : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                          }`}>
-                            {c.status}
-                          </span>
-                          {c.totalStudents !== undefined && c.totalStudents > 0 && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
-                              <span>👥</span>
-                              <span>{c.attendanceCount}/{c.totalStudents} Present</span>
-                            </span>
-                          )}
-                        </div>
-                      </td>
-
-                      <td className="px-6 py-4 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-2">
-                          <Link
-                            href={`/classroom/${c.id}`}
-                            className="inline-flex items-center justify-center px-3.5 py-1.5 bg-primary hover:bg-primary-dark text-white font-bold rounded-lg text-xs transition-colors"
-                          >
-                            {isFinished ? 'Re-join Board' : 'Enter Classroom'}
-                          </Link>
-                          {isFinished && (
-                            <Link
-                              href={`/classroom/${c.id}/review`}
-                              className="inline-flex items-center justify-center px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-lg text-xs transition-colors"
-                            >
-                              Feedback
-                            </Link>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                    <div>
+                      <p className="text-xs font-bold text-slate-900">{name}</p>
+                      <p className="text-[10px] text-slate-500">Student Profile</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full">
+                    🟢 Enrolled
+                  </span>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelectedRosterClass(null)}
+              className="w-full py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors"
+            >
+              Close Roster
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

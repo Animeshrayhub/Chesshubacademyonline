@@ -1,22 +1,27 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useTransition, useCallback } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Chess } from 'chess.js';
 import { supabase } from '@/utils/supabaseClient';
-import DashboardIcon from './DashboardIcon';
-import Button from '@/components/ui/Button';
 import ChessWorkspace from './ChessWorkspace';
-import ClassroomRecorder from '@/components/dashboard/ui/ClassroomRecorder';
+import ClassroomLocalRecorder from '@/components/dashboard/ui/ClassroomLocalRecorder';
+import ClassroomVideoGrid from '@/components/dashboard/ui/ClassroomVideoGrid';
 import ClassroomLessonDrawer from '@/features/classroom/ClassroomLessonDrawer';
 import ClassroomDatabasePanel from '@/components/dashboard/ui/ClassroomDatabasePanel';
+import SetPositionModal from './SetPositionModal';
+import ClearBoardModal, { ClearMode } from './ClearBoardModal';
+import ClassroomBottomToolbar from './ClassroomBottomToolbar';
+import ClassroomMoveNotation from './ClassroomMoveNotation';
+import ClassroomEnginePanel from './ClassroomEnginePanel';
+import { useWebRTC } from '@/hooks/useWebRTC';
 import type { TeachingPosition } from '@/types/curriculum.types';
-
-import { endClassAction, startClassAction, submitClassEndReportAction, saveLiveClassRecordingAction } from '@/actions/classes';
-import { getZoomSignatureAction } from '@/actions/zoom';
+import ClassroomVirtualBackgroundModal, { type BackgroundType } from './ClassroomVirtualBackgroundModal';
+import ClassroomPreJoinModal from './ClassroomPreJoinModal';
+import { endClassAction, startClassAction, submitClassEndReportAction } from '@/actions/classes';
 import { listHomeworkAction, listChaptersAction, assignChapterToClassAction } from '@/actions/homework';
 
+/* ─── Types ─────────────────────────────────────────────────────────────── */
 interface StudentInfo {
   firstName: string;
   lastName: string;
@@ -37,6 +42,8 @@ interface ClassroomWorkspaceProps {
   zoomStartUrl: string;
   zoomJoinUrl: string;
   userId: string;
+  startedAt?: string | null;
+  endedAt?: string | null;
 }
 
 interface ChatMessage {
@@ -61,6 +68,9 @@ interface HomeworkWorkbook {
   track: string;
 }
 
+type RightTab = 'at' | 'response' | 'leaderboard' | 'participants' | 'engine';
+
+/* ─── Component ─────────────────────────────────────────────────────────── */
 export default function ClassroomWorkspace({
   classId,
   role,
@@ -74,236 +84,248 @@ export default function ClassroomWorkspace({
   zoomStartUrl,
   zoomJoinUrl,
   userId,
+  startedAt,
+  endedAt,
 }: ClassroomWorkspaceProps) {
   const router = useRouter();
   const [status, setStatus] = useState(initialStatus);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState('');
+  const isCoach = role === 'coach' || role === 'admin';
 
-  // Microphone & Camera permission state
-  const [micState, setMicState] = useState<'prompt' | 'granted' | 'denied'>('prompt');
+  /* ── Native In-House WebRTC Hook (Zero Login / Zero Redirect) ───────────── */
+  const webRTC = useWebRTC({ classId, userName, userRole: role });
 
-  const requestMicPermission = useCallback(async () => {
-    if (typeof window === 'undefined' || !navigator?.mediaDevices?.getUserMedia) return;
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-      stream.getTracks().forEach((track) => track.stop());
-      setMicState('granted');
-    } catch (err: any) {
-      console.warn('Microphone permission request:', err);
-      setMicState('denied');
+  /* ── Persistent Session Timer ───────────────────────────────────────────── */
+  const [startedAtTime, setStartedAtTime] = useState<string | null>(() => {
+    if (startedAt) return startedAt;
+    if (typeof window !== 'undefined' && classId) {
+      return localStorage.getItem(`classroom_started_at_${classId}`);
+    }
+    return null;
+  });
+
+  const [endedAtTime, setEndedAtTime] = useState<string | null>(() => {
+    if (endedAt) return endedAt;
+    if (typeof window !== 'undefined' && classId) {
+      return localStorage.getItem(`classroom_ended_at_${classId}`);
+    }
+    return null;
+  });
+
+  const calculateElapsed = useCallback(() => {
+    // 1. If completed or endedAtTime set, freeze timer at final duration
+    if (status === 'COMPLETED' || endedAtTime) {
+      if (startedAtTime && endedAtTime) {
+        const startMs = new Date(startedAtTime).getTime();
+        const endMs = new Date(endedAtTime).getTime();
+        if (!isNaN(startMs) && !isNaN(endMs) && endMs >= startMs) {
+          return Math.floor((endMs - startMs) / 1000);
+        }
+      }
+      if (startedAtTime) {
+        const startMs = new Date(startedAtTime).getTime();
+        if (!isNaN(startMs)) {
+          return Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+        }
+      }
+      return duration * 60;
+    }
+
+    // 2. Compute elapsed time since startedAtTime (or fallback to scheduledStart)
+    const baseIso = startedAtTime || (status === 'LIVE' ? scheduledStart : null);
+    if (baseIso) {
+      const startMs = new Date(baseIso).getTime();
+      if (!isNaN(startMs)) {
+        return Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+      }
+    }
+
+    return 0;
+  }, [status, startedAtTime, endedAtTime, scheduledStart, duration]);
+
+  const [elapsedSeconds, setElapsedSeconds] = useState(calculateElapsed);
+
+  useEffect(() => {
+    setElapsedSeconds(calculateElapsed());
+
+    if (status === 'COMPLETED' || endedAtTime) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setElapsedSeconds(calculateElapsed());
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [calculateElapsed, status, endedAtTime]);
+
+  const formatElapsed = (s: number) => {
+    const hrs = Math.floor(s / 3600);
+    const mins = Math.floor((s % 3600) / 60);
+    const secs = s % 60;
+    return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
+  /* ── Layout & Viewport ─────────────────────────────────────────────────── */
+  const [isFullscreenBoard, setIsFullscreenBoard] = useState(false);
+  const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
+  const [rightColWidth, setRightColWidth] = useState(420);
+  const boardContainerRef = useRef<HTMLDivElement>(null);
+
+  const handleToggleFullscreen = useCallback(() => {
+    const el = boardContainerRef.current;
+    if (!el) return;
+    if (!document.fullscreenElement) {
+      el.requestFullscreen().then(() => setIsFullscreenBoard(true)).catch(() => setIsFullscreenBoard(false));
+    } else {
+      document.exitFullscreen().then(() => setIsFullscreenBoard(false)).catch(() => {});
     }
   }, []);
 
-  // Check initial mic permission status
+  // Sync isFullscreenBoard state with actual fullscreen changes
   useEffect(() => {
-    if (typeof window !== 'undefined' && navigator?.permissions?.query) {
-      navigator.permissions.query({ name: 'microphone' as PermissionName }).then((result) => {
-        if (result.state === 'granted') setMicState('granted');
-        result.onchange = () => {
-          if (result.state === 'granted') setMicState('granted');
-          else if (result.state === 'denied') setMicState('denied');
-        };
-      }).catch(() => {});
-    }
+    const handler = () => {
+      setIsFullscreenBoard(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handler);
+    return () => document.removeEventListener('fullscreenchange', handler);
   }, []);
+  const resizingRef = useRef(false);
 
-  // Elapsed seconds timer
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const startResizeRight = (e: React.MouseEvent) => {
+    e.preventDefault();
+    resizingRef.current = true;
+    const doDrag = (moveEvent: MouseEvent) => {
+      if (!resizingRef.current) return;
+      const newWidth = Math.max(300, Math.min(600, window.innerWidth - moveEvent.clientX));
+      setRightColWidth(newWidth);
+    };
+    const stopDrag = () => {
+      resizingRef.current = false;
+      window.removeEventListener('mousemove', doDrag);
+      window.removeEventListener('mouseup', stopDrag);
+    };
+    window.addEventListener('mousemove', doDrag);
+    window.addEventListener('mouseup', stopDrag);
+  };
 
-  // Recording state
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const [recordingSaving, setRecordingSaving] = useState(false);
+  /* ── Media & Modal State ────────────────────────────────────────────────── */
+  const [showPreJoinModal, setShowPreJoinModal] = useState(true);
+  const [showBgModal, setShowBgModal] = useState(false);
+  const [bgType, setBgType] = useState<BackgroundType>('none');
+  const [customBgUrl, setCustomBgUrl] = useState<string>('');
+  const [showMoveDots, setShowMoveDots] = useState(true);
 
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (isRecording) {
-      timer = setInterval(() => {
-        setRecordingSeconds((prev) => prev + 1);
-      }, 1000);
-    }
-    return () => clearInterval(timer);
-  }, [isRecording]);
-
-  // Mobile responsive tab state
-  const [mobileTab, setMobileTab] = useState<'video' | 'chessboard' | 'chat'>('video');
-
-  // Curriculum Lesson Drawer & Live Position Stepper states
+  /* ── Lesson & Position State ────────────────────────────────────────────── */
   const [showLessonDrawer, setShowLessonDrawer] = useState(false);
+  const [showSetPositionModal, setShowSetPositionModal] = useState(false);
   const [activeLessonPositions, setActiveLessonPositions] = useState<TeachingPosition[]>([]);
-  const [activePositionIndex, setActivePositionIndex] = useState<number>(0);
+  const [activePositionIndex, setActivePositionIndex] = useState(0);
   const [activePosition, setActivePosition] = useState<TeachingPosition | null>(null);
 
   const handleSelectPosition = (pos: TeachingPosition, lessonPositions: TeachingPosition[], index: number) => {
     setActivePosition(pos);
     setActiveLessonPositions(lessonPositions);
     setActivePositionIndex(index);
-
-    const channel = supabase.channel(`classroom-board:${classId}`);
-    channel.send({
+    if (pos?.fen) {
+      setCurrentFen(pos.fen);
+      setBoardKey((k) => k + 1);
+      setGameMoves([]);
+      setCurrentMoveIndex(-1);
+    }
+    mainChannelRef.current?.send({
       type: 'broadcast',
-      event: 'load-position',
-      payload: {
-        fen: pos.fen,
-        solution: pos.solution,
-        hint: pos.hint,
-        explanation: pos.explanation,
-        title: pos.title,
-        orientation: pos.boardOrientation,
-        locked: pos.defaultBoardLock,
-      },
+      event: 'position-update',
+      payload: { fen: pos.fen, solution: pos.solution },
     });
   };
 
   const handleStepPosition = (newIndex: number) => {
     if (newIndex < 0 || newIndex >= activeLessonPositions.length) return;
-    const pos = activeLessonPositions[newIndex];
-    handleSelectPosition(pos, activeLessonPositions, newIndex);
+    handleSelectPosition(activeLessonPositions[newIndex], activeLessonPositions, newIndex);
   };
 
-  // Student Spotlight states for Coach Host
+  /* ── Spotlight ─────────────────────────────────────────────────────────── */
   const [spotlightedStudentId, setSpotlightedStudentId] = useState<string | null>(null);
   const [spotlightedStudentName, setSpotlightedStudentName] = useState<string | null>(null);
 
   const handleToggleSpotlight = (studentId: string, studentName: string) => {
     if (!isCoach) return;
-    const isAlreadySpotlighted = spotlightedStudentId === studentId;
-    const nextId = isAlreadySpotlighted ? null : studentId;
-    const nextName = isAlreadySpotlighted ? null : studentName;
-
+    const nextId = spotlightedStudentId === studentId ? null : studentId;
+    const nextName = nextId ? studentName : null;
     setSpotlightedStudentId(nextId);
     setSpotlightedStudentName(nextName);
-
-    const channel = supabase.channel(`classroom-board:${classId}`);
-    channel.send({
+    supabase.channel(`classroom-board:${classId}`).send({
       type: 'broadcast',
       event: 'spotlight-student',
-      payload: {
-        studentId: nextId,
-        studentName: nextName,
-      },
+      payload: { studentId: nextId, studentName: nextName },
     });
   };
 
-  // Authorization role checks
-  const isCoach = role === 'coach' || role === 'admin';
+  /* ── Board Toolbar & Moves ─────────────────────────────────────────────── */
+  const [boardFlipped, setBoardFlipped] = useState(false);
+  const [showCoordinates, setShowCoordinates] = useState(true);
+  const [showEngine, setShowEngine] = useState(isCoach);
+  const [showMoveList, setShowMoveList] = useState(true);
+  const [showClearBoardModal, setShowClearBoardModal] = useState(false);
 
-  // --- 1. Resizable / Draggable Panel Layout States ---
-  const [leftWidth, setLeftWidth] = useState(260); // px
-  const [rightWidth, setRightWidth] = useState(340); // px
-  const [bottomHeight, setBottomHeight] = useState(200); // px
+  // SAN Moves & FEN tracking
+  const [gameMoves, setGameMoves] = useState<string[]>([]);
+  const [currentMoveIndex, setCurrentMoveIndex] = useState(-1);
+  const [currentFen, setCurrentFen] = useState('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+  // boardKey increments to force ChessWorkspace remount on clear
+  const [boardKey, setBoardKey] = useState(0);
 
-  const [panelPlacements, setPanelPlacements] = useState<Record<string, string[]>>({
-    left: ['participants'],
-    center: ['chessboard'],
-    right: ['zoom', 'database', 'chat', 'homework', 'notes'],
-    bottom: [],
-  });
-
-
-  // Load layout preferences on mount
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const savedLayout = localStorage.getItem(`classroom_layout_${classId}`);
-      if (savedLayout) {
-        setPanelPlacements(JSON.parse(savedLayout));
-      }
-      const savedLeft = localStorage.getItem(`classroom_width_left_${classId}`);
-      if (savedLeft) setLeftWidth(parseInt(savedLeft));
-      const savedRight = localStorage.getItem(`classroom_width_right_${classId}`);
-      if (savedRight) setRightWidth(parseInt(savedRight));
-      const savedBottom = localStorage.getItem(`classroom_height_bottom_${classId}`);
-      if (savedBottom) setBottomHeight(parseInt(savedBottom));
-    } catch (e) {
-      console.error('Failed to load layout preferences:', e);
+  const handleConfirmClearBoard = (mode: ClearMode) => {
+    if (mode === 'pieces') {
+      // Use a minimal legal FEN with only kings to represent a nearly-empty board
+      setCurrentFen('4k3/8/8/8/8/8/8/4K3 w - - 0 1');
+      setBoardKey((k) => k + 1);
+    } else if (mode === 'drawings') {
+      setBoardKey((k) => k + 1);
+    } else if (mode === 'everything') {
+      setCurrentFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+      setGameMoves([]);
+      setCurrentMoveIndex(-1);
+      setBoardKey((k) => k + 1);
     }
-  }, [classId]);
+  };
 
-  // Drag and Drop arrangement handlers
-  const handleDragStart = (e: React.DragEvent, panelId: string) => {
-    const target = e.target as HTMLElement;
-    const isDragHandle = target.closest('.drag-handle');
-    if (!isDragHandle) {
-      e.preventDefault();
+  // Callback passed to ChessWorkspace to capture live board moves
+  const handleBoardMove = useCallback((fen: string, pgn: string) => {
+    const rawMoves = pgn.replace(/\[.*?\]/g, '').replace(/\d+\./g, '').trim().split(/\s+/).filter(Boolean);
+    setGameMoves(rawMoves);
+    setCurrentMoveIndex(rawMoves.length - 1);
+    setCurrentFen(fen);
+  }, []);
+
+  const handleJumpToMove = (idx: number) => {
+    if (idx < 0) {
+      setCurrentMoveIndex(-1);
+      const chess = new Chess();
+      setCurrentFen(chess.fen());
       return;
     }
-    e.dataTransfer.setData('text/plain', panelId);
+    setCurrentMoveIndex(idx);
+    const chess = new Chess();
+    for (let i = 0; i <= idx && i < gameMoves.length; i++) {
+      try { chess.move(gameMoves[i]); } catch { break; }
+    }
+    setCurrentFen(chess.fen());
   };
 
-  const handleDrop = (e: React.DragEvent, targetColumn: string) => {
-    e.preventDefault();
-    const panelId = e.dataTransfer.getData('text/plain');
-    if (!panelId) return;
+  /* ── Toggles ───────────────────────────────────────────────────────────── */
+  const [showMovesForParticipants, setShowMovesForParticipants] = useState(true);
+  const [translateMoves, setTranslateMoves] = useState(false);
+  const [rightTab, setRightTab] = useState<RightTab>('at');
 
-    setPanelPlacements((prev) => {
-      const next = { ...prev };
-      // Remove from old slot
-      Object.keys(next).forEach((col) => {
-        next[col] = next[col].filter((id) => id !== panelId);
-      });
-      // Add to new slot
-      next[targetColumn] = [...next[targetColumn], panelId];
-      localStorage.setItem(`classroom_layout_${classId}`, JSON.stringify(next));
-      return next;
-    });
-  };
-
-  // Drag Resize handlers
-  const startResizeLeft = (e: React.MouseEvent) => {
-    e.preventDefault();
-    const doDrag = (moveEvent: MouseEvent) => {
-      const newWidth = Math.max(200, Math.min(400, moveEvent.clientX));
-      setLeftWidth(newWidth);
-    };
-    const stopDrag = () => {
-      localStorage.setItem(`classroom_width_left_${classId}`, String(leftWidth));
-      window.removeEventListener('mousemove', doDrag);
-      window.removeEventListener('mouseup', stopDrag);
-    };
-    window.addEventListener('mousemove', doDrag);
-    window.addEventListener('mouseup', stopDrag);
-  };
-
-  const startResizeRight = (e: React.MouseEvent) => {
-    e.preventDefault();
-    const doDrag = (moveEvent: MouseEvent) => {
-      const newWidth = Math.max(250, Math.min(500, window.innerWidth - moveEvent.clientX));
-      setRightWidth(newWidth);
-    };
-    const stopDrag = () => {
-      localStorage.setItem(`classroom_width_right_${classId}`, String(rightWidth));
-      window.removeEventListener('mousemove', doDrag);
-      window.removeEventListener('mouseup', stopDrag);
-    };
-    window.addEventListener('mousemove', doDrag);
-    window.addEventListener('mouseup', stopDrag);
-  };
-
-  const startResizeBottom = (e: React.MouseEvent) => {
-    e.preventDefault();
-    const doDrag = (moveEvent: MouseEvent) => {
-      const newHeight = Math.max(150, Math.min(400, window.innerHeight - moveEvent.clientY));
-      setBottomHeight(newHeight);
-    };
-    const stopDrag = () => {
-      localStorage.setItem(`classroom_height_bottom_${classId}`, String(bottomHeight));
-      window.removeEventListener('mousemove', doDrag);
-      window.removeEventListener('mouseup', stopDrag);
-    };
-    window.addEventListener('mousemove', doDrag);
-    window.addEventListener('mouseup', stopDrag);
-  };
-
-  // --- 2. Real-Time Chat ---
+  /* ── Chat ──────────────────────────────────────────────────────────────── */
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatUnread, setChatUnread] = useState(0);
-  const [activePanelTab, setActivePanelTab] = useState<'chat' | 'homework' | 'notes' | 'database'>('chat');
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
-  // Fetch chat history
   useEffect(() => {
     const fetchChat = async () => {
       const { data, error } = await supabase
@@ -311,78 +333,77 @@ export default function ClassroomWorkspace({
         .select('*')
         .eq('class_id', classId)
         .order('created_at', { ascending: true });
-      if (!error && data) {
-        setMessages(data);
-      }
+      if (!error && data) setMessages(data);
     };
     fetchChat();
   }, [classId]);
 
-  // --- 3. Supabase Consolidated Realtime Channel ---
+  useEffect(() => {
+    if (rightTab === 'at') setChatUnread(0);
+    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, rightTab]);
+
+  /* ── Realtime Broadcast Setup ───────────────────────────────────────────── */
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
   const mainChannelRef = useRef<any>(null);
 
   useEffect(() => {
     const channelTopic = `classroom-main:${classId}`;
-    
-    // Ensure any existing channel with this topic is cleaned up first
     if (typeof supabase.getChannels === 'function') {
       const existing = supabase.getChannels().find((c: any) => c.topic === `realtime:${channelTopic}` || c.topic === channelTopic);
-      if (existing) {
-        supabase.removeChannel(existing);
-      }
+      if (existing) supabase.removeChannel(existing);
     }
 
-    const channel = supabase.channel(channelTopic, {
-      config: {
-        broadcast: { self: false },
-        presence: { key: classId }
-      }
-    });
-
-    channel
+    const channel = supabase
+      .channel(channelTopic, {
+        config: { broadcast: { self: false }, presence: { key: classId } },
+      })
+      .on('broadcast', { event: 'homework-assigned' }, ({ payload }: any) => {
+        setHomeworkToast(`📝 Homework Assigned by ${payload.assignedBy}! Target position saved.`);
+        setTimeout(() => setHomeworkToast(null), 4000);
+      })
       .on('broadcast', { event: 'chat-message' }, ({ payload }: any) => {
         setMessages((prev) => {
           if (prev.some((m) => m.id === payload.id)) return prev;
           return [...prev, payload];
         });
-        if (activePanelTab !== 'chat') {
-          setChatUnread((u) => u + 1);
-        }
+        if (rightTab !== 'at') setChatUnread((u) => u + 1);
       })
-      .on('broadcast', { event: 'homework-assigned' }, ({ payload }: any) => {
-        if (!isCoach) {
-          alert(`New Homework Assigned: Chapter ${payload.chapterNumber}. ${payload.chapterTitle}`);
-          if (payload.pdfStoragePath) {
-            setActiveChapterFile(payload.pdfStoragePath);
-            setActivePanelTab('homework');
-          }
-        }
-      })
-      .on('broadcast', { event: 'notes-update' }, ({ payload }: any) => {
-        if (!isCoach) {
-          setSessionNotes(payload.notes);
+      .on('broadcast', { event: 'position-update' }, ({ payload }: any) => {
+        if (payload?.fen) {
+          setCurrentFen(payload.fen);
+          setBoardKey((k) => k + 1);
+          setGameMoves([]);
+          setCurrentMoveIndex(-1);
         }
       })
       .on('broadcast', { event: 'status-change' }, ({ payload }: any) => {
-        setStatus(payload.status);
+        if (payload.status) setStatus(payload.status);
+        if (payload.startedAt) {
+          setStartedAtTime(payload.startedAt);
+          if (typeof window !== 'undefined' && classId) {
+            localStorage.setItem(`classroom_started_at_${classId}`, payload.startedAt);
+          }
+        }
+        if (payload.endedAt) {
+          setEndedAtTime(payload.endedAt);
+          if (typeof window !== 'undefined' && classId) {
+            localStorage.setItem(`classroom_ended_at_${classId}`, payload.endedAt);
+          }
+        }
         if (payload.status === 'COMPLETED') {
-          router.push(role === 'coach' || role === 'admin' ? '/dashboard/coach/classes' : '/dashboard/student/classes');
+          const targetRoute = role === 'admin' ? '/dashboard/admin/classes' : isCoach ? '/dashboard/coach/classes' : '/dashboard/student/classes';
+          router.push(targetRoute);
         }
       })
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState();
-        const onlineIds = Object.values(state)
-          .flat()
-          .map((p: any) => p.userId);
+        const onlineIds = Object.values(state).flat().map((p: any) => p.userId);
         setOnlineUserIds(onlineIds);
       })
       .subscribe(async (subStatus: string) => {
         if (subStatus === 'SUBSCRIBED') {
-          await channel.track({
-            userId: userName,
-            onlineAt: new Date().toISOString(),
-          });
+          await channel.track({ userId: userName, onlineAt: new Date().toISOString() });
         }
       });
 
@@ -391,57 +412,63 @@ export default function ClassroomWorkspace({
       supabase.removeChannel(channel);
       mainChannelRef.current = null;
     };
-  }, [classId, userName, isCoach, activePanelTab, role, router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [classId, userName, isCoach]);
 
-  // --- 4. Database Class Status Realtime Listener ---
+  // Coach Auto-Start Session Effect: Automatically start session timer & update DB status when Coach joins
   useEffect(() => {
-    const channel = supabase
-      .channel(`classes-status-changes:${classId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'classes',
-          filter: `id=eq.${classId}`,
-        },
-        (payload: any) => {
-          setStatus(payload.new.status);
-        }
-      )
-      .subscribe();
+    if (!isCoach || status === 'COMPLETED') return;
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [classId]);
+    if (!startedAtTime || status === 'SCHEDULED') {
+      const nowISO = new Date().toISOString();
+      setStatus('LIVE');
+      setStartedAtTime(nowISO);
 
-  // --- 5. Record student join timestamp when class goes LIVE ---
-  useEffect(() => {
-    if (role === 'student' && status === 'LIVE' && userId) {
-      import('@/actions/classes').then(({ recordStudentClassJoinAction }) => {
-        recordStudentClassJoinAction(classId, userId).then((res) => {
-          if (!res.success) {
-            console.error('Failed to record student class join:', res.error);
-          } else {
-            console.log('Recorded student class join timestamp.');
-          }
-        });
+      if (typeof window !== 'undefined' && classId) {
+        localStorage.setItem(`classroom_started_at_${classId}`, nowISO);
+      }
+
+      startClassAction(classId).catch((err) => {
+        console.warn('Auto startClassAction notice:', err);
       });
-    }
-  }, [status, role, classId, userId]);
 
-  useEffect(() => {
-    if (activePanelTab === 'chat') {
-      setChatUnread(0);
+      if (mainChannelRef.current) {
+        mainChannelRef.current.send({
+          type: 'broadcast',
+          event: 'status-change',
+          payload: { status: 'LIVE', startedAt: nowISO },
+        });
+      }
     }
-    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, activePanelTab]);
+  }, [isCoach, classId, status, startedAtTime]);
+
+  const [homeworkToast, setHomeworkToast] = useState<string | null>(null);
+
+  // Push-to-Talk spacebar listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && !e.repeat && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        webRTC.toggleAudio(true);
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        webRTC.toggleAudio(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [webRTC]);
 
   const sendChatMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim()) return;
-
     const newMsg: ChatMessage = {
       id: Math.random().toString(),
       sender_name: userName,
@@ -449,293 +476,28 @@ export default function ClassroomWorkspace({
       message: chatInput.trim(),
       created_at: new Date().toISOString(),
     };
-
-    // Optimistic UI updates
     setMessages((prev) => [...prev, newMsg]);
     setChatInput('');
-
-    // Broadcast instantly to online peers
-    mainChannelRef.current?.send({
-      type: 'broadcast',
-      event: 'chat-message',
-      payload: newMsg,
-    });
-
-    // Persist in background (fire-and-forget)
-    supabase.from('classroom_chat').insert({
-      class_id: classId,
-      sender_name: userName,
-      sender_role: role,
-      message: newMsg.message,
-    }).then(({ error }: { error: any }) => {
-      if (error) {
-        console.warn('Failed to save message to database:', error.message);
-      }
-    });
+    mainChannelRef.current?.send({ type: 'broadcast', event: 'chat-message', payload: newMsg });
+    supabase.from('classroom_chat').insert({ class_id: classId, sender_name: userName, sender_role: role, message: newMsg.message });
   };
 
-  // --- 4. Embedded Zoom SDK with Fallback ---
-  const [zoomSdkKey, setZoomSdkKey] = useState('');
-  const [zoomSignature, setZoomSignature] = useState('');
-  const [zoomLoading, setZoomLoading] = useState(false);
-  const [zoomError, setZoomError] = useState(false);
-
-  const getPasscodeFromJoinUrl = (joinUrl: string): string => {
-    if (!joinUrl) return 'chesshub';
-    try {
-      const u = new URL(joinUrl);
-      const pwd = u.searchParams.get('pwd');
-      return pwd || 'chesshub';
-    } catch {
-      return 'chesshub';
-    }
-  };
-
-  const getMeetingNumberFromUrl = (joinUrl: string): string => {
-    if (!joinUrl) return '';
-    try {
-      const u = new URL(joinUrl);
-      const match = u.pathname.match(/\/j\/(\d+)/);
-      return match ? match[1] : '';
-    } catch {
-      return '';
-    }
-  };
-
-  const initializeZoomSDK = useCallback(async () => {
-    if (!zoomJoinUrl) return;
-    setZoomLoading(true);
-    setZoomError(false);
-
-    const meetingNumber = getMeetingNumberFromUrl(zoomJoinUrl);
-    const roleVal = isCoach ? 1 : 0;
-
-    // 1. Get Signature via Server Action
-    const res = await getZoomSignatureAction(meetingNumber, roleVal);
-    if (!res.success || !res.data) {
-      setZoomError(true);
-      setZoomLoading(false);
-      return;
-    }
-
-    setZoomSdkKey(res.data.sdkKey);
-    setZoomSignature(res.data.signature);
-
-    // 2. Load Zoom Component View SDK dynamically
-    if (typeof window !== 'undefined') {
-      const scriptId = 'zoom-embedded-sdk-script';
-      let script = document.getElementById(scriptId) as HTMLScriptElement;
-
-      if (!script) {
-        script = document.createElement('script');
-        script.id = scriptId;
-        script.src = 'https://source.zoom.us/zoom-meeting-embedded-3.8.5.min.js';
-        script.async = true;
-        document.body.appendChild(script);
-      }
-
-      const initMeeting = (retryCount = 0) => {
-        try {
-          const { ZoomMtgEmbedded } = window as any;
-          if (!ZoomMtgEmbedded) {
-            setZoomError(true);
-            setZoomLoading(false);
-            return;
-          }
-
-          const target = document.getElementById('meetingSDKElement');
-          if (!target) {
-            if (retryCount < 6) {
-              setTimeout(() => initMeeting(retryCount + 1), 300);
-            } else {
-              setZoomError(true);
-              setZoomLoading(false);
-            }
-            return;
-          }
-
-          target.innerHTML = '';
-
-          const client = ZoomMtgEmbedded.createClient();
-          client.init({
-            zoomAppHeader: false,
-            language: 'en-US',
-            meetingInfo: [
-              'topic',
-              'mn',
-              'host',
-              'participant'
-            ],
-            customize: {
-              meeting: {
-                popper: {
-                  disableinvite: true,
-                },
-              },
-            },
-          });
-
-          // Safety fallback timer: hide loading overlay after 4 seconds max
-          const fallbackTimer = setTimeout(() => {
-            setZoomLoading(false);
-          }, 4000);
-
-          client.join({
-            sdkKey: res.data!.sdkKey,
-            signature: res.data!.signature,
-            meetingNumber,
-            password: getPasscodeFromJoinUrl(zoomJoinUrl),
-            userName,
-            userEmail: 'classroom@chesshub.com',
-            success: () => {
-              clearTimeout(fallbackTimer);
-              setZoomLoading(false);
-            },
-            error: (err: any) => {
-              clearTimeout(fallbackTimer);
-              console.error('Zoom Embedded SDK join failure:', err);
-              setZoomError(true);
-              setZoomLoading(false);
-            },
-          });
-        } catch (err) {
-          console.error(err);
-          setZoomError(true);
-          setZoomLoading(false);
-        }
-      };
-
-      if ((window as any).ZoomMtgEmbedded) {
-        initMeeting();
-      } else {
-        script.onload = () => initMeeting();
-        script.onerror = () => {
-          setZoomError(true);
-          setZoomLoading(false);
-        };
-      }
-    }
-  }, [zoomJoinUrl, isCoach, userName]);
-
-  useEffect(() => {
-    if (status === 'LIVE' && zoomJoinUrl) {
-      initializeZoomSDK();
-    }
-  }, [status, zoomJoinUrl, initializeZoomSDK]);
-
-
-  // --- 5. Homework Management ---
-  const [workbooks, setWorkbooks] = useState<HomeworkWorkbook[]>([]);
-  const [chapters, setChapters] = useState<HomeworkChapter[]>([]);
-  const [selectedWbId, setSelectedWbId] = useState('');
-  const [assignedChapters, setAssignedChapters] = useState<string[]>([]);
-  const [activeChapterFile, setActiveChapterFile] = useState<string | null>(null);
-
-  // Load Homework catalog for Coach
-  useEffect(() => {
-    if (isCoach) {
-      const loadCatalog = async () => {
-        const res = await listHomeworkAction();
-        if (res.success && res.data) {
-          setWorkbooks(res.data as any[]);
-        }
-      };
-      loadCatalog();
-    }
-  }, [isCoach]);
-
-  const loadWorkbookChapters = async (wbId: string) => {
-    setSelectedWbId(wbId);
-    if (!wbId) {
-      setChapters([]);
-      return;
-    }
-    const res = await listChaptersAction(wbId);
-    if (res.success && res.data) {
-      setChapters(res.data as any[]);
-    }
-  };
-
-  const handleAssignHomework = async (ch: HomeworkChapter) => {
-    if (!isCoach) return;
-    const res = await assignChapterToClassAction({
-      chapterId: ch.id,
-      classId,
-      coachProfileId: classId, // mock or fetch actual profile
-    });
-
-    if (res.success) {
-      setAssignedChapters((prev) => [...prev, ch.id]);
-      // Broadcast homework notification
-      mainChannelRef.current?.send({
-        type: 'broadcast',
-        event: 'homework-assigned',
-        payload: {
-          chapterTitle: ch.title,
-          chapterNumber: ch.chapter_number,
-          pdfStoragePath: ch.pdf_storage_path,
-        },
-      });
-      alert(`Homework "${ch.title}" successfully assigned to class!`);
-    } else {
-      alert(res.error?.message || 'Failed to assign homework.');
-    }
-  };
-
-
-
-  // --- 6. Real-Time Notes Sync ---
-  const [sessionNotes, setSessionNotes] = useState('');
-  const notesChannelRef = useRef<any>(null);
-
-  // Fetch initial notes
-  useEffect(() => {
-    const fetchNotes = async () => {
-      const { data } = await supabase
-        .from('classes')
-        .select('session_notes')
-        .eq('id', classId)
-        .maybeSingle();
-      if (data?.session_notes) {
-        setSessionNotes(data.session_notes);
-      }
-    };
-    fetchNotes();
-  }, [classId]);
-
-  // Broadcast notes typing
-  const handleNotesChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const val = e.target.value;
-    setSessionNotes(val);
-    if (isCoach) {
-      mainChannelRef.current?.send({
-        type: 'broadcast',
-        event: 'notes-update',
-        payload: { notes: val },
-      });
-
-      // Save to database
-      supabase
-        .from('classes')
-        .update({ session_notes: val })
-        .eq('id', classId)
-        .then(({ error }: { error: any }) => {
-          if (error) console.error('Failed to save session notes:', error.message);
-        });
-    }
-  };
-
-  // Start / End Session triggers
+  /* ── Start / End Class ─────────────────────────────────────────────────── */
   const handleStartClass = () => {
     setError('');
     startTransition(async () => {
       const res = await startClassAction(classId);
       if (res?.success) {
+        const nowISO = new Date().toISOString();
+        setStartedAtTime(nowISO);
+        if (typeof window !== 'undefined' && classId) {
+          localStorage.setItem(`classroom_started_at_${classId}`, nowISO);
+        }
         setStatus('LIVE');
         mainChannelRef.current?.send({
           type: 'broadcast',
           event: 'status-change',
-          payload: { status: 'LIVE' },
+          payload: { status: 'LIVE', startedAt: nowISO },
         });
       } else {
         setError(res?.error?.message || 'Failed to start class.');
@@ -743,7 +505,6 @@ export default function ClassroomWorkspace({
     });
   };
 
-  // End Class Modal & Session Report State
   const [showEndClassModal, setShowEndClassModal] = useState(false);
   const [endClassRemarks, setEndClassRemarks] = useState('');
   const [attendanceMap, setAttendanceMap] = useState<Record<string, boolean>>({});
@@ -751,935 +512,587 @@ export default function ClassroomWorkspace({
 
   const handleOpenEndClassModal = () => {
     const initialAttendance: Record<string, boolean> = {};
-    students.forEach((s) => {
-      const key = s.studentProfileId || s.email;
-      initialAttendance[key] = true;
-    });
+    students.forEach((s) => { initialAttendance[s.studentProfileId || s.email] = true; });
     setAttendanceMap(initialAttendance);
-    setEndClassRemarks(sessionNotes || '');
+    setEndClassRemarks('');
     setShowEndClassModal(true);
   };
 
   const handleToggleStudentAttendance = (key: string) => {
-    setAttendanceMap((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
+    setAttendanceMap((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   const handleSubmitEndClassReport = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmittingEndReport(true);
     setError('');
+    const nowISO = new Date().toISOString();
+    setEndedAtTime(nowISO);
+    if (typeof window !== 'undefined' && classId) {
+      localStorage.setItem(`classroom_ended_at_${classId}`, nowISO);
+    }
+    const finalDurationSec = startedAtTime
+      ? Math.max(0, Math.floor((new Date(nowISO).getTime() - new Date(startedAtTime).getTime()) / 1000))
+      : elapsedSeconds;
+    const finalDurationFormatted = formatElapsed(finalDurationSec);
 
-    const attendanceList = students.map((s) => {
-      const key = s.studentProfileId || s.email;
-      return {
-        studentProfileId: s.studentProfileId,
-        studentEmail: s.email,
-        attended: attendanceMap[key] ?? true,
-      };
-    });
-
-    const savedPgn = typeof window !== 'undefined' ? localStorage.getItem(`classroom_pgn_${classId}`) : '';
-    const finalSessionNotes = savedPgn && !endClassRemarks.includes('GAME PGN NOTATION')
-      ? `${endClassRemarks ? endClassRemarks + '\n\n' : ''}--- CLASSROOM GAME PGN NOTATION ---\n${savedPgn}`
-      : endClassRemarks;
-
+    const attendanceList = students.map((s) => ({
+      studentProfileId: s.studentProfileId,
+      studentEmail: s.email,
+      attended: attendanceMap[s.studentProfileId || s.email] ?? true,
+    }));
+    const savedPgn = gameMoves.join(' ');
+    const durationNote = `--- CLASS DURATION ---\nActual Duration: ${finalDurationFormatted} (${Math.round(finalDurationSec / 60)} mins)\nStarted: ${startedAtTime || 'N/A'}\nEnded: ${nowISO}`;
+    const finalNotes = savedPgn
+      ? `${endClassRemarks}\n\n${durationNote}\n\n--- CLASSROOM GAME PGN ---\n${savedPgn}`
+      : `${endClassRemarks}\n\n${durationNote}`;
     try {
-      const res = await submitClassEndReportAction({
-        classId,
-        sessionNotes: finalSessionNotes,
-        attendance: attendanceList,
+      mainChannelRef.current?.send({
+        type: 'broadcast',
+        event: 'status-change',
+        payload: { status: 'COMPLETED', endedAt: nowISO, startedAt: startedAtTime },
       });
-
-      if (res?.success) {
-        mainChannelRef.current?.send({
-          type: 'broadcast',
-          event: 'status-change',
-          payload: { status: 'COMPLETED' },
-        });
-        setStatus('COMPLETED');
-        setShowEndClassModal(false);
-        router.push(isCoach ? '/dashboard/coach/classes' : '/dashboard/student/classes');
-      } else {
-        setError(res?.error?.message || 'Failed to end class.');
-      }
+      await submitClassEndReportAction({ classId, sessionNotes: finalNotes, attendance: attendanceList });
+      setStatus('COMPLETED');
+      setShowEndClassModal(false);
+      const targetRoute = role === 'admin' ? '/dashboard/admin/classes' : isCoach ? '/dashboard/coach/classes' : '/dashboard/student/classes';
+      router.push(targetRoute);
     } catch (err: any) {
-      setError(err?.message || 'An error occurred ending class.');
+      setStatus('COMPLETED');
+      setShowEndClassModal(false);
+      router.push('/dashboard');
     } finally {
       setIsSubmittingEndReport(false);
     }
   };
 
+  /* ── Save to DB ────────────────────────────────────────────────────────── */
+  const [savingDb, setSavingDb] = useState(false);
+  const [savedDb, setSavedDb] = useState(false);
 
-  // Dynamic class elapsed timer
+  const handleSaveToDb = async () => {
+    if (!isCoach) return;
+    setSavingDb(true);
+    const pgn = gameMoves.join(' ');
+    await supabase.from('classes').update({ session_notes: `PGN: ${pgn}` }).eq('id', classId);
+    setSavingDb(false);
+    setSavedDb(true);
+    setTimeout(() => setSavedDb(false), 2500);
+  };
+
+  /* ── Student Responses ─────────────────────────────────────────────────── */
+  const [studentResponses, setStudentResponses] = useState<Record<string, string>>({});
+  const [myResponse, setMyResponse] = useState('');
+  const [responseSubmitted, setResponseSubmitted] = useState(false);
+
+  const handleSubmitResponse = () => {
+    if (!myResponse.trim() || role !== 'student') return;
+    const payload = { user: userName, response: myResponse };
+    mainChannelRef.current?.send({ type: 'broadcast', event: 'student-response', payload });
+    setResponseSubmitted(true);
+    setStudentResponses((prev) => ({ ...prev, [userName]: myResponse }));
+  };
+
   useEffect(() => {
-    if (status !== 'LIVE') return;
-    const interval = setInterval(() => {
-      setElapsedSeconds((s) => s + 1);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [status]);
+    const channel = supabase.channel(`classroom-responses:${classId}`)
+      .on('broadcast', { event: 'student-response' }, ({ payload }: any) => {
+        if (isCoach) setStudentResponses((prev) => ({ ...prev, [payload.user]: payload.response }));
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [classId, isCoach]);
 
-  const formatElapsed = (seconds: number): string => {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = seconds % 60;
-    return [h, m, s].map((v) => String(v).padStart(2, '0')).join(':');
-  };
-
-  // --- Render Layout components ---
-  const renderPanel = (panelId: string) => {
-    switch (panelId) {
-      case 'participants':
-        return (
-          <div key={panelId} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 h-full flex flex-col justify-between">
-            <div>
-              <div className="flex items-center gap-1.5 mb-3 border-b border-slate-800 pb-2 drag-handle cursor-grab active:cursor-grabbing select-none">
-                <DashboardIcon iconKey="users" className="w-4 h-4 text-accent" />
-                <span className="text-xs font-bold text-accent uppercase tracking-wider">Attendance List</span>
-              </div>
-              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-                {/* Coach Badge */}
-                <div className="bg-amber-950/30 p-2.5 rounded-xl border border-amber-800/40 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-300 flex items-center justify-center font-bold text-[10px]">
-                      👨‍🏫
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-amber-200">{coachName}</p>
-                      <p className="text-[9px] text-amber-400/80 font-medium">Assigned FIDE Coach</p>
-                    </div>
-                  </div>
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500" title="Coach" />
-                </div>
-
-                {students.map((student, idx) => {
-                  const studentKey = student.studentProfileId || student.email;
-                  const isOnline = onlineUserIds.includes(`${student.firstName} ${student.lastName}`);
-                  const isSpotlighted = spotlightedStudentId === studentKey;
-
-                  return (
-                    <div key={idx} className="bg-slate-950/40 p-2.5 rounded-xl border border-slate-800/60 flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-[10px]">
-                          {student.firstName[0]}{student.lastName[0]}
-                        </div>
-                        <div>
-                          <p className="text-xs font-semibold text-white">{student.firstName} {student.lastName}</p>
-                          <p className="text-[9px] text-slate-500">{student.email}</p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1.5">
-                        {isCoach && (
-                          <button
-                            type="button"
-                            onClick={() => handleToggleSpotlight(studentKey, `${student.firstName} ${student.lastName}`)}
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors ${
-                              isSpotlighted
-                                ? 'bg-amber-500 text-slate-950 border-amber-400 font-extrabold animate-pulse'
-                                : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-                            }`}
-                            title={isSpotlighted ? 'Click to remove student spotlight' : 'Click to grant student live board move control'}
-                          >
-                            {isSpotlighted ? '🎯 Spotlighted' : '🎯 Spotlight'}
-                          </button>
-                        )}
-                        <span className={`w-2.5 h-2.5 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-slate-700'}`} title={isOnline ? 'Online' : 'Offline'} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        );
-
-      case 'chessboard':
-        return (
-          <div key={panelId} className="h-full flex flex-col">
-            {/* ── Puzzle Stepper Toolbar ─────────────────────────────── */}
-            {activeLessonPositions.length > 1 && (
-              <div className="flex items-center gap-1 px-3 py-2 bg-slate-900 border-b border-slate-800 select-none">
-                <button
-                  type="button"
-                  title="First puzzle"
-                  onClick={() => handleStepPosition(0)}
-                  disabled={activePositionIndex === 0}
-                  className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 transition-all"
-                >
-                  |◀
-                </button>
-                <button
-                  type="button"
-                  title="Previous puzzle"
-                  onClick={() => handleStepPosition(activePositionIndex - 1)}
-                  disabled={activePositionIndex === 0}
-                  className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 transition-all"
-                >
-                  ◀ Prev
-                </button>
-
-                <div className="flex-1 flex items-center justify-center gap-2 overflow-hidden">
-                  <span className="text-[10px] font-bold text-amber-400 truncate max-w-[160px]">
-                    {activePosition?.title || `Position ${activePositionIndex + 1}`}
-                  </span>
-                  <span className="text-[10px] text-slate-500 shrink-0">
-                    {activePositionIndex + 1} / {activeLessonPositions.length}
-                  </span>
-                  {activePosition?.difficulty && (
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold border shrink-0 ${
-                      activePosition.difficulty === 'Beginner' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
-                      activePosition.difficulty === 'Advanced' ? 'bg-red-500/20 text-red-300 border-red-500/30' :
-                      'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                    }`}>
-                      {activePosition.difficulty}
-                    </span>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  title="Next puzzle"
-                  onClick={() => handleStepPosition(activePositionIndex + 1)}
-                  disabled={activePositionIndex >= activeLessonPositions.length - 1}
-                  className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 transition-all"
-                >
-                  Next ▶
-                </button>
-                <button
-                  type="button"
-                  title="Last puzzle"
-                  onClick={() => handleStepPosition(activeLessonPositions.length - 1)}
-                  disabled={activePositionIndex >= activeLessonPositions.length - 1}
-                  className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 transition-all"
-                >
-                  ▶|
-                </button>
-              </div>
-            )}
-
-            <div className="flex-1 flex items-center justify-center">
-              <ChessWorkspace
-                classId={classId}
-                userRole={role}
-                showEngine={isCoach}
-                spotlightedStudentId={spotlightedStudentId}
-                spotlightedStudentName={spotlightedStudentName}
-                userId={userId}
-              />
-            </div>
-          </div>
-        );
-
-      case 'zoom':
-        const getMeetingNumberFromUrl = (url?: string): string => {
-          if (!url) return '';
-          const match = url.match(/\/[js]\/(\d+)/);
-          return match ? match[1] : '';
-        };
-
-        const getPasscodeFromJoinUrl = (url?: string): string => {
-          if (!url) return '';
-          const match = url.match(/[?&]pwd=([^&]+)/);
-          return match ? match[1] : '';
-        };
-
-        const meetingNumber = getMeetingNumberFromUrl(zoomJoinUrl);
-        const passcode = getPasscodeFromJoinUrl(zoomJoinUrl);
-        const defaultServer = (process.env.NEXT_PUBLIC_JITSI_SERVER || 'https://meet.jit.si').replace('meet.ffmuc.net', 'meet.jit.si');
-        const cleanClassId = classId.replace(/[^a-zA-Z0-9]/g, '');
-        const deterministicRoomName = `ChessHub_Class_${cleanClassId}`;
-
-        // Standardized Jitsi resolution: forces Coach, Student, and Admin into the EXACT SAME room
-        const activeUrl = zoomJoinUrl ? zoomJoinUrl.replace('meet.ffmuc.net', 'meet.jit.si') : '';
-        const isJitsi = !activeUrl || activeUrl.includes('jit.si') || activeUrl.includes('ffmuc.net') || activeUrl.toLowerCase().includes('jitsi');
-
-        const hashConfig = `#config.prejoinPageEnabled=false&config.startWithAudioMuted=false&config.startWithVideoMuted=false&config.requireDisplayName=false&config.disableDeepLinking=true&userInfo.displayName="${encodeURIComponent(userName)}"`;
-        const jitsiEmbedUrl = `${defaultServer}/${deterministicRoomName}${hashConfig}`;
-        const jitsiExternalUrl = `${defaultServer}/${deterministicRoomName}${hashConfig}`;
-
-        const rawVideoUrl = jitsiExternalUrl;
-
-        const handleToggleRecording = async () => {
-          if (!isRecording) {
-            setIsRecording(true);
-            setRecordingSeconds(0);
-          } else {
-            setRecordingSaving(true);
-            const duration = recordingSeconds > 0 ? recordingSeconds : 3600;
-            const res = await saveLiveClassRecordingAction(classId, jitsiExternalUrl, duration);
-            setRecordingSaving(false);
-            setIsRecording(false);
-            if (res.success) {
-              alert('🔴 Live Class Recording successfully stored in Admin & Class Recordings registry!');
-            } else {
-              alert(res.error?.message || 'Failed to save class recording.');
-            }
-          }
-        };
-
-        const zoomEmbedUrl = zoomJoinUrl?.includes('zoom.us')
-          ? `https://zoom.us/wc/join/${meetingNumber}?pwd=${passcode}&un=${encodeURIComponent(userName)}`
-          : zoomJoinUrl;
-
-        return (
-          <div key={panelId} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 h-full flex flex-col justify-between">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2 drag-handle cursor-grab active:cursor-grabbing select-none">
-              <span className="text-xs font-bold text-accent uppercase tracking-wider flex items-center gap-1">
-                📹 Live Video Classroom
-              </span>
-              <div className="flex items-center gap-2">
-                {isCoach && (
-                  <button
-                    type="button"
-                    onClick={handleToggleRecording}
-                    disabled={recordingSaving}
-                    className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-all inline-flex items-center gap-1.5 ${
-                      isRecording
-                        ? 'bg-red-600 hover:bg-red-500 text-white border-red-400 animate-pulse'
-                        : 'bg-red-950/80 hover:bg-red-900 text-red-300 border-red-700/50'
-                    }`}
-                    title={isRecording ? 'Click to stop & save recording to Admin database' : 'Click to start recording this live session'}
-                  >
-                    <span>{isRecording ? '⏹️ Stop & Save Record' : '🔴 Record Class'}</span>
-                    {isRecording && (
-                      <span className="font-mono bg-red-950 px-1 py-0.5 rounded text-white text-[9px]">
-                        {Math.floor(recordingSeconds / 60)}:{(recordingSeconds % 60).toString().padStart(2, '0')}
-                      </span>
-                    )}
-                  </button>
-                )}
-                {isJitsi && (
-                  <a
-                    href={jitsiExternalUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-2 py-1 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 rounded-lg text-[10px] font-semibold border border-emerald-700/50 transition-colors inline-flex items-center gap-1"
-                    title="Launch video classroom directly in new tab without sign-in"
-                  >
-                    <span>🚀 New Tab</span>
-                  </a>
-                )}
-                {passcode && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(`Meeting ID: ${meetingNumber}\nPasscode: ${passcode}`);
-                      alert(`Copied to clipboard!\nMeeting ID: ${meetingNumber}\nPasscode: ${passcode}`);
-                    }}
-                    className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-accent rounded-lg text-[10px] font-semibold border border-slate-700 transition-colors"
-                  >
-                    📋 Passcode: <span className="font-mono text-white">{passcode}</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setZoomError((prev) => !prev);
-                    setZoomLoading(false);
-                  }}
-                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] font-semibold border border-slate-700 transition-colors"
-                  title="Toggle Web View / Embedded Mode"
-                >
-                  {zoomError ? '⚡ Try Embedded SDK' : '🌐 Web View'}
-                </button>
-              </div>
-            </div>
-
-            {/* Mic Permission Helper Banner if mic is not granted yet */}
-            {micState !== 'granted' && status === 'LIVE' && (
-              <div className="bg-amber-950/40 border border-amber-800/60 text-amber-200 rounded-xl p-2 mb-2 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm">🎙️</span>
-                  <span>Enable mic & camera for video classroom</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={requestMicPermission}
-                  className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold rounded-lg text-[10px] shadow transition-colors"
-                >
-                  Enable Mic & Camera
-                </button>
-              </div>
-            )}
-
-            <div className="flex-grow flex flex-col justify-center items-center h-full w-full">
-              {(() => {
-                const canShowVideo = status === 'LIVE' || status === 'IN_PROGRESS' || isCoach;
-
-                if (!canShowVideo) {
-                  return (
-                    <div className="p-6 text-center text-slate-400 space-y-3 bg-slate-950/80 border border-slate-800 rounded-2xl w-full h-full flex flex-col items-center justify-center">
-                      <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-3xl shadow-gold animate-pulse mb-1">
-                        ⏳
-                      </div>
-                      <h4 className="font-heading font-extrabold text-sm text-white uppercase tracking-wider">
-                        Host Waiting Room Active
-                      </h4>
-                      <p className="text-xs text-slate-300 max-w-sm leading-relaxed">
-                        Your coach has not started this live session yet. Video feed will unlock automatically once your coach joins or starts the class!
-                      </p>
-                    </div>
-                  );
-                }
-
-                return (
-                  <div className="w-full h-full min-h-[350px] bg-slate-950 rounded-xl overflow-hidden relative border border-slate-800 flex-grow flex flex-col">
-                    {/* Provider 1: Jitsi Meet (Native Embedded iFrame - Direct Zero Login) */}
-                    {isJitsi ? (
-                      <iframe
-                        src={jitsiEmbedUrl}
-                        className="w-full h-full absolute inset-0 border-0"
-                        allow="microphone *; camera *; display-capture *; autoplay *; media-record *; fullscreen *; microphone; camera; display-capture; clipboard-write"
-                      />
-                    ) : rawVideoUrl.includes('meet.google.com') || rawVideoUrl.includes('custom') ? (
-                      /* Provider 2: Google Meet / Custom External Launcher */
-                      <div className="w-full h-full min-h-[300px] p-6 flex flex-col items-center justify-center text-center">
-                        <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-300 flex items-center justify-center text-2xl mb-3 border border-amber-500/30">
-                          📹
-                        </div>
-                        <h4 className="text-sm font-bold text-white mb-1">Google Meet / Live Session Active</h4>
-                        <p className="text-xs text-slate-400 mb-5 max-w-xs leading-relaxed">
-                          Click below to launch your live video classroom session in your browser.
-                        </p>
-                        <a
-                          href={rawVideoUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs shadow-gold transition-all inline-flex items-center gap-2"
-                        >
-                          <span>🚀 Launch Video Classroom</span>
-                        </a>
-                      </div>
-                    ) : (
-                      /* Provider 3: Zoom SDK / Web View Embed */
-                      <>
-                        {!zoomError ? (
-                          <div id="meetingSDKElement" className="w-full h-full flex-grow relative" />
-                        ) : (
-                          <iframe
-                            src={zoomEmbedUrl}
-                            className="w-full h-full absolute inset-0 border-0"
-                            allow="microphone *; camera *; display-capture *; autoplay *; media-record *; fullscreen *; microphone; camera; display-capture"
-                          />
-                        )}
-
-                        {zoomLoading && !zoomError && (
-                          <div className="absolute inset-0 bg-slate-950 flex items-center justify-center z-10">
-                            <div className="text-center space-y-2">
-                              <span className="text-xl animate-spin inline-block">⏳</span>
-                              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Loading secure classroom...</p>
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                );
-              })()}
-            </div>
-          </div>
-        );
-
-      case 'chat':
-        return (
-          <div key={panelId} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 h-full flex flex-col justify-between">
-            <div className="flex items-center gap-1.5 border-b border-slate-800 pb-2 mb-2 drag-handle cursor-grab active:cursor-grabbing select-none">
-              <span className="text-xs font-bold text-accent uppercase tracking-wider">Classroom Live Chat</span>
-              {chatUnread > 0 && <span className="px-1.5 py-0.5 rounded bg-red-500 text-white font-bold text-[9px]">{chatUnread}</span>}
-            </div>
-
-            <div className="flex-1 overflow-y-auto space-y-2 mb-3 max-h-[200px] pr-1">
-              {messages.map((msg, idx) => (
-                <div key={msg.id || idx} className="bg-slate-950/30 p-2 rounded-xl border border-slate-800/40 text-xs">
-                  <div className="flex justify-between text-[10px] font-bold mb-0.5">
-                    <span className={msg.sender_role === 'coach' || msg.sender_role === 'admin' ? 'text-accent' : 'text-primary'}>
-                      {msg.sender_name} ({msg.sender_role})
-                    </span>
-                    <span className="text-slate-500">
-                      {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                  <p className="text-slate-200 leading-relaxed">{msg.message}</p>
-                </div>
-              ))}
-              <div ref={chatBottomRef} />
-            </div>
-
-            <form onSubmit={sendChatMessage} className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Send a chat message..."
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                className="bg-slate-950 border border-slate-800 text-xs px-3 py-2 rounded-lg focus:outline-none focus:ring-1 focus:ring-accent flex-grow text-white"
-              />
-              <button type="submit" className="bg-accent text-surface-dark font-bold text-xs px-3 py-2 rounded-lg hover:bg-accent-hover transition-colors">
-                Send
-              </button>
-            </form>
-          </div>
-        );
-
-      case 'homework':
-        return (
-          <div key={panelId} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 h-full flex flex-col justify-between">
-            <div className="border-b border-slate-800 pb-2 mb-2 drag-handle cursor-grab active:cursor-grabbing select-none">
-              <span className="text-xs font-bold text-accent uppercase tracking-wider flex items-center gap-1">
-                📚 Homework &amp; Workbooks
-              </span>
-            </div>
-
-            {isCoach ? (
-              <div className="space-y-3 text-xs">
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Select Curriculum Workbook</label>
-                  <select
-                    value={selectedWbId}
-                    onChange={(e) => loadWorkbookChapters(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 text-white rounded px-2 py-1 focus:outline-none"
-                  >
-                    <option value="">-- Choose Workbook --</option>
-                    {workbooks.map((wb) => (
-                      <option key={wb.id} value={wb.id}>
-                        {wb.title} ({wb.track})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1.5 max-h-[160px] overflow-y-auto border border-slate-800/40 p-2 rounded-lg bg-slate-950/20">
-                  {chapters.map((ch) => {
-                    const isAssigned = assignedChapters.includes(ch.id);
-                    return (
-                      <div key={ch.id} className="flex justify-between items-center bg-slate-950/40 p-2 rounded border border-slate-800">
-                        <span>Chapter {ch.chapter_number}. {ch.title}</span>
-                        <button
-                          onClick={() => handleAssignHomework(ch)}
-                          disabled={isAssigned}
-                          className={`px-2 py-1 rounded text-[10px] font-bold ${
-                            isAssigned ? 'bg-slate-850 text-slate-500' : 'bg-accent hover:bg-accent-hover text-surface-dark'
-                          }`}
-                        >
-                          {isAssigned ? 'Assigned' : 'Assign'}
-                        </button>
-                      </div>
-                    );
-                  })}
-                  {selectedWbId && chapters.length === 0 && <p className="text-slate-500 italic">No chapters in this workbook.</p>}
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-2 text-xs flex-1 flex flex-col justify-center items-center text-center p-6 bg-slate-950/40 rounded-xl border border-slate-800">
-                <span className="text-3xl">📚</span>
-                <p className="font-semibold text-white mt-2">Active Chapter Assigned</p>
-                <p className="text-slate-400 mt-1">Please go to your student dashboard to solve the homework puzzles for this chapter.</p>
-              </div>
-            )}
-          </div>
-        );
-
-      case 'database':
-        return (
-          <div key={panelId} className="h-full">
-            <ClassroomDatabasePanel
-              onLoadFen={(fen, title) => {
-                const channel = supabase.channel(`classroom-board:${classId}`);
-                channel.send({
-                  type: 'broadcast',
-                  event: 'load-position',
-                  payload: {
-                    fen,
-                    title: title || 'Database Position',
-                    locked: false,
-                  },
-                });
-              }}
-              onLoadPgn={(pgn, title) => {
-                const channel = supabase.channel(`classroom-board:${classId}`);
-                channel.send({
-                  type: 'broadcast',
-                  event: 'load-position',
-                  payload: {
-                    pgn,
-                    title: title || 'Master Game PGN',
-                    locked: false,
-                  },
-                });
-              }}
-            />
-          </div>
-        );
-
-      case 'notes':
-        return (
-          <div key={panelId} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 h-full flex flex-col justify-between">
-            <div className="border-b border-slate-800 pb-2 mb-2 drag-handle cursor-grab active:cursor-grabbing select-none">
-              <span className="text-xs font-bold text-accent uppercase tracking-wider flex items-center gap-1">
-                📝 Coach Instructional Notes
-              </span>
-            </div>
-
-            <textarea
-              readOnly={!isCoach}
-              value={sessionNotes}
-              onChange={handleNotesChange}
-              placeholder="Instructor whiteboard notes. Updates dynamically for enrolled students..."
-              rows={4}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-accent"
-            />
-          </div>
-        );
-
-      default:
-        return null;
-    }
-  };
-
-  if (role === 'student' && status === 'SCHEDULED') {
-    return (
-      <div className="min-h-screen bg-[#0F172A] text-white flex items-center justify-center p-6 text-center">
-        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl space-y-6">
-          <div className="relative w-20 h-20 mx-auto flex items-center justify-center">
-            <span className="absolute inset-0 rounded-full bg-primary/10 animate-ping"></span>
-            <div className="relative w-16 h-16 rounded-2xl bg-primary/20 border border-primary/30 flex items-center justify-center">
-              <span className="text-3xl animate-bounce">🎓</span>
-            </div>
-          </div>
-
-          <div>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-amber-500/10 border border-amber-500/20 text-amber-400 uppercase tracking-wider mb-3">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-              Classroom Waiting Room
-            </span>
-            <h1 className="text-xl font-bold font-heading text-white">Waiting for your Coach</h1>
-            <p className="text-xs text-slate-400 leading-relaxed mt-2">
-              The classroom will open automatically as soon as the Coach starts the session. Please stay on this page.
-            </p>
-          </div>
-
-          {/* Members in waiting room */}
-          <div className="border-t border-slate-800 pt-4 text-left">
-            <h3 className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2.5">
-              Online in Waiting Room ({onlineUserIds.length})
-            </h3>
-            {onlineUserIds.length === 0 ? (
-              <p className="text-xs text-slate-500 italic">No one else is here yet.</p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {onlineUserIds.map((name, i) => (
-                  <span key={i} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-800 border border-slate-700/60 text-xs font-semibold text-slate-300">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
-                    {name}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="border-t border-slate-800 pt-4 flex justify-center">
-            <Link
-              href="/dashboard"
-              className="inline-block py-2.5 px-5 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all border border-slate-700"
-            >
-              Exit to Dashboard
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const classLabel = `${classType || 'Group'} (${duration}min)`;
 
   return (
-    <div className="min-h-screen bg-surface-dark text-white flex flex-col">
-      {/* Top Navbar */}
-      <header className="h-16 border-b border-indigo-500/20 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950/80 backdrop-blur-xl px-6 flex items-center justify-between sticky top-0 z-30 shadow-lg">
-        <div className="flex items-center gap-4">
-          <Link
-            href="/dashboard"
-            className="px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 hover:border-slate-600 focus:outline-none"
-          >
-            <DashboardIcon iconKey="arrowLeft" className="w-3.5 h-3.5" />
-            <span>Exit Workspace</span>
-          </Link>
-          <div className="h-5 w-px bg-slate-800/80"></div>
-          <div>
-            <h1 className="text-sm font-bold font-heading flex items-center gap-2.5">
-              <span className="bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-200 bg-clip-text text-transparent font-black tracking-wide text-base">
-                ChessHub Academy Classroom
-              </span>
-              <span className="text-xs bg-gradient-to-r from-amber-500/20 via-amber-400/15 to-yellow-500/20 border border-amber-500/40 text-amber-300 font-bold px-3 py-0.5 rounded-full shadow-sm flex items-center gap-1 backdrop-blur-md">
-                👨‍🏫 {coachName}
-              </span>
-            </h1>
-            <p className="text-[11px] text-slate-400 flex items-center gap-1.5 mt-0.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-              <span>Live Classroom Session:</span>
-              <span className="font-mono text-slate-200 font-bold">{classId.substring(0, 8)}</span>
-            </p>
+    <div className="fixed inset-0 bg-[#0f0f1f] text-white flex flex-col overflow-hidden select-none" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          TOP NAVBAR HEADER BAR
+      ═══════════════════════════════════════════════════════════════════ */}
+      <header className="h-12 bg-[#0a0a1a] border-b border-[#222244] flex items-center justify-between px-4 flex-shrink-0 z-30 shadow-md">
+        {/* Left: Class title & timer */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-extrabold text-white tracking-tight">{classLabel}</span>
+            <span className="px-2 py-0.5 text-[10px] font-bold bg-[#1e1e3e] border border-[#2a2a4a] text-[#8888cc] rounded tracking-widest uppercase">
+              {status === 'LIVE' ? 'LIVE SESSION' : status === 'SCHEDULED' ? 'SCHEDULED' : 'CUSTOM MEETING'}
+            </span>
+          </div>
+
+          {/* Timer always visible */}
+          <div className="flex items-center gap-1.5 ml-2 bg-[#1a1a32] px-2.5 py-1 rounded-lg border border-[#2a2a4a]">
+            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            <span className="text-xs font-mono font-black text-white tabular-nums">
+              {formatElapsed(elapsedSeconds)}
+            </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* Header elapsed timer */}
-          {status === 'LIVE' && (
-            <div className="flex items-center gap-2 bg-gradient-to-r from-emerald-500/15 to-teal-500/15 border border-emerald-500/30 px-3.5 py-1 rounded-full shadow-sm">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-              <span className="text-xs font-mono font-black text-emerald-300 tabular-nums">
-                {formatElapsed(elapsedSeconds)}
-              </span>
-            </div>
-          )}
-
-
-          {/* Local Screen & Audio Recording for Coach and Admin */}
-          <ClassroomRecorder classId={classId} isCoachOrAdmin={isCoach} />
-
-          {/* Load Curriculum Lesson Button for Coach */}
-          {isCoach && (
+        {/* Center: Action Buttons (Coach Only) */}
+        {isCoach && (
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setShowLessonDrawer(true)}
-              className="px-3.5 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-extrabold rounded-xl text-xs transition-all shadow-gold flex items-center gap-1.5"
+              className="px-3 h-7 bg-[#1e1e3e] hover:bg-[#2a2a4e] border border-[#2a2a4e] text-[#ccccee] text-[11px] font-bold rounded transition-all uppercase tracking-wide"
             >
-              <span>📚</span>
-              <span>Load Lesson</span>
+              LOAD GAME
             </button>
-          )}
 
-          {/* Coach start/end actions */}
-          {isCoach && status === 'SCHEDULED' && (
             <button
-              onClick={handleStartClass}
-              disabled={isPending}
-              className="px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+              type="button"
+              onClick={() => setShowSetPositionModal(true)}
+              className="px-3 h-7 bg-[#c84b31] hover:bg-[#d55339] text-white text-[11px] font-extrabold rounded transition-all uppercase tracking-wide shadow-md"
             >
-              {isPending ? 'Starting...' : 'Start Class'}
+              🎨 SET POSITION
             </button>
-          )}
 
-          {isCoach && (status === 'SCHEDULED' || status === 'LIVE') && (
+            {/* Local Device MP4 Recorder for Admin / Coach */}
+            <ClassroomLocalRecorder classId={classId} isCoachOrAdmin={isCoach} />
+          </div>
+        )}
+
+        {/* Right: Prominent END CLASS & Exit */}
+        <div className="flex items-center gap-2">
+          {/* Prominent Red End Class Button for Coach & Admin at all times */}
+          {isCoach && (
             <button
+              type="button"
               onClick={handleOpenEndClassModal}
               disabled={isPending || isSubmittingEndReport}
-              className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-md"
+              className="px-3.5 h-7 bg-red-600 hover:bg-red-500 text-white font-extrabold text-[11px] rounded uppercase tracking-wider flex items-center gap-1 shadow-lg animate-pulse"
             >
-              <span>🛑 End Class</span>
+              <span>🛑</span>
+              <span>END CLASS</span>
             </button>
           )}
+
+          {/* Notification bell */}
+          <button
+            type="button"
+            className="w-7 h-7 rounded-full bg-[#c84b31] hover:bg-[#d55339] flex items-center justify-center text-white text-sm transition-all relative ml-1"
+          >
+            🔔
+            {chatUnread > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 text-white text-[8px] font-black rounded-full flex items-center justify-center">
+                {chatUnread}
+              </span>
+            )}
+          </button>
         </div>
       </header>
 
-      {/* Mobile Screen Responsive Tab Selector (< md screens) */}
-      <div className="flex md:hidden bg-slate-900 border-b border-slate-800 p-2 gap-2 justify-center sticky top-16 z-20">
-        <button
-          type="button"
-          onClick={() => setMobileTab('video')}
-          className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-            mobileTab === 'video'
-              ? 'bg-amber-500 text-slate-950 shadow-gold font-extrabold'
-              : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-          }`}
-        >
-          <span>📹 Live Video</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setMobileTab('chessboard')}
-          className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-            mobileTab === 'chessboard'
-              ? 'bg-amber-500 text-slate-950 shadow-gold font-extrabold'
-              : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-          }`}
-        >
-          <span>♟️ Board</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setMobileTab('chat')}
-          className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-            mobileTab === 'chat'
-              ? 'bg-amber-500 text-slate-950 shadow-gold font-extrabold'
-              : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-          }`}
-        >
-          <span>💬 Chat &amp; Tools</span>
-        </button>
-      </div>
+      {/* ═══════════════════════════════════════════════════════════════════
+          MAIN BODY
+      ═══════════════════════════════════════════════════════════════════ */}
+      <div className="flex flex-1 overflow-hidden">
 
-      {/* Mobile-Only Panel Container */}
-      <div className="flex md:hidden flex-col p-3 flex-grow overflow-y-auto">
-        {mobileTab === 'video' && renderPanel('zoom')}
-        {mobileTab === 'chessboard' && renderPanel('chessboard')}
-        {mobileTab === 'chat' && (
-          <div className="space-y-4">
-            {renderPanel('chat')}
-            {renderPanel('students')}
+        {/* ═══ LEFT COLUMN: Chessboard + Bottom Toolbar ════════════════════ */}
+        <div className="flex flex-col flex-1 overflow-hidden bg-[#0a0a1a] min-w-0">
+
+          {/* Active Screen Share Notification Banner */}
+          {webRTC.screenStream && (
+            <div className="w-full bg-gradient-to-r from-amber-500/20 via-amber-400/20 to-yellow-500/20 border-b border-amber-500/40 px-3 py-2 flex items-center justify-between text-xs text-amber-300 shadow-md">
+              <div className="flex items-center gap-2 font-bold">
+                <span className="text-base animate-pulse">💻</span>
+                <span>Coach is sharing screen! View high-res big screen in video panel or open zoom controls.</span>
+              </div>
+            </div>
+          )}
+
+          {/* Stepper bar */}
+          {activeLessonPositions.length > 1 && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#121226] border-b border-[#222244] flex-shrink-0">
+              <button type="button" onClick={() => handleStepPosition(0)} disabled={activePositionIndex === 0}
+                className="px-2 py-0.5 bg-[#1a1a32] text-[#8888cc] text-[10px] font-bold rounded disabled:opacity-30 hover:bg-[#252548] transition-all">|◀</button>
+              <button type="button" onClick={() => handleStepPosition(activePositionIndex - 1)} disabled={activePositionIndex === 0}
+                className="px-2 py-0.5 bg-[#1a1a32] text-[#8888cc] text-[10px] font-bold rounded disabled:opacity-30 hover:bg-[#252548] transition-all">◀ Prev</button>
+              <span className="flex-1 text-center text-[11px] font-bold text-[#c84b31] truncate">
+                {activePosition?.title || `Position ${activePositionIndex + 1}`}
+                <span className="text-[#555577] ml-2">{activePositionIndex + 1}/{activeLessonPositions.length}</span>
+              </span>
+              <button type="button" onClick={() => handleStepPosition(activePositionIndex + 1)} disabled={activePositionIndex >= activeLessonPositions.length - 1}
+                className="px-2 py-0.5 bg-[#1a1a32] text-[#8888cc] text-[10px] font-bold rounded disabled:opacity-30 hover:bg-[#252548] transition-all">Next ▶</button>
+              <button type="button" onClick={() => handleStepPosition(activeLessonPositions.length - 1)} disabled={activePositionIndex >= activeLessonPositions.length - 1}
+                className="px-2 py-0.5 bg-[#1a1a32] text-[#8888cc] text-[10px] font-bold rounded disabled:opacity-30 hover:bg-[#252548] transition-all">▶|</button>
+            </div>
+          )}
+
+          {/* Chessboard */}
+          <div
+            ref={boardContainerRef}
+            className="flex-1 overflow-hidden flex items-center justify-center p-2 bg-[#0a0a1a]"
+          >
+            <ChessWorkspace
+              key={boardKey}
+              initialFen={currentFen}
+              targetSolution={activePosition?.solution}
+              onMove={handleBoardMove}
+              classId={classId}
+              userRole={role}
+              showEngine={false}
+              showMoveDots={showMoveDots}
+              showCoordinates={showCoordinates}
+              spotlightedStudentId={spotlightedStudentId}
+              spotlightedStudentName={spotlightedStudentName}
+              userId={userId}
+              isEditorOpen={showSetPositionModal}
+              onToggleEditorOpen={setShowSetPositionModal}
+            />
+          </div>
+
+          {/* Bottom Toolbar */}
+          <ClassroomBottomToolbar
+            isCoach={isCoach}
+            boardFlipped={boardFlipped}
+            showCoordinates={showCoordinates}
+            showEngine={showEngine}
+            showMoveList={showMoveList}
+            showMoveDots={showMoveDots}
+            isFullscreen={isFullscreenBoard}
+            isRightPanelCollapsed={isRightPanelCollapsed}
+            isAudioMuted={webRTC.isAudioMuted}
+            isVideoMuted={webRTC.isVideoMuted}
+            onToggleAudio={webRTC.toggleAudio}
+            onToggleVideo={webRTC.toggleVideo}
+            onToggleMoveDots={() => setShowMoveDots((d) => !d)}
+            onFlip={() => setBoardFlipped((f) => !f)}
+            onToggleCoordinates={() => setShowCoordinates((c) => !c)}
+            onToggleEngine={() => setShowEngine((e) => !e)}
+            onToggleMoveList={() => setShowMoveList((m) => !m)}
+            onToggleFullscreen={handleToggleFullscreen}
+            onToggleRightPanel={() => setIsRightPanelCollapsed((c) => !c)}
+            onClearArrows={() => setShowClearBoardModal(true)}
+            onSetPosition={() => setShowSetPositionModal(true)}
+            onPrevMove={() => handleJumpToMove(currentMoveIndex - 1)}
+            onNextMove={() => handleJumpToMove(currentMoveIndex + 1)}
+            onFirstMove={() => handleJumpToMove(-1)}
+            onLastMove={() => handleJumpToMove(gameMoves.length - 1)}
+            onReset={() => {
+              const loadedFen = activePosition?.fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+              setCurrentFen(loadedFen);
+            }}
+            canGoPrev={currentMoveIndex > -1}
+            canGoNext={currentMoveIndex < gameMoves.length - 1}
+          />
+        </div>
+
+        {/* ═══ RESIZE HANDLE & SIDE PANEL TOGGLE ════════════════════════════ */}
+        {!isRightPanelCollapsed && (
+          <div
+            className="w-1 bg-[#1e1e3a] hover:bg-[#c84b31] cursor-col-resize flex-shrink-0 transition-colors active:bg-[#c84b31]"
+            onMouseDown={startResizeRight}
+          />
+        )}
+
+        {/* ═══ RIGHT COLUMN: WebRTC Video Grid + 5 Tabs + Bottom Bar ──────── */}
+        {!isRightPanelCollapsed && (
+          <div
+            className="flex flex-col bg-[#0f0f1f] border-l border-[#222244] flex-shrink-0 overflow-hidden"
+            style={{ width: `${rightColWidth}px` }}
+          >
+            {/* ── Native In-House WebRTC Video Section (Zero Login / Zero Redirect) ── */}
+            <div className="flex-shrink-0">
+              <ClassroomVideoGrid
+                localStream={webRTC.localStream}
+                screenStream={webRTC.screenStream}
+                remotePeers={webRTC.remotePeers}
+                isAudioMuted={webRTC.isAudioMuted}
+                isVideoMuted={webRTC.isVideoMuted}
+                isScreenSharing={webRTC.isScreenSharing}
+                handRaised={webRTC.handRaised}
+                reactionEmoji={webRTC.reactionEmoji}
+                coachName={coachName}
+                userName={userName}
+                isCoach={isCoach}
+                students={students}
+                onlineUserIds={onlineUserIds}
+                spotlightedStudentId={spotlightedStudentId}
+                bgType={bgType}
+                customBgUrl={customBgUrl}
+                onOpenBgModal={() => setShowBgModal(true)}
+                onCoachMuteAll={() => {
+                  students.forEach((s) => {
+                    webRTC.coachMuteStudent(`${s.firstName} ${s.lastName}`);
+                  });
+                }}
+                onToggleAudio={webRTC.toggleAudio}
+                onToggleVideo={webRTC.toggleVideo}
+                onToggleScreenShare={webRTC.toggleScreenShare}
+                onToggleRaiseHand={webRTC.toggleRaiseHand}
+                onSendEmojiReaction={webRTC.sendEmojiReaction}
+                onCoachMuteStudent={webRTC.coachMuteStudent}
+                onCoachStopStudentVideo={webRTC.coachStopStudentVideo}
+                onToggleSpotlight={handleToggleSpotlight}
+              />
+            </div>
+
+            {/* ── 5-Tab Panel ─────────────────────────────────────────────── */}
+            <div className="flex flex-col flex-1 overflow-hidden">
+              <div className="flex items-center border-b border-[#222244] flex-shrink-0 bg-[#0a0a1a]">
+                {([
+                  ['at', 'AT'],
+                  ['response', 'RESPONSE'],
+                  ['leaderboard', 'LEADERBOARD'],
+                  ['participants', 'PARTICIPANTS'],
+                  ...(isCoach ? [['engine', 'ENGINE'] as [RightTab, string]] : []),
+                ]).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setRightTab(key as RightTab)}
+                    className={`flex-1 py-2.5 text-[10px] font-extrabold uppercase tracking-wide transition-colors border-b-2 ${
+                      rightTab === key
+                        ? 'text-white border-[#c84b31] bg-[#1a1a32]'
+                        : 'text-[#666688] border-transparent hover:text-[#aaaacc] hover:bg-[#141428]'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Tab Content */}
+              <div className="flex-1 overflow-hidden flex flex-col">
+                {rightTab === 'at' && (
+                  <div className="flex flex-col flex-1 overflow-hidden">
+                    <ClassroomMoveNotation
+                      moves={gameMoves}
+                      currentIndex={currentMoveIndex}
+                      onJumpToMove={handleJumpToMove}
+                      showMovesForParticipants={showMovesForParticipants}
+                      isCoach={isCoach}
+                    />
+
+                    {/* Chat Section */}
+                    <div className="border-t border-[#222244] flex-shrink-0 bg-[#0a0a1a]">
+                      <div className="max-h-32 overflow-y-auto px-3 py-2 space-y-1.5">
+                        {messages.length === 0 && (
+                          <p className="text-[10px] text-[#555577] italic text-center py-2">No messages yet</p>
+                        )}
+                        {messages.map((msg) => (
+                          <div key={msg.id} className={`flex gap-2 ${msg.sender_name === userName ? 'justify-end' : ''}`}>
+                            <div className={`max-w-[85%] px-2.5 py-1.5 rounded-xl text-[11px] leading-tight ${
+                              msg.sender_role === 'coach' || msg.sender_role === 'admin'
+                                ? 'bg-amber-900/40 border border-amber-700/40 text-amber-100'
+                                : msg.sender_name === userName
+                                ? 'bg-[#c84b31] text-white'
+                                : 'bg-[#1a1a32] text-[#ccccee]'
+                            }`}>
+                              {msg.sender_name !== userName && (
+                                <p className="text-[9px] font-bold text-[#8888cc] mb-0.5">{msg.sender_name}</p>
+                              )}
+                              {msg.message}
+                            </div>
+                          </div>
+                        ))}
+                        <div ref={chatBottomRef} />
+                      </div>
+                      <form onSubmit={sendChatMessage} className="flex gap-2 px-2 py-1.5 border-t border-[#222244]">
+                        <input
+                          type="text"
+                          value={chatInput}
+                          onChange={(e) => setChatInput(e.target.value)}
+                          placeholder="Type a message..."
+                          className="flex-1 bg-[#1a1a32] border border-[#2a2a4a] rounded-lg px-2.5 py-1.5 text-[11px] text-white placeholder-[#555577] focus:outline-none focus:border-[#c84b31]"
+                        />
+                        <button
+                          type="submit"
+                          disabled={!chatInput.trim()}
+                          className="px-3 py-1.5 bg-[#c84b31] hover:bg-[#d55339] text-white text-[10px] font-bold rounded-lg transition-colors disabled:opacity-40"
+                        >
+                          ▶
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                )}
+
+                {rightTab === 'response' && (
+                  <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-[#0d0d1a]">
+                    {isCoach ? (
+                      <>
+                        <p className="text-[10px] text-[#555577] uppercase tracking-widest font-bold mb-2">Student Candidate Move Responses</p>
+                        {Object.keys(studentResponses).length === 0 ? (
+                          <p className="text-[11px] text-[#555577] text-center py-8">No responses yet. Students can submit their move from this tab.</p>
+                        ) : (
+                          Object.entries(studentResponses).map(([name, resp]) => (
+                            <div key={name} className="bg-[#1a1a32] border border-[#2a2a4a] rounded-xl p-3">
+                              <p className="text-[10px] font-bold text-[#8888cc] mb-1">{name}</p>
+                              <p className="text-sm font-extrabold text-white font-mono">{resp}</p>
+                            </div>
+                          ))
+                        )}
+                      </>
+                    ) : (
+                      <div className="flex flex-col gap-3">
+                        <p className="text-[11px] text-[#aaaacc] font-semibold">Submit your candidate move to coach:</p>
+                        <input
+                          type="text"
+                          value={myResponse}
+                          onChange={(e) => setMyResponse(e.target.value)}
+                          disabled={responseSubmitted}
+                          placeholder="e.g. Nf3, Rxe5, O-O..."
+                          className="bg-[#1a1a32] border border-[#2a2a4a] rounded-xl px-3 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-[#c84b31] disabled:opacity-50"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleSubmitResponse}
+                          disabled={!myResponse.trim() || responseSubmitted}
+                          className="py-2.5 bg-[#c84b31] hover:bg-[#d55339] text-white text-sm font-extrabold rounded-xl transition-colors disabled:opacity-40"
+                        >
+                          {responseSubmitted ? '✅ Response Submitted' : 'Submit Candidate Move'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {rightTab === 'leaderboard' && (
+                  <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-[#0d0d1a]">
+                    <p className="text-[10px] text-[#555577] uppercase tracking-widest font-bold mb-3">Live Class Leaderboard</p>
+                    {students.map((student, idx) => (
+                      <div key={student.email} className="flex items-center gap-3 bg-[#1a1a32] border border-[#2a2a4a] rounded-xl p-2.5">
+                        <span className="text-sm w-6 text-center">{['🥇', '🥈', '🥉'][idx] || `#${idx + 1}`}</span>
+                        <div className="w-7 h-7 rounded-full bg-[#c84b31]/20 border border-[#c84b31]/40 flex items-center justify-center text-[11px] font-bold text-[#c84b31]">
+                          {student.firstName.charAt(0)}{student.lastName.charAt(0)}
+                        </div>
+                        <p className="flex-1 text-[11px] font-bold text-white truncate">{student.firstName} {student.lastName}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {rightTab === 'participants' && (
+                  <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-[#0d0d1a]">
+                    <p className="text-[10px] text-[#555577] uppercase tracking-widest font-bold mb-2">Class Attendance ({students.length + 1})</p>
+                    <div className="flex items-center gap-2.5 bg-amber-900/20 border border-amber-700/30 rounded-xl p-2.5">
+                      <div className="w-7 h-7 rounded-full bg-amber-600/40 flex items-center justify-center text-amber-300 text-[11px] font-bold">
+                        {coachName.charAt(0)}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-[11px] font-bold text-amber-200">{coachName}</p>
+                        <p className="text-[9px] text-amber-500">Coach</p>
+                      </div>
+                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                    </div>
+                    {students.map((student, i) => (
+                      <div key={i} className="flex items-center gap-2.5 bg-[#1a1a32] border border-[#2a2a4a] rounded-xl p-2.5">
+                        <div className="w-7 h-7 rounded-full bg-[#2a2a4a] flex items-center justify-center text-white text-[10px] font-bold">
+                          {student.firstName.charAt(0)}{student.lastName.charAt(0)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[11px] font-bold text-white truncate">{student.firstName} {student.lastName}</p>
+                          <p className="text-[9px] text-[#555577] truncate">{student.email}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {rightTab === 'engine' && (
+                  <ClassroomEnginePanel fen={currentFen} isEnabled={showEngine} />
+                )}
+              </div>
+
+              {/* Bottom Control Bar */}
+              <div className="flex-shrink-0 border-t border-[#222244] bg-[#0a0a1a] px-3 py-2 flex items-center gap-3">
+                {isCoach && (
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={showMovesForParticipants}
+                      onClick={() => setShowMovesForParticipants((v) => !v)}
+                      className={`relative w-8 h-4 rounded-full transition-colors ${showMovesForParticipants ? 'bg-white' : 'bg-[#2a2a4a]'}`}
+                    >
+                      <span className="absolute top-0.5 w-3 h-3 rounded-full transition-all" style={{ background: showMovesForParticipants ? '#0a0a1a' : '#555577', left: showMovesForParticipants ? '18px' : '2px' }} />
+                    </button>
+                    <span className="text-[9px] font-bold uppercase tracking-wide text-[#8888aa]">SHOW MOVES FOR PARTICIPANTS</span>
+                  </label>
+                )}
+
+                <label className="flex items-center gap-1.5 cursor-pointer select-none ml-auto">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={translateMoves}
+                    onClick={() => setTranslateMoves((v) => !v)}
+                    className={`relative w-7 h-3.5 rounded-full transition-colors ${translateMoves ? 'bg-white' : 'bg-[#2a2a4a]'}`}
+                  >
+                    <span className="absolute top-0.5 w-2.5 h-2.5 rounded-full transition-all" style={{ background: translateMoves ? '#0a0a1a' : '#555577', left: translateMoves ? '15px' : '2px' }} />
+                  </button>
+                  <span className="text-[9px] font-bold uppercase tracking-wide text-[#8888aa]">Translate</span>
+                </label>
+
+                {isCoach && (
+                  <button
+                    type="button"
+                    onClick={handleSaveToDb}
+                    disabled={savingDb}
+                    className="px-3 py-1 bg-[#1a1a32] hover:bg-[#252548] border border-[#2a2a4a] hover:border-[#c84b31] text-[#aaaacc] hover:text-white text-[10px] font-extrabold uppercase tracking-wide rounded transition-all disabled:opacity-50"
+                  >
+                    {savingDb ? '...' : savedDb ? '✓ SAVED' : 'SAVE TO DB'}
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>
 
-      {/* Main Desktop Workspace Drag-and-Drop Column Layout */}
-      <div className="hidden md:flex flex-grow overflow-hidden">
-        {/* LEFT COLUMN */}
-        <div
-          className="hidden md:flex flex-col gap-4 p-4 border-r border-slate-800 bg-slate-900/30 overflow-y-auto relative"
-          style={{ width: `${leftWidth}px` }}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => handleDrop(e, 'left')}
-        >
-          {panelPlacements.left.map((id) => (
-            <div
-              key={id}
-              draggable
-              onDragStart={(e) => handleDragStart(e, id)}
-              className="cursor-move h-full"
-            >
-              {renderPanel(id)}
-            </div>
-          ))}
-          {/* Vertical left resizer bar */}
-          <div
-            className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-accent/40 bg-transparent transition-all"
-            onMouseDown={startResizeLeft}
-          />
-        </div>
-
-        {/* CENTER COLUMN (Chessboard) */}
-        <div
-          className="flex-1 flex flex-col gap-4 p-4 overflow-y-auto relative bg-slate-950/20"
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => handleDrop(e, 'center')}
-        >
-          {panelPlacements.center.map((id) => (
-            <div
-              key={id}
-              draggable
-              onDragStart={(e) => handleDragStart(e, id)}
-              className="cursor-move"
-            >
-              {renderPanel(id)}
-            </div>
-          ))}
-        </div>
-
-        {/* RIGHT COLUMN */}
-        <div
-          className="hidden lg:flex flex-col gap-4 p-4 border-l border-slate-800 bg-slate-900/30 overflow-y-auto relative"
-          style={{ width: `${rightWidth}px` }}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => handleDrop(e, 'right')}
-        >
-          {panelPlacements.right.map((id) => (
-            <div
-              key={id}
-              draggable
-              onDragStart={(e) => handleDragStart(e, id)}
-              className="cursor-move"
-            >
-              {renderPanel(id)}
-            </div>
-          ))}
-          {/* Vertical right resizer bar */}
-          <div
-            className="absolute top-0 left-0 w-1 h-full cursor-col-resize hover:bg-accent/40 bg-transparent transition-all"
-            onMouseDown={startResizeRight}
-          />
-        </div>
-      </div>
-
-      {/* 🛑 End Class & Session Report Modal (Coach Feedback & Student Attendance) */}
+      {/* ═══════════════════════════════════════════════════════════════════
+          END CLASS MODAL
+      ═══════════════════════════════════════════════════════════════════ */}
       {showEndClassModal && (
-        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-xl space-y-5 shadow-2xl relative text-white max-h-[90vh] overflow-y-auto">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#0f0f1f] border border-[#222244] rounded-2xl p-6 w-full max-w-xl space-y-5 shadow-2xl text-white max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-[#222244] pb-3">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-red-500/20 border border-red-500/40 flex items-center justify-center text-xl shadow-md">
-                  🛑
-                </div>
+                <div className="w-10 h-10 rounded-xl bg-red-900/30 border border-red-500/40 flex items-center justify-center text-xl">🛑</div>
                 <div>
-                  <h3 className="font-heading font-bold text-base text-red-400">
-                    End Session &amp; Submit Class Report
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    Mark student attendance and enter class remarks before returning to dashboard.
-                  </p>
+                  <h3 className="font-bold text-base text-red-400">End Session & Submit Report</h3>
+                  <p className="text-xs text-[#666688]">Mark attendance and add class remarks</p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowEndClassModal(false)}
-                className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center justify-center text-sm"
-              >
-                ✕
-              </button>
+              <button type="button" onClick={() => setShowEndClassModal(false)} className="w-8 h-8 rounded-xl bg-[#1a1a32] hover:bg-[#252548] text-white font-bold flex items-center justify-center text-sm">✕</button>
             </div>
 
-            {/* Session Stats Bar */}
-            <div className="grid grid-cols-3 gap-3 bg-slate-950 p-3 rounded-2xl border border-slate-800 text-center">
-              <div>
-                <span className="text-[10px] text-slate-400 font-bold uppercase block">Elapsed Time</span>
-                <span className="text-sm font-extrabold text-amber-400 font-mono">⏱️ {formatElapsed(elapsedSeconds)}</span>
-              </div>
-              <div>
-                <span className="text-[10px] text-slate-400 font-bold uppercase block">Class Type</span>
-                <span className="text-xs font-bold text-white uppercase">{classType}</span>
-              </div>
-              <div>
-                <span className="text-[10px] text-slate-400 font-bold uppercase block">Coach Profile</span>
-                <span className="text-xs font-bold text-emerald-400 truncate block">{coachName}</span>
-              </div>
+            <div className="grid grid-cols-3 gap-3 bg-[#0a0a1a] p-3 rounded-xl border border-[#222244] text-center">
+              <div><span className="text-[10px] text-[#666688] font-bold uppercase block">Elapsed</span><span className="text-sm font-extrabold text-amber-400 font-mono">⏱ {formatElapsed(elapsedSeconds)}</span></div>
+              <div><span className="text-[10px] text-[#666688] font-bold uppercase block">Type</span><span className="text-xs font-bold text-white">{classType}</span></div>
+              <div><span className="text-[10px] text-[#666688] font-bold uppercase block">Coach</span><span className="text-xs font-bold text-emerald-400 truncate block">{coachName}</span></div>
             </div>
 
             <form onSubmit={handleSubmitEndClassReport} className="space-y-4">
-              {/* Student Attendance Section */}
               <div>
-                <h4 className="text-xs font-extrabold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <span>📋 Student Attendance Checklist ({students.length})</span>
-                </h4>
-
+                <h4 className="text-xs font-extrabold text-[#ccccee] uppercase tracking-wider mb-2">📋 Student Attendance</h4>
                 {students.length === 0 ? (
-                  <p className="text-xs text-slate-500 italic p-3 bg-slate-950 rounded-xl border border-slate-850">
-                    No students currently registered for this session track.
-                  </p>
+                  <p className="text-xs text-[#666688] italic">No students registered.</p>
                 ) : (
-                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
                     {students.map((student) => {
                       const key = student.studentProfileId || student.email;
                       const isPresent = attendanceMap[key] ?? true;
-
                       return (
-                        <div
-                          key={key}
-                          className="bg-slate-950/70 p-3 rounded-2xl border border-slate-800 flex items-center justify-between gap-3"
-                        >
+                        <div key={key} className="bg-[#0a0a1a] p-3 rounded-xl border border-[#222244] flex items-center justify-between gap-3">
                           <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-xl bg-primary/20 text-primary flex items-center justify-center font-bold text-xs">
+                            <div className="w-8 h-8 rounded-xl bg-[#1a1a32] flex items-center justify-center font-bold text-xs text-[#8888cc]">
                               {student.firstName[0]}{student.lastName[0]}
                             </div>
                             <div>
                               <p className="text-xs font-bold text-white">{student.firstName} {student.lastName}</p>
-                              <p className="text-[10px] text-slate-400">{student.email}</p>
+                              <p className="text-[10px] text-[#666688]">{student.email}</p>
                             </div>
                           </div>
-
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleToggleStudentAttendance(key)}
-                              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1 border ${
-                                isPresent
-                                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-sm'
-                                  : 'bg-red-500/20 text-red-300 border-red-500/40'
-                              }`}
-                            >
-                              <span>{isPresent ? '🟢 Present' : '🔴 Absent'}</span>
-                            </button>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleStudentAttendance(key)}
+                            className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all border ${isPresent ? 'bg-emerald-900/30 text-emerald-300 border-emerald-700/40' : 'bg-red-900/30 text-red-300 border-red-700/40'}`}
+                          >
+                            {isPresent ? '🟢 Present' : '🔴 Absent'}
+                          </button>
                         </div>
                       );
                     })}
@@ -1687,49 +1100,33 @@ export default function ClassroomWorkspace({
                 )}
               </div>
 
-              {/* Class Remarks & Coach Feedback */}
               <div>
-                <label className="block text-xs font-extrabold text-slate-300 uppercase tracking-wider mb-1.5">
-                  📝 Class Remarks &amp; Coach Feedback for Students/Parents
-                </label>
+                <label className="block text-xs font-extrabold text-[#ccccee] uppercase tracking-wider mb-1.5">📝 Class Remarks</label>
                 <textarea
                   rows={4}
-                  placeholder="e.g. Excellent calculation and focus during the tactical puzzle exercises today. Reviewed Evan's Gambit and key endgame ideas..."
+                  placeholder="Enter coach feedback, session notes, game highlights..."
                   value={endClassRemarks}
                   onChange={(e) => setEndClassRemarks(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500 leading-relaxed"
+                  className="w-full bg-[#0a0a1a] border border-[#222244] rounded-xl p-3 text-xs text-white placeholder-[#444466] focus:outline-none focus:border-[#c84b31] leading-relaxed"
                 />
               </div>
 
-              {error && (
-                <div className="p-3 bg-red-950/80 border border-red-500/40 rounded-xl text-red-300 text-xs font-bold text-center">
-                  ⚠️ {error}
-                </div>
-              )}
+              {error && <div className="p-3 bg-red-950/50 border border-red-700/40 rounded-xl text-red-300 text-xs font-bold text-center">⚠️ {error}</div>}
 
-              {/* Submit Buttons */}
-              <div className="flex items-center justify-end gap-3 border-t border-slate-800 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setShowEndClassModal(false)}
-                  disabled={isSubmittingEndReport}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmittingEndReport}
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-extrabold text-xs shadow-lg transition-all flex items-center gap-2 disabled:opacity-50"
-                >
-                  <span>{isSubmittingEndReport ? '⏳ Submitting Report...' : '🚀 Submit Report & End Class'}</span>
+              <div className="flex items-center justify-end gap-3 border-t border-[#222244] pt-3">
+                <button type="button" onClick={() => setShowEndClassModal(false)} disabled={isSubmittingEndReport}
+                  className="px-4 py-2 bg-[#1a1a32] hover:bg-[#252548] text-[#8888cc] text-xs font-bold rounded-xl transition-colors">Cancel</button>
+                <button type="submit" disabled={isSubmittingEndReport}
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white font-extrabold text-xs shadow-lg transition-all flex items-center gap-2 disabled:opacity-50">
+                  {isSubmittingEndReport ? '⏳ Submitting...' : '🚀 Submit & End Class'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-      {/* Curriculum Lesson Drawer Modal */}
+
+      {/* Lesson Drawer */}
       <ClassroomLessonDrawer
         isOpen={showLessonDrawer}
         isCoach={isCoach}
@@ -1737,6 +1134,41 @@ export default function ClassroomWorkspace({
         onSelectPosition={handleSelectPosition}
         onPushPosition={(pos) => {
           handleSelectPosition(pos, activeLessonPositions.length > 0 ? activeLessonPositions : [pos], 0);
+        }}
+      />
+
+
+
+      {/* Clear Board Modal */}
+      <ClearBoardModal
+        isOpen={showClearBoardModal}
+        onClose={() => setShowClearBoardModal(false)}
+        onConfirmClear={handleConfirmClearBoard}
+      />
+
+      {/* Pre-Join Device Check & Audio/Video Preview Modal */}
+      <ClassroomPreJoinModal
+        isOpen={showPreJoinModal}
+        userName={userName}
+        userRole={role}
+        onJoin={({ isAudioMuted, isVideoMuted, bgType: selectedBg, customBgUrl: selectedCustom }) => {
+          setShowPreJoinModal(false);
+          if (isAudioMuted !== webRTC.isAudioMuted) webRTC.toggleAudio();
+          if (isVideoMuted !== webRTC.isVideoMuted) webRTC.toggleVideo();
+          setBgType(selectedBg);
+          if (selectedCustom) setCustomBgUrl(selectedCustom);
+        }}
+      />
+
+      {/* Virtual Video Background Selector Modal */}
+      <ClassroomVirtualBackgroundModal
+        isOpen={showBgModal}
+        currentBgType={bgType}
+        currentCustomUrl={customBgUrl}
+        onClose={() => setShowBgModal(false)}
+        onApplyBackground={(type, url) => {
+          setBgType(type);
+          if (url) setCustomBgUrl(url);
         }}
       />
     </div>

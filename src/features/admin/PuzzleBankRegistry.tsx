@@ -11,17 +11,13 @@ import {
 import type { DbHomeworkPuzzle } from '@/lib/puzzles/puzzleBankService';
 import InteractivePuzzleBuilderModal from './InteractivePuzzleBuilderModal';
 import LichessPuzzleCsvImporter from './LichessPuzzleCsvImporter';
+import InteractivePgnInspector from './InteractivePgnInspector';
+
+import { wrapChessboard } from '@/components/dashboard/ui/ChessboardWrapper';
 
 const ChessboardComponent = dynamic(
   () =>
-    import('react-chessboard').then((mod) => {
-      const CB = mod.Chessboard;
-      return function BoardWrapper(props: any) {
-        const { options, ...rest } = props;
-        const finalProps = options ? { ...options, ...rest } : rest;
-        return <CB {...finalProps} />;
-      };
-    }),
+    import('react-chessboard').then((mod) => wrapChessboard(mod.Chessboard)),
   { ssr: false }
 ) as any;
 
@@ -373,18 +369,22 @@ export default function PuzzleBankRegistry() {
         </button>
       </div>
 
-      {/* Tab: CSV / PGN Import */}
+      {/* Tab: CSV / PGN Import & Inspector */}
       {activeTab === 'import' && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-          <div className="mb-4">
-            <h3 className="font-heading font-bold text-sm text-white mb-1">
-              Bulk Import Lichess / PGN Datasets into Central Puzzle Bank
-            </h3>
-            <p className="text-xs text-slate-400">
-              Paste raw Lichess CSV datasets or PGN Study moves below. Duplicate entries will be saved as variations.
-            </p>
+        <div className="space-y-6">
+          <InteractivePgnInspector onSuccess={fetchPuzzles} />
+
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+            <div className="mb-4">
+              <h3 className="font-heading font-bold text-sm text-white mb-1">
+                Lichess CSV Dataset Importer
+              </h3>
+              <p className="text-xs text-slate-400">
+                Bulk-import Lichess CSV datasets into the Central Puzzle Bank database.
+              </p>
+            </div>
+            <LichessPuzzleCsvImporter onImportComplete={handleBulkImportFromCsv} />
           </div>
-          <LichessPuzzleCsvImporter onImportComplete={handleBulkImportFromCsv} />
         </div>
       )}
 

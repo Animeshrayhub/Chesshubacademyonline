@@ -65,14 +65,17 @@ export async function middleware(request: NextRequest) {
 
     // Role-based route protection (ADMIN bypasses all checks)
     if (role !== 'ADMIN') {
+      const targetDashboardUrl = new URL(`/dashboard/${role.toLowerCase()}`, request.url);
+      targetDashboardUrl.searchParams.set('security_alert', 'unauthorized_dashboard_access');
+
       if (pathname.startsWith('/dashboard/admin') && role !== 'ADMIN') {
-        return redirectWithCookies(new URL('/unauthorized', request.url));
+        return redirectWithCookies(targetDashboardUrl);
       }
       if (pathname.startsWith('/dashboard/coach') && role !== 'COACH') {
-        return redirectWithCookies(new URL('/unauthorized', request.url));
+        return redirectWithCookies(targetDashboardUrl);
       }
       if (pathname.startsWith('/dashboard/student') && role !== 'STUDENT') {
-        return redirectWithCookies(new URL('/unauthorized', request.url));
+        return redirectWithCookies(targetDashboardUrl);
       }
     }
   }

@@ -15,15 +15,11 @@ import {
   type StudentPuzzleStats,
 } from '@/lib/puzzles/progress';
 
+import { wrapChessboard } from '@/components/dashboard/ui/ChessboardWrapper';
+
 const ChessboardComponent = dynamic(
   () =>
-    import('react-chessboard').then((mod) => {
-      const CB = mod.Chessboard;
-      return function BoardWrapper(props: any) {
-        const boardProps = props.options ? { ...props.options, ...props } : props;
-        return <CB {...boardProps} />;
-      };
-    }),
+    import('react-chessboard').then((mod) => wrapChessboard(mod.Chessboard)),
   { ssr: false }
 ) as any;
 
