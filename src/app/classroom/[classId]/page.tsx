@@ -102,14 +102,34 @@ export default async function ClassroomPage({ params }: { params: { classId: str
   if (role === 'admin' || role === 'coach') {
     isAuthorized = true;
   } else if (role === 'student') {
-    const studentProfileIds = students.map((s) => s.studentProfileId);
-    const { data: sp } = await admin
+    let { data: sp } = await admin
       .from('student_profiles')
       .select('id')
       .eq('user_id', user.id)
       .maybeSingle();
 
-    if (sp && studentProfileIds.includes(sp.id)) {
+    if (!sp) {
+      const { data: newSp } = await admin
+        .from('student_profiles')
+        .insert({ user_id: user.id, level: 'BEGINNER' })
+        .select('id')
+        .single();
+      sp = newSp;
+    }
+
+    if (sp) {
+      const studentProfileIds = students.map((s) => s.studentProfileId);
+      if (!studentProfileIds.includes(sp.id)) {
+        await admin.from('class_students').upsert(
+          {
+            class_id: params.classId,
+            student_id: sp.id,
+            joined_at: new Date().toISOString(),
+          },
+          { onConflict: 'class_id,student_id' }
+        );
+      }
+
       if (cls.status === 'COMPLETED' || cls.status === 'RECORDING_AVAILABLE') {
         redirect(`/classroom/${params.classId}/review`);
       } else if (cls.status === 'CANCELLED') {

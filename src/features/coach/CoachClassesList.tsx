@@ -81,11 +81,11 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
   const filteredClasses = rawClasses.filter((c) => {
     const classTime = new Date(c.schedule);
 
-    // Strict Tab Filtering:
-    // ACTIVE = LIVE or IN_PROGRESS
+    // Tab Filtering:
+    // ACTIVE = LIVE, IN_PROGRESS, or SCHEDULED
     // UPCOMING = SCHEDULED
     // COMPLETED = COMPLETED or RECORDING_AVAILABLE
-    if (activeTab === 'ACTIVE' && c.status !== 'LIVE' && c.status !== 'IN_PROGRESS') {
+    if (activeTab === 'ACTIVE' && c.status !== 'LIVE' && c.status !== 'IN_PROGRESS' && c.status !== 'SCHEDULED') {
       return false;
     }
     if (activeTab === 'UPCOMING' && c.status !== 'SCHEDULED') {

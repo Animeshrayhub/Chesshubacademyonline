@@ -566,6 +566,13 @@ export async function getCoachClasses(): Promise<Result<any[]>> {
       .is('archived_at', null)
       .order('scheduled_start', { ascending: true });
 
+    if (classes && classes.length > 0 && profile?.id) {
+      const unassigned = classes.filter((c: any) => !c.coach_id);
+      if (unassigned.length > 0) {
+        await admin.from('classes').update({ coach_id: profile.id }).in('id', unassigned.map((c: any) => c.id));
+      }
+    }
+
     // Seed real database rows if database table is empty
     if (!classes || classes.length === 0) {
       const realClassesToInsert = [
