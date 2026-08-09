@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Chess } from 'chess.js';
-import { getPuzzleBankAction } from '@/actions/puzzles';
+import { getPuzzleBankAction, saveSpeedRunScoreAction } from '@/actions/puzzles';
 import type { DbHomeworkPuzzle } from '@/lib/puzzles/puzzleBankService';
 
 export default function StudentPuzzleTrainer() {
@@ -23,6 +23,54 @@ export default function StudentPuzzleTrainer() {
   const [streak, setStreak] = useState(0);
   const [puzzlesSolved, setPuzzlesSolved] = useState(0);
   const [studentRating, setStudentRating] = useState(1200);
+
+  // 60-Second Speed Run Mode
+  const [isSpeedRun, setIsSpeedRun] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(60);
+  const [speedRunScore, setSpeedRunScore] = useState(0);
+  const [speedRunBest, setSpeedRunBest] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return Number(localStorage.getItem('chesshub_speedrun_best') || '0');
+    }
+    return 0;
+  });
+  const [speedRunActive, setSpeedRunActive] = useState(false);
+
+  // Speed run countdown interval
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (isSpeedRun && speedRunActive && timeLeft > 0) {
+      timer = setInterval(() => {
+        setTimeLeft((prev) => prev - 1);
+      }, 1000);
+    } else if (timeLeft === 0 && speedRunActive) {
+      setSpeedRunActive(false);
+      const newBest = Math.max(speedRunBest, speedRunScore);
+      setSpeedRunBest(newBest);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('chesshub_speedrun_best', String(newBest));
+      }
+      saveSpeedRunScoreAction(speedRunScore);
+      setFeedback({
+        type: 'success',
+        text: `⚡ SPEED RUN COMPLETE! You solved ${speedRunScore} puzzles in 60s! Best: ${newBest}`,
+      });
+    }
+    return () => clearInterval(timer);
+  }, [isSpeedRun, speedRunActive, timeLeft, speedRunScore, speedRunBest]);
+
+  const startSpeedRun = () => {
+    setIsSpeedRun(true);
+    setSpeedRunScore(0);
+    setTimeLeft(60);
+    setSpeedRunActive(true);
+    setCurrentIndex(0);
+    setUserMoveInput('');
+    setFeedback({
+      type: 'neutral',
+      text: '⚡ SPEED RUN ACTIVE! Solve as many puzzles as you can in 60 seconds!',
+    });
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -74,6 +122,11 @@ export default function StudentPuzzleTrainer() {
       setStreak((prev) => prev + 1);
       setPuzzlesSolved((prev) => prev + 1);
       setStudentRating((prev) => prev + 15);
+
+      if (isSpeedRun && speedRunActive) {
+        setSpeedRunScore((s) => s + 1);
+        setTimeout(() => handleNextPuzzle(), 300);
+      }
     } else {
       setFeedback({
         type: 'error',
@@ -86,6 +139,37 @@ export default function StudentPuzzleTrainer() {
 
   return (
     <div className="space-y-6">
+      {/* 60-Second Speed Run Banner */}
+      <div className="bg-gradient-to-r from-amber-500/10 via-purple-500/10 to-blue-500/10 border border-amber-500/30 p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center text-xl font-extrabold shadow-gold animate-pulse">
+            ⚡
+          </div>
+          <div>
+            <h4 className="font-heading font-bold text-sm text-white">60-Second Tactical Speed Run</h4>
+            <p className="text-xs text-slate-400">
+              Personal Best: <strong className="text-amber-400 font-mono">{speedRunBest} Puzzles</strong> | Solved Today: <strong className="text-emerald-400 font-mono">{speedRunScore}</strong>
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {speedRunActive && (
+            <div className="px-4 py-2 bg-red-500/20 border border-red-500/40 text-red-300 font-mono font-bold text-sm rounded-xl animate-pulse">
+              ⏱️ {timeLeft}s Left
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={startSpeedRun}
+            disabled={speedRunActive}
+            className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-extrabold text-xs rounded-xl shadow-gold transition-all"
+          >
+            {speedRunActive ? '🔥 Speed Run Active' : '🚀 Start 60s Speed Run'}
+          </button>
+        </div>
+      </div>
       {/* Top Stats Bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center justify-between">

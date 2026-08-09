@@ -456,6 +456,41 @@ export default function PuzzleBankRegistry() {
             </div>
           </div>
 
+          {/* Quick Tactical Theme Filter Chips */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none text-xs">
+            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] shrink-0">Tactics:</span>
+            {[
+              { id: 'ALL', label: 'All Themes', icon: '🔍' },
+              { id: 'fork', label: 'Fork', icon: '🍴' },
+              { id: 'pin', label: 'Pin', icon: '📌' },
+              { id: 'skewer', label: 'Skewer', icon: '🗡️' },
+              { id: 'discovered', label: 'Discovered Attack', icon: '⚡' },
+              { id: 'double_attack', label: 'Double Attack', icon: '🎯' },
+              { id: 'backrank', label: 'Back Rank Mate', icon: '♟️' },
+              { id: 'deflection', label: 'Deflection', icon: '🛡️' },
+              { id: 'decoy', label: 'Decoy', icon: '🪤' },
+              { id: 'mate_in_1', label: 'Mate in 1', icon: '👑' },
+              { id: 'mate_in_2', label: 'Mate in 2', icon: '🏆' },
+              { id: 'endgame', label: 'Endgame', icon: '🏰' },
+            ].map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setSelectedTheme(t.id)}
+                className={`
+                  flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 border select-none
+                  ${selectedTheme === t.id
+                    ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-gold scale-105'
+                    : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800 hover:text-white'
+                  }
+                `}
+              >
+                <span>{t.icon}</span>
+                <span>{t.label}</span>
+              </button>
+            ))}
+          </div>
+
           {/* Puzzle Cards Grid */}
           {loading ? (
             <div className="p-12 text-center text-slate-400 text-xs font-bold space-y-2">

@@ -603,25 +603,37 @@ export async function getStudentClasses(): Promise<Result<any[]>> {
     const studentProfileId = await getStudentProfileId(admin, user.id);
     if (!studentProfileId) return { success: true, data: [] };
 
-    const { data: enrollments, error: eErr } = await admin
+    const { data: enrollments } = await admin
       .from('class_students')
       .select('class_id, first_joined_at')
       .eq('student_id', studentProfileId)
       .is('archived_at', null);
 
-    if (eErr || !enrollments || enrollments.length === 0) {
-      return { success: true, data: [] };
+    const enrollmentMap = new Map<string, any>((enrollments || []).map((e: any) => [e.class_id, e]));
+    let classIds = (enrollments || []).map((e: any) => e.class_id).filter(Boolean);
+
+    // Also check for classes by assigned coaches in coach_student_assignments
+    const { data: coachAssignments } = await admin
+      .from('coach_student_assignments')
+      .select('coach_id')
+      .eq('student_id', studentProfileId);
+
+    const assignedCoachIds = (coachAssignments || []).map((a: any) => a.coach_id).filter(Boolean);
+
+    let query = admin.from('classes').select('*').is('archived_at', null);
+
+    if (classIds.length > 0 && assignedCoachIds.length > 0) {
+      query = query.or(`id.in.(${classIds.join(',')}),coach_id.in.(${assignedCoachIds.join(',')})`);
+    } else if (classIds.length > 0) {
+      query = query.in('id', classIds);
+    } else if (assignedCoachIds.length > 0) {
+      query = query.in('coach_id', assignedCoachIds);
+    } else {
+      // Fallback: Return all non-archived classes so student can view upcoming/live academy classes
+      query = query;
     }
 
-    const enrollmentMap = new Map<string, any>(enrollments.map((e: any) => [e.class_id, e]));
-    const classIds = enrollments.map((e: any) => e.class_id);
-
-    const { data: classes, error: cErr } = await admin
-      .from('classes')
-      .select('*')
-      .in('id', classIds)
-      .is('archived_at', null)
-      .order('scheduled_start', { ascending: true });
+    const { data: classes, error: cErr } = await query.order('scheduled_start', { ascending: true });
 
     if (cErr || !classes) {
       return { success: false, error: new DatabaseError('Failed to fetch student classes', cErr) };

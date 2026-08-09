@@ -84,12 +84,12 @@ export default function HeroSection() {
           </div>
 
           {/* Right: Interactive Playable Puzzle Arena */}
-          <div className="relative w-full">
+          <div className="relative w-full pt-8 pb-8 sm:pt-10 sm:pb-10 px-2 sm:px-8">
             {/* Interactive Puzzle Widget */}
             <HeroPuzzleWidget />
 
             {/* Achievement badge — floating */}
-            <div className="absolute -top-6 -right-2 sm:-right-6 animate-float z-10 hidden sm:block pointer-events-none">
+            <div className="absolute top-0 right-0 sm:-right-2 animate-float z-10 hidden sm:block pointer-events-none">
               <div className="bg-white/95 backdrop-blur-md rounded-2xl p-3.5 shadow-2xl flex items-center gap-3 border border-white/40">
                 <div className="w-10 h-10 rounded-xl bg-accent/15 flex items-center justify-center flex-shrink-0">
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -104,7 +104,7 @@ export default function HeroSection() {
             </div>
 
             {/* Students count chip */}
-            <div className="absolute -bottom-6 -left-2 sm:-left-6 z-10 hidden sm:block pointer-events-none">
+            <div className="absolute bottom-0 left-0 sm:-left-2 z-10 hidden sm:block pointer-events-none">
               <div className="bg-primary/90 backdrop-blur-md rounded-2xl px-4 py-3 shadow-blue flex items-center gap-3 border border-white/15">
                 <div className="flex -space-x-2">
                   {[

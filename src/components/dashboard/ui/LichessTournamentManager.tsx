@@ -80,7 +80,7 @@ export default function LichessTournamentManager({
           </div>
         </div>
 
-        {(userRole === 'coach' || userRole === 'admin') && (
+        {userRole === 'admin' && (
           <button
             type="button"
             onClick={() => setShowAddModal(true)}

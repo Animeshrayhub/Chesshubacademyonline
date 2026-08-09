@@ -100,6 +100,40 @@ export async function scanChessboardImageAction(
   return _scan(base64Image, options);
 }
 
+/**
+ * Save student 60-second puzzle speed run score
+ */
+export async function saveSpeedRunScoreAction(score: number) {
+  try {
+    const { createSupabaseServer } = await import('@/lib/supabase/server');
+    const supabase = createSupabaseServer();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) return { success: false, error: 'Unauthorized' };
+
+    const { createSupabaseAdmin } = await import('@/lib/supabase/admin');
+    const admin = createSupabaseAdmin();
+
+    const { data: profile } = await admin
+      .from('student_profiles')
+      .select('id, xp')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (profile) {
+      await admin
+        .from('student_profiles')
+        .update({ xp: (profile.xp || 0) + score * 10 })
+        .eq('id', profile.id);
+    }
+
+    revalidatePath('/dashboard/student');
+    return { success: true, score };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
 export async function clearAllPuzzlesAction() {
   const ok = await clearAllPuzzleBankEntries();
   if (ok) {

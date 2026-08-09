@@ -9,7 +9,6 @@ import ClassroomLocalRecorder from '@/components/dashboard/ui/ClassroomLocalReco
 import ClassroomVideoGrid from '@/components/dashboard/ui/ClassroomVideoGrid';
 import ClassroomLessonDrawer from '@/features/classroom/ClassroomLessonDrawer';
 import ClassroomDatabasePanel from '@/components/dashboard/ui/ClassroomDatabasePanel';
-import SetPositionModal from './SetPositionModal';
 import ClearBoardModal, { ClearMode } from './ClearBoardModal';
 import ClassroomBottomToolbar from './ClassroomBottomToolbar';
 import ClassroomMoveNotation from './ClassroomMoveNotation';
@@ -94,7 +93,7 @@ export default function ClassroomWorkspace({
   const isCoach = role === 'coach' || role === 'admin';
 
   /* ── Native In-House WebRTC Hook (Zero Login / Zero Redirect) ───────────── */
-  const webRTC = useWebRTC({ classId, userName, userRole: role });
+  const webRTC = useWebRTC({ classId, userName, userRole: role, userId });
 
   /* ── Persistent Session Timer ───────────────────────────────────────────── */
   const [startedAtTime, setStartedAtTime] = useState<string | null>(() => {

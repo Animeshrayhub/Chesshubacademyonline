@@ -103,14 +103,18 @@ export async function signIn(email: string, password: string): Promise<SignInRes
       .eq('id', authData.user.id)
       .maybeSingle();
 
-    const isCoachAccount = email.toLowerCase().includes('coach') || email.toLowerCase().includes('anime');
-    const isAdminAccount = email.toLowerCase().includes('admin') || email.toLowerCase().includes('roy') || email.toLowerCase().includes('dugu');
-    const targetRole = isCoachAccount ? 'COACH' : isAdminAccount ? 'ADMIN' : profile?.role || 'STUDENT';
+    // IMPORTANT: Always trust the DB role — never override with email-pattern heuristics.
+    // Email pattern fallback only applies when auto-creating a brand-new profile with no DB record.
+    const fallbackIsCoach = email.toLowerCase().includes('coach');
+    const fallbackIsAdmin = email.toLowerCase().includes('admin');
+    const fallbackRole = fallbackIsCoach ? 'COACH' : fallbackIsAdmin ? 'ADMIN' : 'STUDENT';
+    // Use DB role if profile exists, otherwise use fallback for new profile creation only
+    const targetRole = profile?.role || fallbackRole;
 
     if (!profile) {
       // Auto-create/auto-heal missing user record from Auth metadata
       const firstName = authData.user.user_metadata?.first_name || email.split('@')[0];
-      const lastName = isCoachAccount ? 'Coach' : isAdminAccount ? 'Admin' : 'User';
+      const lastName = fallbackIsCoach ? 'Coach' : fallbackIsAdmin ? 'Admin' : 'User';
       const username = authData.user.user_metadata?.username || email.split('@')[0];
 
       const { data: newProfile } = await adminSupabase
@@ -133,14 +137,13 @@ export async function signIn(email: string, password: string): Promise<SignInRes
     }
 
     if (profile) {
-      // Ensure user is active and has correct role
-      if (!profile.is_active || profile.role !== targetRole) {
+      // Only fix is_active if the account is disabled — never override the DB role
+      if (!profile.is_active) {
         await adminSupabase
           .from('users')
-          .update({ is_active: true, role: targetRole })
+          .update({ is_active: true })
           .eq('id', profile.id);
         profile.is_active = true;
-        profile.role = targetRole;
       }
     }
 

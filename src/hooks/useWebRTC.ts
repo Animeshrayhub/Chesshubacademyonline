@@ -17,6 +17,7 @@ interface UseWebRTCOptions {
   classId: string;
   userName: string;
   userRole: 'admin' | 'coach' | 'student';
+  userId?: string; // Added: stable user ID for peer identification
 }
 
 const ICE_SERVERS: RTCConfiguration = {
@@ -27,7 +28,7 @@ const ICE_SERVERS: RTCConfiguration = {
   ],
 };
 
-export function useWebRTC({ classId, userName, userRole }: UseWebRTCOptions) {
+export function useWebRTC({ classId, userName, userRole, userId }: UseWebRTCOptions) {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [isAudioMuted, setIsAudioMuted] = useState(false);
@@ -41,6 +42,9 @@ export function useWebRTC({ classId, userName, userRole }: UseWebRTCOptions) {
   const peerConnectionsRef = useRef<Record<string, RTCPeerConnection>>({});
   const localStreamRef = useRef<MediaStream | null>(null);
   const channelRef = useRef<any>(null);
+
+  // Use stable userId as peerId if available, fallback to userName
+  const myPeerId = userId || userName;
 
   // Initialize local camera and microphone stream with fallback for separate track failures
   const initLocalStream = useCallback(async () => {
@@ -113,7 +117,7 @@ export function useWebRTC({ classId, userName, userRole }: UseWebRTCOptions) {
             event: 'webrtc-ice',
             payload: {
               targetId: peerId,
-              senderId: userName,
+              senderId: myPeerId,
               candidate: event.candidate,
             },
           });
@@ -156,8 +160,9 @@ export function useWebRTC({ classId, userName, userRole }: UseWebRTCOptions) {
               event: 'webrtc-offer',
               payload: {
                 targetId: peerId,
-                senderId: userName,
+                senderId: myPeerId,
                 senderRole: userRole,
+                senderName: userName,
                 offer: pc.localDescription,
               },
             });
@@ -167,7 +172,7 @@ export function useWebRTC({ classId, userName, userRole }: UseWebRTCOptions) {
 
       return pc;
     },
-    [userName, userRole]
+    [myPeerId, userName, userRole]
   );
 
   // Set up Supabase Realtime channel for WebRTC signaling
@@ -186,18 +191,18 @@ export function useWebRTC({ classId, userName, userRole }: UseWebRTCOptions) {
       }
 
       const channel = supabase.channel(topic, {
-        config: { broadcast: { self: false }, presence: { key: userName } },
+        config: { broadcast: { self: false }, presence: { key: myPeerId } },
       });
 
       channel
         .on('broadcast', { event: 'webrtc-join' }, ({ payload }: any) => {
-          if (payload.senderId !== userName) {
-            createPeerConnection(payload.senderId, payload.senderName, payload.senderRole, true);
+          if (payload.senderId !== myPeerId) {
+            createPeerConnection(payload.senderId, payload.senderName || payload.senderId, payload.senderRole, true);
           }
         })
         .on('broadcast', { event: 'webrtc-offer' }, async ({ payload }: any) => {
-          if (payload.targetId === userName) {
-            const pc = createPeerConnection(payload.senderId, payload.senderId, payload.senderRole, false);
+          if (payload.targetId === myPeerId) {
+            const pc = createPeerConnection(payload.senderId, payload.senderName || payload.senderId, payload.senderRole, false);
             await pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
@@ -206,14 +211,14 @@ export function useWebRTC({ classId, userName, userRole }: UseWebRTCOptions) {
               event: 'webrtc-answer',
               payload: {
                 targetId: payload.senderId,
-                senderId: userName,
+                senderId: myPeerId,
                 answer,
               },
             });
           }
         })
         .on('broadcast', { event: 'webrtc-answer' }, async ({ payload }: any) => {
-          if (payload.targetId === userName) {
+          if (payload.targetId === myPeerId) {
             const pc = peerConnectionsRef.current[payload.senderId];
             if (pc) {
               await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
@@ -221,7 +226,7 @@ export function useWebRTC({ classId, userName, userRole }: UseWebRTCOptions) {
           }
         })
         .on('broadcast', { event: 'webrtc-ice' }, async ({ payload }: any) => {
-          if (payload.targetId === userName) {
+          if (payload.targetId === myPeerId) {
             const pc = peerConnectionsRef.current[payload.senderId];
             if (pc && payload.candidate) {
               await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
@@ -229,31 +234,40 @@ export function useWebRTC({ classId, userName, userRole }: UseWebRTCOptions) {
           }
         })
         .on('broadcast', { event: 'webrtc-[#toggle-audio]' }, ({ payload }: any) => {
-          if (payload.targetId === userName) {
+          if (payload.targetId === myPeerId) {
             toggleAudio(payload.forceState);
           }
         })
         .on('broadcast', { event: 'webrtc-[#toggle-video]' }, ({ payload }: any) => {
-          if (payload.targetId === userName) {
+          if (payload.targetId === myPeerId) {
             toggleVideo(payload.forceState);
           }
         })
+        // Presence sync: discovers already-connected peers when joining late
         .on('presence', { event: 'sync' }, () => {
           const state = channel.presenceState();
-          const presentUsers = Object.values(state).flat();
-          presentUsers.forEach((u: any) => {
-            if (u.key !== userName && !peerConnectionsRef.current[u.key]) {
-              createPeerConnection(u.key, u.key, 'student', true);
+          Object.entries(state).forEach(([presenceKey, presences]: [string, any]) => {
+            if (presenceKey !== myPeerId && !peerConnectionsRef.current[presenceKey]) {
+              const presenceData = Array.isArray(presences) ? presences[0] : presences;
+              const peerName = presenceData?.displayName || presenceKey;
+              const peerRole = presenceData?.role || 'student';
+              createPeerConnection(presenceKey, peerName, peerRole, true);
             }
           });
         })
         .subscribe(async (status: string) => {
           if (status === 'SUBSCRIBED') {
-            await channel.track({ key: userName });
+            // Track presence with full metadata so late-joiners know our name & role
+            await channel.track({
+              key: myPeerId,
+              displayName: userName,
+              role: userRole,
+            });
+            // Also broadcast join event for legacy compatibility
             channel.send({
               type: 'broadcast',
               event: 'webrtc-join',
-              payload: { senderId: userName, senderName: userName, senderRole: userRole },
+              payload: { senderId: myPeerId, senderName: userName, senderRole: userRole },
             });
           }
         });
@@ -274,7 +288,8 @@ export function useWebRTC({ classId, userName, userRole }: UseWebRTCOptions) {
     };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [classId, userName, userRole]);
+  }, [classId, myPeerId, userName, userRole]);
+
 
   // Toggle Audio (Mute / Unmute Mic)
   const toggleAudio = async (forceState?: boolean | any) => {
