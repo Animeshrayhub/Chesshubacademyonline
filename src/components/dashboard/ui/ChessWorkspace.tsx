@@ -860,16 +860,19 @@ export default function ChessWorkspace({
 
     if (isEditorMode && isCoach) {
       try {
-        const pieceStr = typeof piece === 'string' ? piece : (piece?.pieceType || piece?.piece || 'wP');
+        const pieceOnSource = sourceSquare ? gameRef.current.get(sourceSquare as any) : null;
+        const pieceStr = typeof piece === 'string' ? piece : (piece?.pieceType || piece?.piece || (pieceOnSource ? `${pieceOnSource.color}${pieceOnSource.type.toUpperCase()}` : 'wP'));
         const color = (pieceStr[0] || 'w').toLowerCase() === 'b' ? 'b' : 'w';
         const type = (pieceStr[1] || 'p').toLowerCase() as 'p' | 'n' | 'b' | 'r' | 'q' | 'k';
-        gameRef.current.remove(sourceSquare as any);
+        if (sourceSquare) gameRef.current.remove(sourceSquare as any);
+        gameRef.current.remove(targetSquare as any);
         gameRef.current.put({ type, color }, targetSquare as any);
-        const nextFen = gameRef.current.fen();
-        setFen(nextFen);
-        parseEditorStateFromFen(nextFen);
 
-        // Broadcast editor moves to students instantly
+        const boardFen = gameRef.current.fen().split(' ')[0];
+        const castlingStr = `${editorCastling.wK ? 'K' : ''}${editorCastling.wQ ? 'Q' : ''}${editorCastling.bK ? 'k' : ''}${editorCastling.bQ ? 'q' : ''}` || '-';
+        const nextFen = `${boardFen} ${editorSideToMove} ${castlingStr} ${editorEnPassant} ${editorHalfMove} ${editorFullMove}`;
+        setFen(nextFen);
+
         if (classId) {
           channelRef.current?.send({
             type: 'broadcast',
@@ -901,10 +904,30 @@ export default function ChessWorkspace({
           gameRef.current.remove(sourceSquare as any);
           gameRef.current.remove(targetSquare as any);
           gameRef.current.put(pieceOnSource, targetSquare as any);
-          const nextFen = gameRef.current.fen();
+
+          let nextFen = '';
+          try {
+            nextFen = gameRef.current.fen();
+          } catch {
+            const boardParts = fen.split(' ');
+            nextFen = `${gameRef.current.fen().split(' ')[0]} ${boardParts[1] || 'w'} ${boardParts[2] || '-'} ${boardParts[3] || '-'} ${boardParts[4] || '0'} ${boardParts[5] || '1'}`;
+          }
+
           setFen(nextFen);
           undoneMovesRef.current = [];
-          syncFromGame(gameRef.current);
+          syncFromGame(gameRef.current, false);
+
+          if (classId) {
+            channelRef.current?.send({
+              type: 'broadcast',
+              event: 'move',
+              payload: {
+                fen: nextFen,
+                history: [],
+                sentAt: Date.now(),
+              },
+            });
+          }
           return true;
         }
       } catch (err) {
