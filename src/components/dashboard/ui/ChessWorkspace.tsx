@@ -499,6 +499,55 @@ export default function ChessWorkspace({
 
     if (onMove) onMove(nextFen, g.pgn());
 
+  const applyEditorConfig = useCallback(() => {
+    try {
+      const boardFen = gameRef.current.fen().split(' ')[0];
+      const castlingStr = `${editorCastling.wK ? 'K' : ''}${editorCastling.wQ ? 'Q' : ''}${editorCastling.bK ? 'k' : ''}${editorCastling.bQ ? 'q' : ''}` || '-';
+      const fullFen = `${boardFen} ${editorSideToMove} ${castlingStr} ${editorEnPassant} ${editorHalfMove} ${editorFullMove}`;
+      
+      const safe = safeChessInstance(fullFen);
+      gameRef.current = safe.chess;
+      syncFromGame(safe.chess);
+      if (classId) {
+        channelRef.current?.send({
+          type: 'broadcast',
+          event: 'move',
+          payload: { fen: safe.validFen, history: [], sentAt: Date.now() },
+        });
+      }
+    } catch (err) {
+      console.error('Apply editor config error:', err);
+    }
+  }, [editorCastling, editorSideToMove, editorEnPassant, editorHalfMove, editorFullMove, classId, syncFromGame]);
+
+  const handleSquareLeftClick = useCallback(({ square }: { piece?: any; square: string }) => {
+    if (!isCoach) return;
+    try {
+      if (editorActivePiece === 'trash') {
+        gameRef.current.remove(square as any);
+      } else if (editorActivePiece) {
+        const color = editorActivePiece[0] === 'w' ? 'w' : 'b';
+        const type = editorActivePiece[1].toLowerCase() as any;
+        gameRef.current.remove(square as any);
+        gameRef.current.put({ type, color }, square as any);
+      }
+      const boardFen = gameRef.current.fen().split(' ')[0];
+      const castlingStr = `${editorCastling.wK ? 'K' : ''}${editorCastling.wQ ? 'Q' : ''}${editorCastling.bK ? 'k' : ''}${editorCastling.bQ ? 'q' : ''}` || '-';
+      const nextFen = `${boardFen} ${editorSideToMove} ${castlingStr} ${editorEnPassant} ${editorHalfMove} ${editorFullMove}`;
+      
+      setFen(nextFen);
+      if (classId) {
+        channelRef.current?.send({
+          type: 'broadcast',
+          event: 'move',
+          payload: { fen: nextFen, history: [], sentAt: Date.now() },
+        });
+      }
+    } catch (err) {
+      console.error('Editor square click error:', err);
+    }
+  }, [isCoach, editorActivePiece, editorCastling, editorSideToMove, editorEnPassant, editorHalfMove, editorFullMove, classId]);
+
     const canBroadcast = isCoach || (!isCoach && !isBoardLocked);
     if (classId && canBroadcast) {
       channelRef.current?.send({
@@ -1486,222 +1535,6 @@ export default function ChessWorkspace({
               }}
             />
           </div>
-        </div>
-
-        {/* Board Action Buttons */}
-        <div className="flex flex-wrap justify-center items-center gap-2 mt-2">
-          {/* Size Zoom */}
-          <div className="flex items-center gap-1 bg-slate-800/40 border border-slate-700/80 rounded-xl p-1 text-xs">
-            <button
-              type="button"
-              onClick={() => setBoardSize(Math.max(350, boardSize - 50))}
-              className="px-2 py-0.5 hover:bg-slate-700 rounded text-slate-350 hover:text-white"
-            >
-              -
-            </button>
-            <span className="text-[10px] text-slate-400 font-bold font-mono">Size</span>
-            <button
-              type="button"
-              onClick={() => setBoardSize(Math.min(900, boardSize + 50))}
-              className="px-2 py-0.5 hover:bg-slate-700 rounded text-slate-350 hover:text-white"
-            >
-              +
-            </button>
-          </div>
-
-          {/* Theme Selector */}
-          <div className="flex items-center gap-1.5 bg-slate-800/40 border border-slate-700/80 rounded-xl p-1 text-xs">
-            <span className="text-[10px] text-slate-400 font-bold font-mono pl-1">Theme</span>
-            <select
-              value={selectedThemeId}
-              onChange={(e) => setSelectedThemeId(e.target.value)}
-              className="bg-slate-900 border border-slate-700/80 text-amber-300 font-bold text-xs rounded-lg px-2 py-0.5 focus:outline-none"
-            >
-              {BOARD_THEMES.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Board Orientation Flip */}
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setBoardOrientation(boardOrientation === 'white' ? 'black' : 'white')}
-            className="text-white border-slate-700 hover:bg-slate-800 font-bold"
-          >
-            🔄 Flip
-          </Button>
-
-          {/* Illegal Moves / Free Play Toggle (Coach Only) */}
-          {isCoach && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setAllowIllegalMoves((prev) => !prev)}
-              className={`font-bold border transition-colors ${
-                allowIllegalMoves
-                  ? 'bg-amber-500/20 border-amber-500 text-amber-300 hover:bg-amber-500/30'
-                  : 'text-slate-300 border-slate-700 hover:bg-slate-800'
-              }`}
-              title={allowIllegalMoves ? 'Free/Illegal Moves ON: Drag any piece anywhere' : 'Strict Rules ON: Only legal moves allowed'}
-            >
-              {allowIllegalMoves ? '⚡ Illegal Moves: ON' : '🛡️ Rules: Strict (Legal)'}
-            </Button>
-          )}
-
-          {isCoach && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={handleOrientationSync}
-              className="text-amber-300 border-amber-500/30 hover:bg-amber-500/10 font-bold"
-              title="Sync board orientation (flip) to all student screens"
-            >
-              📡 Sync Flip
-            </Button>
-          )}
-
-          {/* Student Move Permission Lock Toggle */}
-          {isCoach ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                const nextState = !isBoardLocked;
-                setIsBoardLocked(nextState);
-                channelRef.current?.send({
-                  type: 'broadcast',
-                  event: 'lock-state',
-                  payload: { locked: nextState },
-                });
-              }}
-              className={`font-bold transition-all ${
-                isBoardLocked 
-                  ? 'bg-red-500/20 text-red-300 border-red-500/40 hover:bg-red-500/30' 
-                  : 'bg-green-500/20 text-green-300 border-green-500/40 hover:bg-green-500/30'
-              }`}
-            >
-              {isBoardLocked ? '🔒 Student Moves: OFF' : '🔓 Student Moves: ON'}
-            </Button>
-          ) : (
-            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-xl border text-xs font-bold ${
-              isBoardLocked 
-                ? 'bg-red-500/10 border-red-500/20 text-red-400' 
-                : 'bg-green-500/10 border-green-500/20 text-green-400'
-            }`}>
-              <span>{isBoardLocked ? '🔒 Board Locked' : '🔓 Student Move Allowed'}</span>
-            </div>
-          )}
-
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={handleUndo}
-            disabled={moveHistory.length === 0 && !canUndo}
-            className="text-white border-slate-700 hover:bg-slate-800 disabled:opacity-40 font-bold"
-            title="Undo move (or press Left Arrow key)"
-          >
-            ↩ Undo Move
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={handleRedo}
-            disabled={!canRedo && undoneMovesRef.current.length === 0}
-            className="text-white border-slate-700 hover:bg-slate-800 disabled:opacity-40 font-bold"
-            title="Redo move (or press Right Arrow key)"
-          >
-            ↪ Redo Move
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setVoiceEnabled((prev) => !prev)}
-            className={`border-slate-700 font-bold ${
-              voiceEnabled ? 'text-amber-400 bg-amber-500/10 border-amber-500/30' : 'text-slate-400 hover:bg-slate-800'
-            }`}
-          >
-            {voiceEnabled ? '🔊 Voice ON' : '🔇 Voice OFF'}
-          </Button>
-          {isCoach && (
-            <>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={handleResetBoard}
-                className="text-white border-slate-700 hover:bg-slate-800 font-semibold"
-                title="Reset board to starting position"
-              >
-                🔄 Reset
-              </Button>
-
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={handleClearBoard}
-                className="text-red-400 border-red-900/40 bg-red-950/30 hover:bg-red-900/50 font-bold"
-                title="Clear all pieces from board"
-              >
-                🗑️ Clear Board
-              </Button>
-            </>
-          )}
-
-          {isCoach && (
-            <>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => setShowPlayBotModal(true)}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
-                title="Play the current position against Stockfish computer bot"
-              >
-                🤖 Play with Bot
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => setShowAssignHomeworkModal(true)}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-                title="1-Click assign current board position as homework to students"
-              >
-                ⚡ Assign Homework
-              </Button>
-            </>
-          )}
-
-          {isCoach && (
-            <div className="flex bg-slate-900 border border-slate-700/80 rounded-xl p-1 text-xs gap-1 shadow-sm">
-              <button
-                type="button"
-                onClick={() => setShowImportExportModal('fen')}
-                className="px-2.5 py-1 text-amber-300 hover:text-white font-extrabold transition-colors"
-              >
-                FEN
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowImportExportModal('pgn')}
-                className="px-2.5 py-1 text-amber-300 hover:text-white font-extrabold transition-colors"
-              >
-                PGN
-              </button>
-            </div>
-          )}
         </div>
       </div>
 

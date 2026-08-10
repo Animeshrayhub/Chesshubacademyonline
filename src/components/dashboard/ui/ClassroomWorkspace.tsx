@@ -721,7 +721,7 @@ export default function ClassroomWorkspace({
           {/* Chessboard */}
           <div
             ref={boardContainerRef}
-            className="flex-1 overflow-hidden flex items-center justify-center p-2 bg-[#0a0a1a]"
+            className="flex-1 overflow-y-auto flex items-center justify-center p-2 bg-[#0a0a1a]"
           >
             <ChessWorkspace
               key={boardKey}
@@ -763,7 +763,7 @@ export default function ClassroomWorkspace({
             onToggleFullscreen={handleToggleFullscreen}
             onToggleRightPanel={() => setIsRightPanelCollapsed((c) => !c)}
             onClearArrows={() => setShowClearBoardModal(true)}
-            onSetPosition={() => setShowSetPositionModal(true)}
+            onSetPosition={() => setShowSetPositionModal((prev) => !prev)}
             onPrevMove={() => handleJumpToMove(currentMoveIndex - 1)}
             onNextMove={() => handleJumpToMove(currentMoveIndex + 1)}
             onFirstMove={() => handleJumpToMove(-1)}
