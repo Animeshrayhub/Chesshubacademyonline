@@ -51,7 +51,7 @@ export async function middleware(request: NextRequest) {
       return redirectWithCookies(loginUrl);
     }
 
-    const role = profile.role; // 'ADMIN' | 'COACH' | 'STUDENT'
+    const role = (profile.role || 'STUDENT').toString().toUpperCase(); // 'ADMIN' | 'COACH' | 'STUDENT'
 
     // If Maintenance Mode is active and user is NOT an Admin, redirect to /maintenance
     if (isMaintenanceActive && role !== 'ADMIN' && pathname !== '/maintenance') {
@@ -63,20 +63,13 @@ export async function middleware(request: NextRequest) {
       return redirectWithCookies(new URL(`/dashboard/${role.toLowerCase()}`, request.url));
     }
 
-    // Role-based route protection (ADMIN bypasses all checks)
-    if (role !== 'ADMIN') {
-      const targetDashboardUrl = new URL(`/dashboard/${role.toLowerCase()}`, request.url);
-      targetDashboardUrl.searchParams.set('security_alert', 'unauthorized_dashboard_access');
+    // Strict Role-Based Route Protection
+    if (role === 'COACH' && pathname.startsWith('/dashboard/') && !pathname.startsWith('/dashboard/coach')) {
+      return redirectWithCookies(new URL('/dashboard/coach', request.url));
+    }
 
-      if (pathname.startsWith('/dashboard/admin') && role !== 'ADMIN') {
-        return redirectWithCookies(targetDashboardUrl);
-      }
-      if (pathname.startsWith('/dashboard/coach') && role !== 'COACH') {
-        return redirectWithCookies(targetDashboardUrl);
-      }
-      if (pathname.startsWith('/dashboard/student') && role !== 'STUDENT') {
-        return redirectWithCookies(targetDashboardUrl);
-      }
+    if (role === 'STUDENT' && pathname.startsWith('/dashboard/') && !pathname.startsWith('/dashboard/student')) {
+      return redirectWithCookies(new URL('/dashboard/student', request.url));
     }
   }
 

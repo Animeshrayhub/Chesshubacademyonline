@@ -164,14 +164,15 @@ export async function signIn(email: string, password: string): Promise<SignInRes
       };
     }
 
-    // Map uppercase database roles to lowercase frontend types
+    // Map database roles (case-insensitive) to frontend types
+    const dbRoleUpper = (profile.role || 'STUDENT').toString().toUpperCase();
     const roleMapping: Record<string, UserRole> = {
       ADMIN: 'admin',
       COACH: 'coach',
       STUDENT: 'student',
     };
 
-    const mappedRole = roleMapping[profile.role] || 'student';
+    const mappedRole = roleMapping[dbRoleUpper] || 'student';
     const fullName = `${profile.first_name} ${profile.last_name}`.trim() || profile.username;
 
     // Record Security Audit Entry

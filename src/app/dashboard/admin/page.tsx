@@ -10,52 +10,64 @@ import type { StatCardData, QuickAction, ActivityItem, TableColumn } from '@/typ
 export const dynamic = 'force-dynamic';
 
 async function fetchStats() {
-  const admin = createSupabaseAdmin();
-  const nowStr = new Date().toISOString();
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const todayEnd = new Date();
-  todayEnd.setHours(23, 59, 59, 999);
+  try {
+    const admin = createSupabaseAdmin();
+    const nowStr = new Date().toISOString();
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
 
-  // Run all counts in parallel
-  const [
-    { count: totalClasses },
-    { count: todayClasses },
-    { count: upcomingClasses },
-    { count: homeworkCount },
-  ] = await Promise.all([
-    admin.from('classes').select('*', { count: 'exact', head: true }).is('archived_at', null),
-    admin.from('classes').select('*', { count: 'exact', head: true }).is('archived_at', null).gte('scheduled_start', todayStart.toISOString()).lte('scheduled_start', todayEnd.toISOString()),
-    admin.from('classes').select('*', { count: 'exact', head: true }).is('archived_at', null).gt('scheduled_start', nowStr),
-    admin.from('homework_assignments').select('*', { count: 'exact', head: true }).eq('status', 'assigned'),
-  ]);
+    // Run all counts in parallel
+    const [
+      { count: totalClasses },
+      { count: todayClasses },
+      { count: upcomingClasses },
+      { count: homeworkCount },
+    ] = await Promise.all([
+      admin.from('classes').select('*', { count: 'exact', head: true }).is('archived_at', null),
+      admin.from('classes').select('*', { count: 'exact', head: true }).is('archived_at', null).gte('scheduled_start', todayStart.toISOString()).lte('scheduled_start', todayEnd.toISOString()),
+      admin.from('classes').select('*', { count: 'exact', head: true }).is('archived_at', null).gt('scheduled_start', nowStr),
+      admin.from('homework_assignments').select('*', { count: 'exact', head: true }).eq('status', 'assigned'),
+    ]);
 
-  return {
-    totalClasses: totalClasses ?? 0,
-    todayClasses: todayClasses ?? 0,
-    upcomingClasses: upcomingClasses ?? 0,
-    homework: homeworkCount ?? 0,
-  };
+    return {
+      totalClasses: totalClasses ?? 0,
+      todayClasses: todayClasses ?? 0,
+      upcomingClasses: upcomingClasses ?? 0,
+      homework: homeworkCount ?? 0,
+    };
+  } catch {
+    return { totalClasses: 0, todayClasses: 0, upcomingClasses: 0, homework: 0 };
+  }
 }
 
 async function fetchRecentBookings() {
-  const admin = createSupabaseAdmin();
-  const { data } = await admin
-    .from('bookings')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(3);
-  return data ?? [];
+  try {
+    const admin = createSupabaseAdmin();
+    const { data } = await admin
+      .from('bookings')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(3);
+    return data ?? [];
+  } catch {
+    return [];
+  }
 }
 
 async function fetchAuditLogs() {
-  const admin = createSupabaseAdmin();
-  const { data } = await admin
-    .from('audit_logs')
-    .select('*, profiles:actor_id(display_name)')
-    .order('created_at', { ascending: false })
-    .limit(10);
-  return data ?? [];
+  try {
+    const admin = createSupabaseAdmin();
+    const { data } = await admin
+      .from('audit_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(10);
+    return data ?? [];
+  } catch {
+    return [];
+  }
 }
 
 export default async function AdminOverviewPage() {
