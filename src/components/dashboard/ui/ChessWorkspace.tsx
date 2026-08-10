@@ -981,12 +981,6 @@ export default function ChessWorkspace({
   };
 
   const handleSquareClick = useCallback(({ square }: { square: string }) => {
-    // If in editor mode, delegate to editor left click handler
-    if (isEditorMode && isCoach) {
-      handleSquareLeftClick({ piece: null, square });
-      return;
-    }
-
     if (!isCoach && isBoardLocked) return;
     if (isReadOnly) return;
 
@@ -1051,31 +1045,38 @@ export default function ChessWorkspace({
       setSelectedSquare(null);
       setOptionSquares({});
     }
-  }, [isEditorMode, isCoach, isReadOnly, selectedSquare, optionSquares, syncFromGame]);
+  }, [isCoach, isBoardLocked, isReadOnly, selectedSquare, optionSquares, showMoveDots, syncFromGame]);
 
   // v5 API: onSquareClick receives ({ piece, square })
   // Board Editor Placement clicks
   const handleSquareLeftClick = ({ square }: { piece?: any; square: string }) => {
     if (!isCoach) return;
-    if (!editorActivePiece) {
-      handleSquareClick({ square });
-      return;
-    }
 
     try {
       if (editorActivePiece === 'trash') {
         gameRef.current.remove(square as any);
-      } else {
+      } else if (editorActivePiece) {
         const color = editorActivePiece[0] as 'w' | 'b';
         const type = editorActivePiece[1].toLowerCase() as 'p' | 'n' | 'b' | 'r' | 'q' | 'k';
+        gameRef.current.remove(square as any);
         gameRef.current.put({ type, color }, square as any);
+      } else {
+        // Drag / Stamp mode: toggle or clear piece on square
+        const pieceOnSq = gameRef.current.get(square as any);
+        if (pieceOnSq) {
+          gameRef.current.remove(square as any);
+        }
       }
 
-      // Sync and reconstruct editor state
-      const nextFen = gameRef.current.fen();
-      setFen(nextFen);
-      parseEditorStateFromFen(nextFen);
-      if (onMove) onMove(nextFen, gameRef.current.pgn());
+      const boardFen = gameRef.current.fen().split(' ')[0];
+      const castlingStr = `${editorCastling.wK ? 'K' : ''}${editorCastling.wQ ? 'Q' : ''}${editorCastling.bK ? 'k' : ''}${editorCastling.bQ ? 'q' : ''}` || '-';
+      const nextFen = `${boardFen} ${editorSideToMove} ${castlingStr} ${editorEnPassant} ${editorHalfMove} ${editorFullMove}`;
+
+      const safe = safeChessInstance(nextFen);
+      gameRef.current = safe.chess;
+      setFen(safe.validFen);
+      parseEditorStateFromFen(safe.validFen);
+      if (onMove) onMove(safe.validFen, gameRef.current.pgn());
 
       // Broadcast placement updates to students instantly
       if (classId) {
@@ -1083,14 +1084,14 @@ export default function ChessWorkspace({
           type: 'broadcast',
           event: 'move',
           payload: {
-            fen: nextFen,
+            fen: safe.validFen,
             history: gameRef.current.history(),
             sentAt: Date.now(),
           },
         });
       }
     } catch (err) {
-      console.error(err);
+      console.error('Editor square left click error:', err);
     }
   };
 

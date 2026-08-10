@@ -12,9 +12,13 @@ interface ToolbarProps {
   isRightPanelCollapsed: boolean;
   isAudioMuted?: boolean;
   isVideoMuted?: boolean;
+  isBoardLocked?: boolean;
+  allowIllegalMoves?: boolean;
   onToggleAudio?: () => void;
   onToggleVideo?: () => void;
   onToggleMoveDots?: () => void;
+  onToggleBoardLock?: () => void;
+  onToggleIllegalMoves?: () => void;
   onFlip: () => void;
   onToggleCoordinates: () => void;
   onToggleEngine: () => void;
@@ -85,9 +89,13 @@ export default function ClassroomBottomToolbar({
   isRightPanelCollapsed,
   isAudioMuted = false,
   isVideoMuted = false,
+  isBoardLocked = false,
+  allowIllegalMoves = false,
   onToggleAudio,
   onToggleVideo,
   onToggleMoveDots,
+  onToggleBoardLock,
+  onToggleIllegalMoves,
   onFlip,
   onToggleCoordinates,
   onToggleEngine,
@@ -166,6 +174,25 @@ export default function ClassroomBottomToolbar({
           <PillBtn icon="🧠" label="Engine" onClick={onToggleEngine} active={showEngine} title="Toggle Engine Analysis" />
           <PillBtn icon="🎨" label="Editor" onClick={onSetPosition} primary title="Set Position / Board Editor" />
           <PillBtn icon="🗑️" label="Clear" onClick={onClearArrows} danger title="Clear Board / Pieces / Drawings" />
+          {onToggleBoardLock && (
+            <PillBtn
+              icon={isBoardLocked ? '🔒' : '🔓'}
+              label={isBoardLocked ? 'Moves: OFF' : 'Student Moves'}
+              onClick={onToggleBoardLock}
+              danger={isBoardLocked}
+              active={!isBoardLocked}
+              title={isBoardLocked ? 'Student moves locked by coach' : 'Students allowed to play moves'}
+            />
+          )}
+          {onToggleIllegalMoves && (
+            <PillBtn
+              icon={allowIllegalMoves ? '⚡' : '🛡️'}
+              label={allowIllegalMoves ? 'Free Moves' : 'Strict Rules'}
+              onClick={onToggleIllegalMoves}
+              active={allowIllegalMoves}
+              title={allowIllegalMoves ? 'Free/Illegal Moves ON: Drag any piece anywhere' : 'Strict Rules ON: Only legal moves allowed'}
+            />
+          )}
           <Divider />
         </>
       )}

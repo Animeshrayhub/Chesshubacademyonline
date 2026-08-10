@@ -268,10 +268,20 @@ export default function ClassroomWorkspace({
   const [showEngine, setShowEngine] = useState(isCoach);
   const [showMoveList, setShowMoveList] = useState(true);
   const [showClearBoardModal, setShowClearBoardModal] = useState(false);
+  const [isBoardLocked, setIsBoardLocked] = useState(false);
+  const [allowIllegalMoves, setAllowIllegalMoves] = useState(false);
 
-  // SAN Moves & FEN tracking
-  const [gameMoves, setGameMoves] = useState<string[]>([]);
-  const [currentMoveIndex, setCurrentMoveIndex] = useState(-1);
+  // SAN Moves & FEN tracking — loaded from localStorage if present
+  const [gameMoves, setGameMoves] = useState<string[]>(() => {
+    if (typeof window !== 'undefined' && classId) {
+      try {
+        const saved = localStorage.getItem(`classroom_moves_${classId}`);
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return [];
+  });
+  const [currentMoveIndex, setCurrentMoveIndex] = useState(() => (gameMoves.length > 0 ? gameMoves.length - 1 : -1));
   const [currentFen, setCurrentFen] = useState('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
   // boardKey increments to force ChessWorkspace remount on clear
   const [boardKey, setBoardKey] = useState(0);
@@ -287,6 +297,9 @@ export default function ClassroomWorkspace({
       setCurrentFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
       setGameMoves([]);
       setCurrentMoveIndex(-1);
+      if (typeof window !== 'undefined' && classId) {
+        try { localStorage.removeItem(`classroom_moves_${classId}`); } catch {}
+      }
       setBoardKey((k) => k + 1);
     }
   };
@@ -297,7 +310,12 @@ export default function ClassroomWorkspace({
     setGameMoves(rawMoves);
     setCurrentMoveIndex(rawMoves.length - 1);
     setCurrentFen(fen);
-  }, []);
+    if (typeof window !== 'undefined' && classId && rawMoves.length > 0) {
+      try {
+        localStorage.setItem(`classroom_moves_${classId}`, JSON.stringify(rawMoves));
+      } catch {}
+    }
+  }, [classId]);
 
   const handleJumpToMove = (idx: number) => {
     if (idx < 0) {
@@ -753,9 +771,13 @@ export default function ClassroomWorkspace({
             isRightPanelCollapsed={isRightPanelCollapsed}
             isAudioMuted={webRTC.isAudioMuted}
             isVideoMuted={webRTC.isVideoMuted}
+            isBoardLocked={isBoardLocked}
+            allowIllegalMoves={allowIllegalMoves}
             onToggleAudio={webRTC.toggleAudio}
             onToggleVideo={webRTC.toggleVideo}
             onToggleMoveDots={() => setShowMoveDots((d) => !d)}
+            onToggleBoardLock={() => setIsBoardLocked((l) => !l)}
+            onToggleIllegalMoves={() => setAllowIllegalMoves((i) => !i)}
             onFlip={() => setBoardFlipped((f) => !f)}
             onToggleCoordinates={() => setShowCoordinates((c) => !c)}
             onToggleEngine={() => setShowEngine((e) => !e)}
