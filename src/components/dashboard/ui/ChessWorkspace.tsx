@@ -1095,6 +1095,13 @@ export default function ChessWorkspace({
     }
   };
 
+  const handleCloseEditor = () => {
+    setIsEditorMode(false);
+    if (onToggleEditorOpen) {
+      onToggleEditorOpen(false);
+    }
+  };
+
   // Construct FEN from board editor parameters
   const applyEditorConfig = () => {
     try {
@@ -1110,7 +1117,7 @@ export default function ChessWorkspace({
       const safe = safeChessInstance(newFen);
       gameRef.current = safe.chess;
       syncFromGame(safe.chess);
-      setIsEditorMode(false);
+      handleCloseEditor();
 
       if (onMove) onMove(safe.validFen, safe.chess.pgn());
 
@@ -1311,7 +1318,7 @@ export default function ChessWorkspace({
         {isCoach && (
           <ClassroomBoardEditorDrawer
             isOpen={isEditorMode}
-            onClose={() => setIsEditorMode(false)}
+            onClose={handleCloseEditor}
             editorActivePiece={editorActivePiece}
             setEditorActivePiece={setEditorActivePiece}
             editorSideToMove={editorSideToMove}
