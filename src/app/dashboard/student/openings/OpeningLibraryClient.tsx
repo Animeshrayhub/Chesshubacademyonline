@@ -296,7 +296,7 @@ export default function OpeningLibraryClient({
               <div className="text-center py-16 text-slate-400">
                 <div className="text-4xl mb-3">📚</div>
                 <p className="text-lg font-medium text-white mb-2">Start your first opening</p>
-                <p className="text-sm mb-4">Click "All Openings" to explore the library</p>
+                <p className="text-sm mb-4">Click &quot;All Openings&quot; to explore the library</p>
                 <button
                   type="button"
                   onClick={() => setActiveTab('library')}
