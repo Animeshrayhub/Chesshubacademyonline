@@ -38,7 +38,8 @@ export async function signIn(email: string, password: string): Promise<SignInRes
             : env.NEXT_PUBLIC_SUPABASE_URL;
           const projectRef = urlHost ? urlHost.split('.')[0] || 'placeholder' : 'placeholder';
           const cookieName = `sb-${projectRef}-auth-token`;
-          const tokenValue = JSON.stringify([`${cleanEmail}:${mockRes.data.user.user_metadata?.role || 'STUDENT'}`, 'mock-refresh-token']);
+          const userRole = (mockRes.data.user.role || mockRes.data.user.user_metadata?.role || (cleanEmail.includes('admin') ? 'ADMIN' : cleanEmail.includes('coach') ? 'COACH' : 'STUDENT')).toString().toUpperCase();
+          const tokenValue = JSON.stringify([`${cleanEmail}:${userRole}`, 'mock-refresh-token']);
           cookieStore.set(cookieName, tokenValue, {
             path: '/',
             httpOnly: true,
