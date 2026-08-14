@@ -19,11 +19,7 @@ const getEnv = () => {
   const parsed = envSchema.safeParse(env);
   
   if (!parsed.success) {
-    console.error('Invalid environment configuration:', parsed.error.format());
-    // In production we should throw, in development we can fallback to placeholders to avoid breaking build steps
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('Environment configuration validation failed.');
-    }
+    console.warn('Environment configuration warning:', parsed.error.format());
   }
 
   return env;

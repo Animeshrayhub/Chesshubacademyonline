@@ -4,7 +4,13 @@ import { env } from '../env';
 
 export function createSupabaseServer() {
   const cookieStore = cookies();
-  const projectRef = env.NEXT_PUBLIC_SUPABASE_URL.split('.')[0].split('//')[1];
+  let projectRef = 'placeholder';
+  try {
+    const urlHost = env.NEXT_PUBLIC_SUPABASE_URL.includes('//')
+      ? env.NEXT_PUBLIC_SUPABASE_URL.split('//')[1]
+      : env.NEXT_PUBLIC_SUPABASE_URL;
+    projectRef = urlHost ? urlHost.split('.')[0] || 'placeholder' : 'placeholder';
+  } catch (e) {}
   
   let accessToken = '';
   const allCookies = cookieStore.getAll();

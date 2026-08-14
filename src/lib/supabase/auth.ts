@@ -32,7 +32,10 @@ export async function signIn(email: string, password: string) {
 
   if (authData?.session) {
     try {
-      const projectRef = env.NEXT_PUBLIC_SUPABASE_URL.split('.')[0].split('//')[1];
+      const urlHost = env.NEXT_PUBLIC_SUPABASE_URL.includes('//')
+        ? env.NEXT_PUBLIC_SUPABASE_URL.split('//')[1]
+        : env.NEXT_PUBLIC_SUPABASE_URL;
+      const projectRef = urlHost ? urlHost.split('.')[0] || 'placeholder' : 'placeholder';
       const cookieName = `sb-${projectRef}-auth-token`;
       const tokenValue = JSON.stringify([authData.session.access_token, authData.session.refresh_token]);
       cookies().set(cookieName, tokenValue, {
@@ -117,7 +120,10 @@ export async function signIn(email: string, password: string) {
 export async function signOut() {
   const supabase = createSupabaseServer();
   try {
-    const projectRef = env.NEXT_PUBLIC_SUPABASE_URL.split('.')[0].split('//')[1];
+    const urlHost = env.NEXT_PUBLIC_SUPABASE_URL.includes('//')
+      ? env.NEXT_PUBLIC_SUPABASE_URL.split('//')[1]
+      : env.NEXT_PUBLIC_SUPABASE_URL;
+    const projectRef = urlHost ? urlHost.split('.')[0] || 'placeholder' : 'placeholder';
     const cookieName = `sb-${projectRef}-auth-token`;
     cookies().delete(cookieName);
   } catch (e) {}
@@ -137,7 +143,10 @@ export async function getCurrentUser(): Promise<UserSessionProfile | null> {
 
   try {
     const cookieStore = cookies();
-    const projectRef = env.NEXT_PUBLIC_SUPABASE_URL.split('.')[0].split('//')[1];
+    const urlHost = env.NEXT_PUBLIC_SUPABASE_URL.includes('//')
+      ? env.NEXT_PUBLIC_SUPABASE_URL.split('//')[1]
+      : env.NEXT_PUBLIC_SUPABASE_URL;
+    const projectRef = urlHost ? urlHost.split('.')[0] || 'placeholder' : 'placeholder';
     const cookieName = `sb-${projectRef}-auth-token`;
     const tokenVal = cookieStore.get(cookieName)?.value || cookieStore.get('supabase-auth-token')?.value;
 
