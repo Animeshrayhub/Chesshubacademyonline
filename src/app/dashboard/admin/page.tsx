@@ -142,21 +142,26 @@ export default async function AdminOverviewPage() {
   ];
 
   const activities: ActivityItem[] = auditLogs.map((log: any) => {
-    const actorName = log.profiles?.display_name || 'System';
-    const tableFriendly = log.table_name.replace(/_/g, ' ');
-    const actionFriendly = log.action === 'INSERT' ? 'created' 
-                         : log.action === 'UPDATE' ? 'updated' 
-                         : 'deleted';
+    const actorName = log?.profiles?.display_name || log?.user_email || 'System';
+    const rawTable = log?.table_name || log?.event_type || 'system';
+    const tableFriendly = String(rawTable).replace(/_/g, ' ');
+    const action = log?.action || log?.event_type || 'UPDATE';
+    const actionFriendly = action === 'INSERT' ? 'created' 
+                         : action === 'UPDATE' ? 'updated' 
+                         : action === 'DELETE' ? 'deleted'
+                         : String(action).toLowerCase();
     
     return {
-      id: log.id,
+      id: log?.id || String(Math.random()),
       type: 'system',
       description: `${actorName} ${actionFriendly} a ${tableFriendly} record`,
-      timestamp: new Date(log.created_at).toLocaleTimeString(undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
-      iconKey: log.action === 'INSERT' ? 'checkSquare' : log.action === 'DELETE' ? 'trash' : 'settings',
+      timestamp: log?.created_at
+        ? new Date(log.created_at).toLocaleTimeString(undefined, {
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        : 'Recently',
+      iconKey: action === 'INSERT' ? 'checkSquare' : action === 'DELETE' ? 'trash' : 'settings',
     };
   });
 
@@ -177,19 +182,19 @@ export default async function AdminOverviewPage() {
     { key: 'status', label: 'Status' },
   ];
 
-  const bookingRows = recentBookings.map((b: any) => ({
-    student_name: <span className="font-semibold text-text-primary">{b.student_name}</span>,
-    parent_name: <span className="text-text-secondary">{b.parent_name}</span>,
-    preferred_time: <span className="text-xs text-text-secondary">{b.preferred_time}</span>,
+  const bookingRows = (recentBookings || []).map((b: any) => ({
+    student_name: <span className="font-semibold text-text-primary">{b?.student_name || 'Student'}</span>,
+    parent_name: <span className="text-text-secondary">{b?.parent_name || 'N/A'}</span>,
+    preferred_time: <span className="text-xs text-text-secondary">{b?.preferred_time || b?.created_at || 'Flexible'}</span>,
     status: (
       <span
         className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${
-          b.status === 'pending'
+          b?.status === 'pending'
             ? 'bg-amber-50 text-amber-700 border-amber-100'
             : 'bg-green-50 text-green-700 border-green-100'
         }`}
       >
-        {b.status}
+        {b?.status || 'confirmed'}
       </span>
     ),
   }));

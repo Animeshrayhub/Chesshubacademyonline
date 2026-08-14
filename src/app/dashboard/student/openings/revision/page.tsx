@@ -14,7 +14,6 @@ export const metadata = {
 export default async function RevisionPage() {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
-  if (user.role !== 'STUDENT') redirect('/dashboard');
 
   const result = await getStudentMistakes(user.id, undefined, false);
   const mistakes = result.success ? result.data : [];

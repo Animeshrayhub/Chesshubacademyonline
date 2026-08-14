@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import Link from 'next/link';
 import Container from '@/components/ui/Container';
 import BookDemoForm from '@/features/book-demo/BookDemoForm';
@@ -183,12 +183,14 @@ export default function BookDemoContent() {
                   <p className="text-text-secondary text-sm mb-8">
                     Fill in the form below and we&apos;ll confirm your session within 2 hours.
                   </p>
-                  <BookDemoForm
-                    onSuccess={(name) => {
-                      setParentName(name);
-                      setSubmitted(true);
-                    }}
-                  />
+                  <Suspense fallback={<div className="p-8 text-center text-text-secondary">Loading form...</div>}>
+                    <BookDemoForm
+                      onSuccess={(name) => {
+                        setParentName(name);
+                        setSubmitted(true);
+                      }}
+                    />
+                  </Suspense>
                 </>
               )}
             </div>

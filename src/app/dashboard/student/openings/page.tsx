@@ -14,7 +14,6 @@ export const metadata = {
 export default async function OpeningsPage() {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
-  if (user.role !== 'STUDENT') redirect('/dashboard');
 
   const result = await getOpeningsWithProgress(user.id);
   const openings = result.success ? result.data : [];

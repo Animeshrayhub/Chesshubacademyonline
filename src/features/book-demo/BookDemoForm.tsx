@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Input from '@/components/ui/Input';
 import Textarea from '@/components/ui/Textarea';
 import Select from '@/components/ui/Select';
@@ -56,6 +57,8 @@ interface BookDemoFormProps {
 }
 
 export default function BookDemoForm({ onSuccess }: BookDemoFormProps) {
+  const searchParams = useSearchParams();
+  const [referralCode, setReferralCode] = useState<string | undefined>(undefined);
   const [form, setForm] = useState<BookDemoFormData>({
     parentName: '',
     email: '',
@@ -69,6 +72,14 @@ export default function BookDemoForm({ onSuccess }: BookDemoFormProps) {
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const refParam = searchParams?.get('ref');
+    if (refParam) {
+      setReferralCode(refParam);
+      setForm((f) => ({ ...f, referralSource: 'friend' }));
+    }
+  }, [searchParams]);
 
   const validate = (): boolean => {
     const e: FormErrors = {};
@@ -97,6 +108,7 @@ export default function BookDemoForm({ onSuccess }: BookDemoFormProps) {
         student_name: form.childName,
         student_age: Number(form.childAge),
         preferred_time: form.preferredTime,
+        referral_code: referralCode,
       });
 
       if (!res.success) {

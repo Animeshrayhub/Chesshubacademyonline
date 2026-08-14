@@ -21,7 +21,6 @@ export default async function OpeningDetailPage({
 }) {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
-  if (user.role !== 'STUDENT') redirect('/dashboard');
 
   const result = await getOpeningDetail(params.openingId, user.id);
   if (!result.success || !result.data) notFound();

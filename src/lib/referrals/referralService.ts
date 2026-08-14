@@ -18,12 +18,14 @@ export async function getStudentReferralInfo(studentProfileId: string, studentNa
 
   try {
     const admin = createSupabaseAdmin();
-    const { count } = await admin
-      .from('student_profiles')
-      .select('id', { count: 'exact', head: true });
+    const { count, data } = await admin
+      .from('referrals')
+      .select('xp_awarded', { count: 'exact' })
+      .eq('referrer_student_id', studentProfileId)
+      .eq('status', 'enrolled');
 
-    const totalReferrals = Math.min(12, (count || 0) % 5);
-    const xpEarned = totalReferrals * 250;
+    const totalReferrals = count || 0;
+    const xpEarned = data ? data.reduce((sum: number, r: { xp_awarded?: number }) => sum + (r.xp_awarded || 250), 0) : totalReferrals * 250;
 
     return {
       referralCode,
@@ -40,3 +42,4 @@ export async function getStudentReferralInfo(studentProfileId: string, studentNa
     };
   }
 }
+

@@ -32,7 +32,6 @@ export default async function ChapterLessonPage({
 }) {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
-  if (user.role !== 'STUDENT') redirect('/dashboard');
 
   const chapterNum = parseInt(params.chapterNum, 10);
   if (isNaN(chapterNum) || chapterNum < 1 || chapterNum > 8) notFound();

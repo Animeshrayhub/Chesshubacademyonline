@@ -244,6 +244,22 @@ export async function convertBookingToStudent(
       .update({ status: 'completed' })
       .eq('id', bookingId);
 
+    // Process referral conversion: mark referral as enrolled & award 250 XP
+    try {
+      await admin
+        .from('referrals')
+        .update({
+          status: 'enrolled',
+          xp_awarded: 250,
+          enrolled_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('referred_email', booking.parent_email)
+        .neq('status', 'enrolled');
+    } catch (refErr) {
+      console.warn('[convertBookingToStudent] referral update warning:', refErr);
+    }
+
     return { success: true, data: { userId, bookingId } };
   } catch (error) {
     if (error instanceof BaseError) return { success: false, error };
@@ -264,6 +280,7 @@ export async function createBooking(bookingData: {
   student_name: string;
   student_age: number;
   preferred_time: string;
+  referral_code?: string;
 }): Promise<Result<DbBooking>> {
   try {
     const admin = createSupabaseAdmin();
@@ -288,7 +305,37 @@ export async function createBooking(bookingData: {
       return { success: false, error: new DatabaseError('Failed to create demo booking', error) };
     }
 
+    // Record referral if a referral code was provided
+    if (bookingData.referral_code) {
+      try {
+        const parts = bookingData.referral_code.split('-');
+        const prefix = parts[parts.length - 1]?.toLowerCase();
+        if (prefix && prefix.length >= 4) {
+          const { data: referrers } = await admin
+            .from('student_profiles')
+            .select('id');
+
+          const referrer = referrers?.find((r: { id: string }) => r.id.toLowerCase().startsWith(prefix));
+          if (referrer) {
+            await admin.from('referrals').insert({
+              referrer_student_id: referrer.id,
+              referral_code: bookingData.referral_code,
+              referred_name: bookingData.student_name,
+              referred_email: bookingData.parent_email,
+              referred_phone: bookingData.parent_phone,
+              demo_request_id: data.id,
+              status: 'pending_demo',
+              xp_awarded: 0,
+            });
+          }
+        }
+      } catch (refErr) {
+        console.warn('[createBooking] referral insert warning:', refErr);
+      }
+    }
+
     return { success: true, data };
+
   } catch (error) {
     if (error instanceof BaseError) return { success: false, error };
     return {

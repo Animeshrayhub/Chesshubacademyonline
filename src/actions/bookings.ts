@@ -38,6 +38,7 @@ export async function createBookingAction(bookingData: {
   student_name: string;
   student_age: number;
   preferred_time: string;
+  referral_code?: string;
 }) {
   const result = await bookingsService.createBooking(bookingData);
   if (result.success) {

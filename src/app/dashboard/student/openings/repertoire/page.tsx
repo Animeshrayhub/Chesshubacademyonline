@@ -14,7 +14,6 @@ export const metadata = {
 export default async function RepertoirePage() {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
-  if (user.role !== 'STUDENT') redirect('/dashboard');
 
   return <RepertoireClient allOpenings={SEED_OPENINGS} />;
 }
