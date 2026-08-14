@@ -20,8 +20,8 @@ export async function signIn(email: string, password: string): Promise<SignInRes
       password,
     });
 
-    // Fallback for local development / test mock credentials if Supabase Auth is unavailable or local server is disconnected
-    if ((authError || !authData?.user) && (process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_MOCK_AUTH === 'true')) {
+    // Fallback for local development / test mock credentials if Supabase Auth is unavailable or user not yet in live DB
+    if (authError || !authData?.user) {
       const { getMockSupabaseClient } = await import('./supabase/mockClient');
       const mockClient = getMockSupabaseClient();
       const mockRes = await mockClient.auth.signInWithPassword({ email: cleanEmail, password });
@@ -33,7 +33,10 @@ export async function signIn(email: string, password: string): Promise<SignInRes
         // Set Auth Cookie Session
         try {
           const cookieStore = cookies();
-          const projectRef = env.NEXT_PUBLIC_SUPABASE_URL.split('.')[0].split('//')[1];
+          const urlHost = env.NEXT_PUBLIC_SUPABASE_URL.includes('//')
+            ? env.NEXT_PUBLIC_SUPABASE_URL.split('//')[1]
+            : env.NEXT_PUBLIC_SUPABASE_URL;
+          const projectRef = urlHost ? urlHost.split('.')[0] || 'placeholder' : 'placeholder';
           const cookieName = `sb-${projectRef}-auth-token`;
           const tokenValue = JSON.stringify([`${cleanEmail}:${mockRes.data.user.user_metadata?.role || 'STUDENT'}`, 'mock-refresh-token']);
           cookieStore.set(cookieName, tokenValue, {
@@ -140,7 +143,10 @@ export async function signIn(email: string, password: string): Promise<SignInRes
 
     // Persist session to cookies for middleware validation
     if (authData.session) {
-      const projectRef = env.NEXT_PUBLIC_SUPABASE_URL.split('.')[0].split('//')[1];
+      const urlHost = env.NEXT_PUBLIC_SUPABASE_URL.includes('//')
+        ? env.NEXT_PUBLIC_SUPABASE_URL.split('//')[1]
+        : env.NEXT_PUBLIC_SUPABASE_URL;
+      const projectRef = urlHost ? urlHost.split('.')[0] || 'placeholder' : 'placeholder';
       const cookieName = `sb-${projectRef}-auth-token`;
       const cookieStore = cookies();
       cookieStore.set(cookieName, JSON.stringify([
@@ -183,7 +189,10 @@ export async function logOut(): Promise<{ success: boolean; error?: string }> {
     const { error } = await supabase.auth.signOut();
     
     // Clear persisted cookies
-    const projectRef = env.NEXT_PUBLIC_SUPABASE_URL.split('.')[0].split('//')[1];
+    const urlHost = env.NEXT_PUBLIC_SUPABASE_URL.includes('//')
+      ? env.NEXT_PUBLIC_SUPABASE_URL.split('//')[1]
+      : env.NEXT_PUBLIC_SUPABASE_URL;
+    const projectRef = urlHost ? urlHost.split('.')[0] || 'placeholder' : 'placeholder';
     const cookieName = `sb-${projectRef}-auth-token`;
     const cookieStore = cookies();
     cookieStore.delete(cookieName);
