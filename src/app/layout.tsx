@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Playfair_Display, Inter } from 'next/font/google';
+import { Analytics } from '@vercel/analytics/react';
 import './globals.css';
 import { SITE_NAME, SITE_TAGLINE, SITE_URL, SITE_OG_IMAGE } from '@/constants/SITE';
 
@@ -98,7 +99,9 @@ export default function RootLayout({
       </head>
       <body className="font-body antialiased">
         {children}
+        <Analytics />
       </body>
     </html>
   );
 }
+
