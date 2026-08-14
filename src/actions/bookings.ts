@@ -46,3 +46,12 @@ export async function createBookingAction(bookingData: {
   }
   return JSON.parse(JSON.stringify(result));
 }
+
+export async function rescheduleBookingAction(bookingId: string, newPreferredTime: string) {
+  const result = await bookingsService.rescheduleBooking(bookingId, newPreferredTime);
+  if (result.success) {
+    revalidatePath('/dashboard/admin/bookings');
+    revalidatePath('/dashboard/admin/reports/bookings');
+  }
+  return JSON.parse(JSON.stringify(result));
+}

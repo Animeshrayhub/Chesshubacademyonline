@@ -1,16 +1,13 @@
 import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
-import Image from 'next/image';
-import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import Container from '@/components/ui/Container';
 import Badge from '@/components/ui/Badge';
 import JsonLd from '@/components/seo/JsonLd';
-import BookDemoCTASection from '@/features/home/BookDemoCTASection';
+import SafeImage from '@/components/ui/SafeImage';
 import { getBlogPostBySlug, getPublicBlogPosts } from '@/lib/blog/service';
 import { SITE_URL, SITE_OG_IMAGE } from '@/constants/SITE';
 import { formatDate } from '@/utils/formatDate';
-import BlogChessboard from '@/components/ui/BlogChessboard';
-import SafeImage from '@/components/ui/SafeImage';
+import BlogPostClientView from './BlogPostClientView';
 
 interface Props {
   params: { slug: string };
@@ -18,11 +15,12 @@ interface Props {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const post = await getBlogPostBySlug(params.slug);
-  if (!post) return { title: 'Post Not Found' };
+  if (!post) return { title: 'Blog — ChessHub Academy' };
 
   return {
-    title: post.title,
+    title: `${post.title} | ChessHub Academy Blog`,
     description: post.excerpt,
+    keywords: post.tags || ['chess', 'grandmaster coaching', 'chess tactics'],
     alternates: { canonical: `${SITE_URL}/blog/${post.slug}` },
     openGraph: {
       title: post.title,
@@ -31,7 +29,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       type: 'article',
       publishedTime: post.publishedAt,
       authors: [post.author],
-      images: [{ url: post.imageUrl, width: 1200, height: 600, alt: post.title }],
+      images: [{ url: post.imageUrl, width: 1200, height: 630, alt: post.title }],
     },
     twitter: {
       card: 'summary_large_image',
@@ -44,258 +42,80 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function BlogPostPage({ params }: Props) {
   const post = await getBlogPostBySlug(params.slug);
-  if (!post) notFound();
+  if (!post) {
+    redirect('/blog');
+  }
 
   const allPosts = await getPublicBlogPosts();
-  const related = allPosts.filter(
-    (p) => p.id !== post.id && p.category === post.category
-  ).slice(0, 3);
+  const related = allPosts.filter((p) => p.id !== post.id).slice(0, 3);
 
   const articleSchema = {
     '@context': 'https://schema.org',
-    '@type': 'Article',
+    '@type': 'BlogPosting',
     headline: post.title,
     description: post.excerpt,
     image: post.imageUrl,
     datePublished: post.publishedAt,
+    dateModified: post.publishedAt,
     author: {
       '@type': 'Person',
       name: post.author,
-      jobTitle: post.authorTitle,
+      jobTitle: post.authorTitle || 'FIDE Grandmaster & Master Coach',
     },
     publisher: {
       '@type': 'EducationalOrganization',
       name: 'ChessHub Academy',
       url: SITE_URL,
-      logo: { '@type': 'ImageObject', url: `${SITE_URL}/logo.png` },
+      logo: { '@type': 'ImageObject', url: `${SITE_URL}/logo/logo.jpg` },
     },
     mainEntityOfPage: { '@type': 'WebPage', '@id': `${SITE_URL}/blog/${post.slug}` },
+    keywords: (post.tags || []).join(', '),
   };
-
-  // Convert plain text content to paragraphs (simple markdown-like rendering)
-  const paragraphs = post.content
-    .trim()
-    .split('\n')
-    .filter((line) => line.trim());
 
   return (
     <>
       <JsonLd data={articleSchema} />
 
-      {/* Article Hero */}
-      <section className="pt-28 pb-0 bg-surface-dark relative overflow-hidden" aria-label="Article header">
-        <Container className="relative z-10 pb-16">
-          <div className="max-w-3xl mx-auto text-center">
-            <Badge variant="primary" className="mb-6">
+      {/* Article Header Hero */}
+      <section className="pt-32 pb-16 bg-gradient-to-br from-slate-950 via-purple-950 to-slate-900 text-white relative overflow-hidden">
+        <div className="absolute inset-0 chess-bg opacity-20" aria-hidden="true" />
+        <Container className="relative z-10">
+          <div className="max-w-3xl mx-auto text-center space-y-4">
+            <span className="inline-block px-3.5 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider bg-purple-900/80 text-purple-300 border border-purple-500/30">
               {post.category}
-            </Badge>
-            <h1 className="font-heading text-4xl lg:text-5xl font-bold text-white mb-6 leading-tight">
+            </span>
+            <h1 className="font-heading text-3xl lg:text-5xl font-extrabold text-white leading-tight">
               {post.title}
             </h1>
-            <p className="text-white/60 text-xl mb-8 leading-relaxed">{post.excerpt}</p>
-            <div className="flex items-center justify-center gap-4">
-              <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white/30 shadow-md bg-white/10 flex-shrink-0">
-                <SafeImage
-                  src={post.authorImageUrl}
-                  alt={post.author}
-                  fallbackSrc="/coaches/animesh-ray.jpg"
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <div className="text-left">
-                <div className="text-white font-semibold text-sm">{post.author}</div>
-                <div className="text-white/50 text-xs">
-                  {post.authorTitle} · {formatDate(post.publishedAt)} · {post.readingTimeMinutes} min read
-                </div>
-              </div>
+            <p className="text-slate-300 text-base lg:text-lg font-medium leading-relaxed">
+              {post.excerpt}
+            </p>
+            <div className="flex items-center justify-center gap-3 pt-2 text-xs text-slate-400 font-semibold">
+              <span>By {post.author}</span>
+              <span>•</span>
+              <span>{formatDate(post.publishedAt)}</span>
+              <span>•</span>
+              <span>⏱️ {post.readingTimeMinutes} min read</span>
             </div>
           </div>
         </Container>
+      </section>
 
-        {/* Cover image */}
-        <div className="relative w-full max-w-5xl mx-auto h-72 lg:h-[480px] rounded-3xl overflow-hidden shadow-2xl border border-white/20 bg-slate-900 mb-8">
+      {/* Hero Image */}
+      <div className="max-w-4xl mx-auto px-4 -mt-10 relative z-20">
+        <div className="h-80 lg:h-96 rounded-3xl overflow-hidden shadow-2xl border-4 border-white bg-slate-900">
           <SafeImage
             src={post.imageUrl}
             alt={post.title}
-            fallbackSrc="https://images.unsplash.com/photo-1529699211952-734e80c4d42b?w=800&h=500&fit=crop&q=85"
             className="w-full h-full object-cover"
           />
         </div>
+      </div>
+
+      {/* Client View Body & Social Sharing */}
+      <section className="bg-slate-50 min-h-screen py-8">
+        <BlogPostClientView post={post} relatedPosts={related} />
       </section>
-
-      {/* Article Body */}
-      <section className="py-16 bg-white" aria-label="Article content">
-        <Container>
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-12 max-w-5xl mx-auto">
-            {/* Content */}
-            <article aria-label={post.title}>
-              <div className="prose-chess">
-                {paragraphs.map((line, i) => {
-                  if (line.includes('[chess')) {
-                    const fenMatch = line.match(/FEN="([^"]+)"/);
-                    const fenVal = fenMatch ? fenMatch[1] : undefined;
-                    return <BlogChessboard key={i} fen={fenVal} />;
-                  }
-                  if (line.startsWith('## ')) {
-                    return (
-                      <h2 key={i} className="font-heading text-2xl font-bold text-primary-dark mt-10 mb-4">
-                        {line.replace('## ', '')}
-                      </h2>
-                    );
-                  }
-                  if (line.startsWith('### ')) {
-                    return (
-                      <h3 key={i} className="font-heading text-xl font-bold text-text-primary mt-8 mb-3">
-                        {line.replace('### ', '')}
-                      </h3>
-                    );
-                  }
-                  if (line.startsWith('**') && line.endsWith('**')) {
-                    return (
-                      <p key={i} className="font-semibold text-text-primary mb-4">
-                        {line.replace(/\*\*/g, '')}
-                      </p>
-                    );
-                  }
-                  if (line.startsWith('- ')) {
-                    return (
-                      <li key={i} className="text-text-secondary mb-2 ml-5 list-disc">
-                        {line.replace('- ', '')}
-                      </li>
-                    );
-                  }
-                  return (
-                    <p key={i} className="text-text-secondary leading-relaxed mb-6">
-                      {line}
-                    </p>
-                  );
-                })}
-              </div>
-
-              {/* Tags */}
-              <div className="flex flex-wrap gap-2 mt-12 pt-8 border-t border-border">
-                {post.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="px-3 py-1.5 bg-surface-light text-text-secondary rounded-lg text-xs font-medium"
-                  >
-                    #{tag}
-                  </span>
-                ))}
-              </div>
-
-              {/* Social share */}
-              <div className="mt-8 pt-8 border-t border-border">
-                <p className="text-sm font-semibold text-text-primary mb-4">Share this article</p>
-                <div className="flex gap-3">
-                  {['Twitter', 'LinkedIn', 'Facebook'].map((platform) => (
-                    <a
-                      key={platform}
-                      href="#"
-                      className="px-4 py-2.5 rounded-xl border border-border text-text-secondary text-sm font-medium hover:border-primary hover:text-primary transition-colors"
-                      aria-label={`Share on ${platform}`}
-                    >
-                      {platform}
-                    </a>
-                  ))}
-                </div>
-              </div>
-            </article>
-
-            {/* Sidebar */}
-            <aside aria-label="Article sidebar">
-              {/* Author card */}
-              <div className="card-premium p-6 mb-6 sticky top-24">
-                <h3 className="font-heading font-bold text-text-primary mb-4">About the Author</h3>
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-14 h-14 rounded-full overflow-hidden flex-shrink-0 border border-border shadow-sm">
-                    <SafeImage
-                      src={post.authorImageUrl}
-                      alt={post.author}
-                      fallbackSrc="/coaches/animesh-ray.jpg"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-text-primary">{post.author}</div>
-                    <div className="text-text-secondary text-xs">{post.authorTitle}</div>
-                  </div>
-                </div>
-                <Link
-                  href="/about#team"
-                  className="block text-center py-2.5 bg-primary/8 text-primary text-sm font-semibold rounded-xl hover:bg-primary/15 transition-colors"
-                >
-                  View Profile
-                </Link>
-              </div>
-
-              {/* CTA */}
-              <div className="bg-gradient-to-br from-primary-dark to-primary rounded-3xl p-6 text-white text-center chess-bg">
-                <div className="text-3xl mb-3" aria-hidden="true">♟️</div>
-                <h3 className="font-heading font-bold text-white text-lg mb-2">
-                  Ready to learn?
-                </h3>
-                <p className="text-white/60 text-sm mb-5">
-                  Book a free demo class with one of our grandmasters today.
-                </p>
-                <Link
-                  href="/book-demo"
-                  className="block py-3 bg-accent hover:bg-accent-hover text-surface-dark font-bold rounded-xl transition-all duration-200 text-sm"
-                >
-                  Book Free Demo
-                </Link>
-              </div>
-            </aside>
-          </div>
-        </Container>
-      </section>
-
-      {/* Related Articles */}
-      {related.length > 0 && (
-        <section className="py-16 bg-surface-light" aria-label="Related articles">
-          <Container>
-            <h2 className="font-heading text-3xl font-bold text-text-primary mb-10 text-center">
-              More From the Blog
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {related.map((p) => (
-                <Link key={p.id} href={`/blog/${p.slug}`} className="group block">
-                  <article className="card-premium overflow-hidden">
-                    <div className="relative h-48 overflow-hidden">
-                      <Image
-                        src={p.imageUrl}
-                        alt={p.title}
-                        fill
-                        className="object-cover transition-transform duration-300 group-hover:scale-105"
-                        sizes="(max-width: 768px) 100vw, 33vw"
-                      />
-                    </div>
-                    <div className="p-5">
-                      <Badge variant="primary" className="mb-3">{p.category}</Badge>
-                      <h3 className="font-heading font-bold text-text-primary text-base leading-snug mb-2 group-hover:text-primary transition-colors">
-                        {p.title}
-                      </h3>
-                      <div className="text-xs text-text-secondary">
-                        {formatDate(p.publishedAt)} · {p.readingTimeMinutes} min read
-                      </div>
-                    </div>
-                  </article>
-                </Link>
-              ))}
-            </div>
-            <div className="text-center mt-10">
-              <Link
-                href="/blog"
-                className="inline-flex items-center gap-2 px-8 py-4 border-2 border-primary text-primary hover:bg-primary hover:text-white font-semibold rounded-xl transition-all duration-200"
-              >
-                View All Articles
-              </Link>
-            </div>
-          </Container>
-        </section>
-      )}
-
-      <BookDemoCTASection />
     </>
   );
 }

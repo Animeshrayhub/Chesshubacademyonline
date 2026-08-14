@@ -297,3 +297,35 @@ export async function createBooking(bookingData: {
     };
   }
 }
+
+/**
+ * Reschedules a demo booking's preferred time.
+ */
+export async function rescheduleBooking(
+  bookingId: string,
+  newPreferredTime: string
+): Promise<Result<DbBooking>> {
+  try {
+    await assertAdmin();
+    const admin = createSupabaseAdmin();
+
+    const { data, error } = await admin
+      .from('bookings')
+      .update({ preferred_time: newPreferredTime })
+      .eq('id', bookingId)
+      .select()
+      .single();
+
+    if (error || !data) {
+      return { success: false, error: new DatabaseError('Failed to reschedule demo booking', error) };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    if (error instanceof BaseError) return { success: false, error };
+    return {
+      success: false,
+      error: new InternalServerError(error instanceof Error ? error.message : 'Unknown error'),
+    };
+  }
+}

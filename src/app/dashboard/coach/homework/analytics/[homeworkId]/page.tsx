@@ -3,7 +3,7 @@ import PageHeader from '@/components/dashboard/ui/PageHeader';
 import ThemePerformanceChart from '@/features/homework/ThemePerformanceChart';
 import { getHomeworkAnalytics } from '@/lib/homework/puzzles';
 import { assertCoach } from '@/lib/permissions';
-import { notFound } from 'next/navigation';
+import { redirect } from 'next/navigation';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -22,7 +22,7 @@ export default async function CoachHomeworkAnalyticsPage({ params }: PageProps) 
     const analyticsRes = await getHomeworkAnalytics(homeworkId);
 
     if (!analyticsRes.success || !analyticsRes.data) {
-      notFound();
+      redirect('/dashboard/coach/homework');
     }
 
     const data = analyticsRes.data;
@@ -142,6 +142,6 @@ export default async function CoachHomeworkAnalyticsPage({ params }: PageProps) 
     );
   } catch (err) {
     console.error('[CoachHomeworkAnalyticsPage]', err);
-    notFound();
+    redirect('/dashboard/coach/homework');
   }
 }

@@ -9,6 +9,8 @@ interface AdminRecordingPlayerModalProps {
   onClose: () => void;
   classData: AdminClassRow | null;
   onEditRecordingLink?: (cls: AdminClassRow) => void;
+  viewerName?: string;
+  viewerEmail?: string;
 }
 
 export default function AdminRecordingPlayerModal({
@@ -16,14 +18,16 @@ export default function AdminRecordingPlayerModal({
   onClose,
   classData,
   onEditRecordingLink,
+  viewerName = 'ChessHub Student',
+  viewerEmail = 'student@chesshubacademy.online',
 }: AdminRecordingPlayerModalProps) {
   const [copied, setCopied] = useState(false);
 
   if (!classData) return null;
 
-  const rawUrl = classData.recording_url || classData.zoom_join_url || '';
+  const rawUrl = (classData.recording_url || classData.zoom_join_url || '').trim();
 
-  // Transform Google Drive URL to preview embed format if applicable
+  // Transform URL to clean embedded video player format
   const getEmbedUrl = (url: string) => {
     if (!url) return '';
 
@@ -50,7 +54,24 @@ export default function AdminRecordingPlayerModal({
         videoId = url.split('v=')[1]?.split('&')[0] || '';
       }
       if (videoId) {
-        return `https://www.youtube.com/embed/${videoId}?autoplay=1`;
+        return `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&enablejsapi=1`;
+      }
+    }
+
+    // Vimeo convert to embed
+    if (url.includes('vimeo.com/') && !url.includes('player.vimeo.com')) {
+      const parts = url.split('vimeo.com/');
+      const videoId = parts[1]?.split('?')[0] || '';
+      if (videoId) {
+        return `https://player.vimeo.com/video/${videoId}?autoplay=1`;
+      }
+    }
+
+    // Loom convert to embed
+    if (url.includes('loom.com/share/')) {
+      const videoId = url.split('loom.com/share/')[1]?.split('?')[0] || '';
+      if (videoId) {
+        return `https://www.loom.com/embed/${videoId}`;
       }
     }
 
@@ -58,8 +79,14 @@ export default function AdminRecordingPlayerModal({
   };
 
   const embedUrl = getEmbedUrl(rawUrl);
-  const isDirectVideo = rawUrl.endsWith('.mp4') || rawUrl.endsWith('.webm') || rawUrl.endsWith('.ogg');
-  const isEmbeddable = embedUrl.includes('/preview') || embedUrl.includes('/embed/') || isDirectVideo;
+  const isDirectVideo =
+    rawUrl.endsWith('.mp4') ||
+    rawUrl.endsWith('.webm') ||
+    rawUrl.endsWith('.ogg') ||
+    rawUrl.endsWith('.m3u8') ||
+    rawUrl.endsWith('.mov') ||
+    rawUrl.includes('/video/') ||
+    rawUrl.includes('.mp4?');
 
   const handleCopyLink = () => {
     if (!rawUrl) return;
@@ -92,7 +119,7 @@ export default function AdminRecordingPlayerModal({
 
           <div>
             <span className="text-slate-500 font-semibold block uppercase text-[10px]">RECORDED DATE</span>
-            <span className="font-mono text-amber-300 font-bold">{dateStr}</span>
+            <span className="font-mono text-amber-300 font-bold" suppressHydrationWarning>{dateStr}</span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -119,8 +146,13 @@ export default function AdminRecordingPlayerModal({
           </div>
         </div>
 
-        {/* Video Player Box */}
-        <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden aspect-video flex flex-col items-center justify-center relative shadow-2xl">
+        {/* Embedded Video Player Box with Anti-Piracy Watermark Overlay */}
+        <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden aspect-video flex flex-col items-center justify-center relative shadow-2xl group">
+          {/* Watermark Overlay */}
+          <div className="absolute bottom-4 right-4 z-10 pointer-events-none opacity-40 group-hover:opacity-75 transition-opacity bg-slate-900/80 px-2.5 py-1 rounded-lg border border-slate-700 text-[10px] font-mono text-slate-300">
+            🔒 Licensed to: {viewerName} ({viewerEmail})
+          </div>
+
           {rawUrl ? (
             isDirectVideo ? (
               <video
@@ -129,41 +161,23 @@ export default function AdminRecordingPlayerModal({
                 autoPlay
                 className="w-full h-full object-contain bg-black"
               >
-                Your browser does not support HTML5 video.
+                Your browser does not support HTML5 video playback.
               </video>
-            ) : isEmbeddable ? (
+            ) : (
               <iframe
                 src={embedUrl}
                 className="w-full h-full border-0"
-                allow="autoplay; encrypted-media; picture-in-picture"
+                allow="autoplay; camera; microphone; fullscreen; picture-in-picture; encrypted-media; display-capture"
                 allowFullScreen
                 title="Class Recording Stream"
               />
-            ) : (
-              <div className="p-6 text-center space-y-3">
-                <div className="w-12 h-12 rounded-full bg-slate-800 text-amber-400 flex items-center justify-center text-2xl mx-auto">
-                  🔗
-                </div>
-                <h4 className="text-sm font-bold text-slate-200">External Recording Link Detected</h4>
-                <p className="text-xs text-slate-400 max-w-sm">
-                  This class recording is hosted on an external video provider ({rawUrl.substring(0, 45)}...). Click below to launch in a new window.
-                </p>
-                <a
-                  href={rawUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-extrabold text-xs rounded-xl shadow-gold transition"
-                >
-                  <span>▶️ Watch Recording in New Tab</span>
-                </a>
-              </div>
             )
           ) : (
             <div className="p-6 text-center space-y-2">
               <div className="text-4xl text-slate-600">📹</div>
               <h4 className="text-sm font-bold text-slate-300">No Recording Link Attached Yet</h4>
               <p className="text-xs text-slate-500 max-w-xs mx-auto">
-                Attach a Google Drive, Zoom, MP4, or YouTube video URL to publish the recording for this class.
+                Attach a Google Drive, Zoom, MP4, Jitsi, or YouTube video URL to publish the recording for this class.
               </p>
               {onEditRecordingLink && (
                 <button

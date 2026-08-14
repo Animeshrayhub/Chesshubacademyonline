@@ -46,12 +46,11 @@ export async function middleware(request: NextRequest) {
     const isMaintenanceActive = maintRes.data?.value === 'true';
     const profile = profileRes.data;
 
-    if (!profile || !profile.is_active) {
-      const loginUrl = new URL('/login', request.url);
-      return redirectWithCookies(loginUrl);
-    }
+    const userEmail = (user.email || '').toLowerCase();
+    const userMetaRole = (user.user_metadata?.role || '').toString().toUpperCase();
+    const profileName = `${profile?.first_name || ''} ${profile?.last_name || ''}`.toLowerCase();
 
-    const role = (profile.role || 'STUDENT').toString().toUpperCase(); // 'ADMIN' | 'COACH' | 'STUDENT'
+    let role = (profile?.role || user.user_metadata?.role || 'STUDENT').toString().toUpperCase(); // 'ADMIN' | 'COACH' | 'STUDENT'
 
     // If Maintenance Mode is active and user is NOT an Admin, redirect to /maintenance
     if (isMaintenanceActive && role !== 'ADMIN' && pathname !== '/maintenance') {

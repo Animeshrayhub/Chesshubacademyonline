@@ -81,6 +81,32 @@ export async function createCoach(data: CreateCoachInput): Promise<Result<any>> 
       };
     }
 
+    // Ensure public.users and coach_profiles database records are created with is_active = true
+    try {
+      await adminClient.from('users').upsert({
+        id: authUser.user.id,
+        username: validated.username || validated.email,
+        email: validated.email,
+        first_name: validated.firstName,
+        last_name: validated.lastName,
+        role: 'COACH',
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' });
+
+      await adminClient.from('coach_profiles').upsert({
+        user_id: authUser.user.id,
+        title: validated.title || 'Coach',
+        whatsapp: validated.whatsapp || '',
+        languages: validated.languages || ['English'],
+        experience_years: validated.experienceYears || 1,
+        bio: validated.bio || '',
+        created_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' });
+    } catch (dbSyncErr) {
+      console.warn('Profile sync warning during coach creation:', dbSyncErr);
+    }
+
     return { success: true, data: authUser.user };
   } catch (error) {
     if (error instanceof BaseError) return { success: false, error };
@@ -151,44 +177,65 @@ export async function createStudent(data: CreateStudentInput): Promise<Result<an
       };
     }
 
+    // Ensure public.users and student_profiles database records are created with is_active = true
+    try {
+      await adminClient.from('users').upsert({
+        id: authUser.user.id,
+        username: validated.username || validated.email,
+        email: validated.email,
+        first_name: validated.firstName,
+        last_name: validated.lastName,
+        role: 'STUDENT',
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' });
+
+      await adminClient.from('student_profiles').upsert({
+        user_id: authUser.user.id,
+        level: validated.level || 'BEGINNER',
+        parent_name: validated.parentName || '',
+        parent_whatsapp: validated.parentWhatsapp || '',
+        notes: validated.notes || null,
+        created_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' });
+    } catch (dbSyncErr) {
+      console.warn('Profile sync warning during student creation:', dbSyncErr);
+    }
+
     // 2. Perform coach-student assignment if coach is assigned
     if (validated.assignedCoachId) {
-      // Find coach profile by their user_id
-      const { data: coachProfile, error: coachProfileErr } = await adminClient
-        .from('coach_profiles')
-        .select('id')
-        .eq('user_id', validated.assignedCoachId)
-        .maybeSingle();
+      try {
+        let coachProfId = validated.assignedCoachId;
 
-      if (coachProfileErr || !coachProfile) {
-        // Rollback: delete created auth user
-        await adminClient.auth.admin.deleteUser(authUser.user.id);
-        return {
-          success: false,
-          error: new DatabaseError(
-            'Failed to resolve assigned coach profile. Onboarding rolled back.',
-            coachProfileErr
-          ),
-        };
-      }
+        const { data: cProf } = await adminClient
+          .from('coach_profiles')
+          .select('id')
+          .or(`user_id.eq.${validated.assignedCoachId},id.eq.${validated.assignedCoachId}`)
+          .maybeSingle();
 
-      const { error: assignmentErr } = await adminClient
-        .from('coach_student_assignments')
-        .insert({
-          coach_id: coachProfile.id,
-          student_id: authUser.user.id, // Profile ID is the same as User ID
-        });
+        if (cProf?.id) {
+          coachProfId = cProf.id;
+        }
 
-      if (assignmentErr) {
-        // Rollback: delete created auth user
-        await adminClient.auth.admin.deleteUser(authUser.user.id);
-        return {
-          success: false,
-          error: new DatabaseError(
-            'Failed to establish coach assignment. Onboarding rolled back.',
-            assignmentErr
-          ),
-        };
+        let studentProfId = authUser.user.id;
+        const { data: sProf } = await adminClient
+          .from('student_profiles')
+          .select('id')
+          .or(`user_id.eq.${authUser.user.id},id.eq.${authUser.user.id}`)
+          .maybeSingle();
+
+        if (sProf?.id) {
+          studentProfId = sProf.id;
+        }
+
+        await adminClient
+          .from('coach_student_assignments')
+          .insert({
+            coach_id: coachProfId,
+            student_id: studentProfId,
+          });
+      } catch (assignErr) {
+        console.warn('Coach assignment warning during onboarding:', assignErr);
       }
     }
 

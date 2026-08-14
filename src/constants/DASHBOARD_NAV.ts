@@ -55,6 +55,7 @@ export const ADMIN_NAV: NavItem[] = [
   { label: 'Puzzle Bank',     href: '/dashboard/admin/puzzles',       iconKey: 'award',           roles: ['admin'] },
   { label: 'Site Media & Images', href: '/dashboard/admin/media', iconKey: 'fileText',       roles: ['admin'] },
   { label: 'Certificates',  href: '/dashboard/admin/certificates',  iconKey: 'award',           roles: ['admin'] },
+  { label: '📥 Ingest Openings', href: '/dashboard/admin/openings/ingest', iconKey: 'bookOpen',     roles: ['admin'] },
   { label: 'Reports',       href: '/dashboard/admin/reports',       iconKey: 'barChart',        roles: ['admin'], children: REPORTS_CHILDREN },
   { label: 'Settings',      href: '/dashboard/admin/settings',      iconKey: 'settings',        roles: ['admin'], children: ADMIN_SETTINGS_CHILDREN },
 ];
@@ -84,17 +85,18 @@ const COACH_HOMEWORK_CHILDREN: SubNavItem[] = [
 ];
 
 export const COACH_NAV: NavItem[] = [
-  { label: 'Overview',        href: '/dashboard/coach',              iconKey: 'layoutDashboard', roles: ['coach'] },
-  { label: 'My Students',     href: '/dashboard/coach/students',     iconKey: 'users',           roles: ['coach'] },
-  { label: "Today's Classes", href: '/dashboard/coach/classes',      iconKey: 'video',           roles: ['coach'] },
-  { label: 'Attendance',      href: '/dashboard/coach/attendance',   iconKey: 'checkSquare',     roles: ['coach'] },
-  { label: 'Homework',        href: '/dashboard/coach/homework',     iconKey: 'bookOpen',        roles: ['coach'], children: COACH_HOMEWORK_CHILDREN },
-  { label: 'Teaching Curriculum', href: '/dashboard/coach/curriculum', iconKey: 'bookOpen',    roles: ['coach'] },
-  { label: 'Puzzle Bank',      href: '/dashboard/coach/puzzles',      iconKey: 'award',           roles: ['coach'] },
-  { label: 'Notes',           href: '/dashboard/coach/notes',        iconKey: 'fileText',        roles: ['coach'] },
-  { label: 'Recordings',      href: '/dashboard/coach/recordings',   iconKey: 'playCircle',      roles: ['coach'], children: COACH_RECORDINGS_CHILDREN },
-  { label: 'Profile',         href: '/dashboard/coach/profile',      iconKey: 'user',            roles: ['coach'] },
-  { label: 'Settings',        href: '/dashboard/coach/settings',     iconKey: 'settings',        roles: ['coach'], children: COACH_SETTINGS_CHILDREN },
+  { label: 'Overview',            href: '/dashboard/coach',              iconKey: 'layoutDashboard', roles: ['coach'] },
+  { label: 'My Students',         href: '/dashboard/coach/students',     iconKey: 'users',           roles: ['coach'] },
+  { label: '♟ Opening Assignments', href: '/dashboard/coach/openings',   iconKey: 'bookOpen',        roles: ['coach'] },
+  { label: "Today's Classes",     href: '/dashboard/coach/classes',      iconKey: 'video',           roles: ['coach'] },
+  { label: 'Attendance',          href: '/dashboard/coach/attendance',   iconKey: 'checkSquare',     roles: ['coach'] },
+  { label: 'Homework',            href: '/dashboard/coach/homework',     iconKey: 'bookOpen',        roles: ['coach'], children: COACH_HOMEWORK_CHILDREN },
+  { label: 'Teaching Curriculum', href: '/dashboard/coach/curriculum', iconKey: 'bookOpen',        roles: ['coach'] },
+  { label: 'Puzzle Bank',          href: '/dashboard/coach/puzzles',      iconKey: 'award',           roles: ['coach'] },
+  { label: 'Notes',               href: '/dashboard/coach/notes',        iconKey: 'fileText',        roles: ['coach'] },
+  { label: 'Recordings',          href: '/dashboard/coach/recordings',   iconKey: 'playCircle',      roles: ['coach'], children: COACH_RECORDINGS_CHILDREN },
+  { label: 'Profile',             href: '/dashboard/coach/profile',      iconKey: 'user',            roles: ['coach'] },
+  { label: 'Settings',            href: '/dashboard/coach/settings',     iconKey: 'settings',        roles: ['coach'], children: COACH_SETTINGS_CHILDREN },
 ];
 
 // ─── Student Navigation ───────────────────────────────────────────────────────
@@ -123,18 +125,19 @@ const STUDENT_SETTINGS_CHILDREN: SubNavItem[] = [
 ];
 
 export const STUDENT_NAV: NavItem[] = [
-  { label: 'Overview',            href: '/dashboard/student',             iconKey: 'layoutDashboard', roles: ['student'] },
-  { label: '📹 Live Classroom',    href: '/dashboard/student/classes',     iconKey: 'video',           roles: ['student'] },
-  { label: 'AI Game Review Bot',  href: '/dashboard/student/review-bot',  iconKey: 'brain',           roles: ['student'] },
-  { label: 'Homework',            href: '/dashboard/student/homework',    iconKey: 'bookOpen',        roles: ['student'], children: STUDENT_HOMEWORK_CHILDREN },
-  { label: 'Puzzle Bank',         href: '/dashboard/student/puzzles',     iconKey: 'puzzle',          roles: ['student'] },
-  { label: 'Study Library',       href: '/dashboard/student/studies',     iconKey: 'bookOpen',        roles: ['student'] },
-  { label: 'My Games',       href: '/dashboard/student/games',       iconKey: 'bookOpen',        roles: ['student'] },
-  { label: 'Progress',       href: '/dashboard/student/progress',    iconKey: 'trendingUp',      roles: ['student'] },
-  { label: 'Certificates',   href: '/dashboard/student/certificates',iconKey: 'award',           roles: ['student'] },
-  { label: 'Recordings',     href: '/dashboard/student/recordings',  iconKey: 'playCircle',      roles: ['student'], children: STUDENT_RECORDINGS_CHILDREN },
-  { label: 'Profile',        href: '/dashboard/student/settings/profile',     iconKey: 'user',            roles: ['student'] },
-  { label: 'Settings',       href: '/dashboard/student/settings',    iconKey: 'settings',        roles: ['student'], children: STUDENT_SETTINGS_CHILDREN },
+  { label: 'Overview',            href: '/dashboard/student',                  iconKey: 'layoutDashboard', roles: ['student'] },
+  { label: '📹 Live Classroom',    href: '/dashboard/student/classes',          iconKey: 'video',           roles: ['student'] },
+  { label: 'AI Game Review Bot',  href: '/dashboard/student/review-bot',       iconKey: 'brain',           roles: ['student'] },
+  { label: '♟ AI Opening Teacher', href: '/dashboard/student/openings',        iconKey: 'brain',           roles: ['student'] },
+  { label: 'Homework',            href: '/dashboard/student/homework',         iconKey: 'bookOpen',        roles: ['student'], children: STUDENT_HOMEWORK_CHILDREN },
+  { label: 'Puzzle Bank',         href: '/dashboard/student/puzzles',          iconKey: 'puzzle',          roles: ['student'] },
+  { label: 'Study Library',       href: '/dashboard/student/studies',          iconKey: 'bookOpen',        roles: ['student'] },
+  { label: 'My Games',            href: '/dashboard/student/games',            iconKey: 'bookOpen',        roles: ['student'] },
+  { label: 'Progress',            href: '/dashboard/student/progress',         iconKey: 'trendingUp',      roles: ['student'] },
+  { label: 'Certificates',        href: '/dashboard/student/certificates',     iconKey: 'award',           roles: ['student'] },
+  { label: 'Recordings',          href: '/dashboard/student/recordings',       iconKey: 'playCircle',      roles: ['student'], children: STUDENT_RECORDINGS_CHILDREN },
+  { label: 'Profile',             href: '/dashboard/student/settings/profile', iconKey: 'user',            roles: ['student'] },
+  { label: 'Settings',            href: '/dashboard/student/settings',         iconKey: 'settings',        roles: ['student'], children: STUDENT_SETTINGS_CHILDREN },
 ];
 
 // ─── Role → Nav resolver ──────────────────────────────────────────────────────

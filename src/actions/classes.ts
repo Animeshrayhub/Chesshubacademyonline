@@ -198,3 +198,25 @@ export async function saveLiveClassRecordingAction(
   }
 }
 
+export async function completeClassSessionAction(input: classesService.CompleteClassSessionInput) {
+  try {
+    const result = await classesService.completeClassSession(input);
+    if (result && result.success) {
+      revalidatePath(`/classroom/${input.classId}`);
+      revalidatePath(`/classroom/${input.classId}/review`);
+      revalidatePath('/dashboard/coach/classes');
+      revalidatePath('/dashboard/student/classes');
+      revalidatePath('/dashboard/admin/classes');
+      revalidatePath('/dashboard/coach/recordings');
+      revalidatePath('/dashboard/admin/recordings');
+      revalidatePath('/dashboard/student/recordings');
+    }
+    return serializeResult(result);
+  } catch (err: any) {
+    return {
+      success: false,
+      error: { message: err?.message || 'Failed to complete class session.' },
+    };
+  }
+}
+

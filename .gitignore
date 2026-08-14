@@ -45,3 +45,7 @@ lichess_db_puzzle.csv.zst
 # Scratch scripts
 /scratch/
 
+# Playwright test reports
+/playwright/reports/
+
+

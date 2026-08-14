@@ -5,17 +5,44 @@ import { env } from '../env';
 export function createSupabaseServer() {
   const cookieStore = cookies();
   const projectRef = env.NEXT_PUBLIC_SUPABASE_URL.split('.')[0].split('//')[1];
-  const cookieName = `sb-${projectRef}-auth-token`;
-  const cookieValue = cookieStore.get(cookieName)?.value;
   
   let accessToken = '';
-  if (cookieValue) {
+  const allCookies = cookieStore.getAll();
+
+  // Find all Supabase auth cookie chunks (e.g. sb-titqwyiiagdxmzkgimpe-auth-token, sb-*-auth-token.0)
+  const authCookieChunks = allCookies
+    .filter(c => c.name.includes('auth-token') || c.name.includes('supabase'))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  if (authCookieChunks.length > 0) {
+    const rawVal = authCookieChunks.map(c => c.value).join('');
     try {
-      const parsed = JSON.parse(cookieValue);
+      const parsed = JSON.parse(rawVal);
       if (Array.isArray(parsed) && parsed[0]) {
-        accessToken = parsed[0];
+        accessToken = typeof parsed[0] === 'string' ? parsed[0] : parsed[0]?.access_token || '';
+      } else if (parsed && typeof parsed === 'object' && parsed.access_token) {
+        accessToken = parsed.access_token;
       }
-    } catch (e) {}
+    } catch (e) {
+      if (rawVal.length > 20) {
+        accessToken = rawVal;
+      }
+    }
+  }
+
+  // Also check standard Supabase cookie names
+  if (!accessToken) {
+    const mainCookie = cookieStore.get(`sb-${projectRef}-auth-token`) || cookieStore.get('supabase-auth-token');
+    if (mainCookie?.value) {
+      try {
+        const parsed = JSON.parse(mainCookie.value);
+        if (Array.isArray(parsed) && parsed[0]) {
+          accessToken = typeof parsed[0] === 'string' ? parsed[0] : parsed[0]?.access_token || '';
+        } else if (parsed && typeof parsed === 'object' && parsed.access_token) {
+          accessToken = parsed.access_token;
+        }
+      } catch (e) {}
+    }
   }
 
   const headers: Record<string, string> = {

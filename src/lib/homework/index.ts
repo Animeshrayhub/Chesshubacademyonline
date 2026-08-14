@@ -999,6 +999,29 @@ export interface DbLmsEnrollment {
   completed_at: string | null;
 }
 
+async function resolveStudentProfileId(admin: any, inputId: string): Promise<string> {
+  if (!inputId) return inputId;
+  try {
+    const { data: byId } = await admin
+      .from('student_profiles')
+      .select('id')
+      .or(`id.eq.${inputId},user_id.eq.${inputId}`)
+      .maybeSingle();
+
+    if (byId?.id) return byId.id;
+
+    const { data: newProf } = await admin
+      .from('student_profiles')
+      .insert({ user_id: inputId, current_level: 'BEGINNER' })
+      .select('id')
+      .maybeSingle();
+
+    return newProf?.id || inputId;
+  } catch (err) {
+    return inputId;
+  }
+}
+
 export async function enrollStudentInCourse(
   studentProfileId: string,
   courseId: string
@@ -1007,11 +1030,14 @@ export async function enrollStudentInCourse(
     await assertAdminOrCoach();
     const admin = createSupabaseAdmin();
 
+    const resolvedStudentId = await resolveStudentProfileId(admin, studentProfileId);
+    const studentIds = Array.from(new Set([studentProfileId, resolvedStudentId])).filter(Boolean);
+
     // Check if enrollment already exists
     const { data: existing } = await admin
       .from('lms_course_enrollments')
       .select('*')
-      .eq('student_id', studentProfileId)
+      .in('student_id', studentIds)
       .eq('course_id', courseId)
       .maybeSingle();
 
@@ -1039,11 +1065,11 @@ export async function enrollStudentInCourse(
 
     const firstChapterId = sortedChapters[0]?.id || null;
 
-    // Create enrollment
+    // Create enrollment with resolvedStudentId
     const { data: enrolled, error } = await admin
       .from('lms_course_enrollments')
       .insert({
-        student_id: studentProfileId,
+        student_id: resolvedStudentId,
         course_id: courseId,
         current_chapter_id: firstChapterId,
       })
@@ -1051,7 +1077,21 @@ export async function enrollStudentInCourse(
       .single();
 
     if (error || !enrolled) {
-      return { success: false, error: new DatabaseError('Failed to enroll student in course', error) };
+      console.warn('Primary enrollment insertion warning, attempting fallback insertion:', error?.message);
+      // Fallback with input studentProfileId directly if different
+      const { data: fallbackEnrolled, error: fallbackErr } = await admin
+        .from('lms_course_enrollments')
+        .insert({
+          student_id: studentProfileId,
+          course_id: courseId,
+          current_chapter_id: firstChapterId,
+        })
+        .select()
+        .single();
+
+      if (fallbackErr || !fallbackEnrolled) {
+        return { success: false, error: new DatabaseError('Failed to enroll student in course', fallbackErr || error) };
+      }
     }
 
     // Auto-create assignment for the first chapter and set unlocked = true
@@ -1059,8 +1099,8 @@ export async function enrollStudentInCourse(
       const { data: student } = await admin
         .from('student_profiles')
         .select('coach_id')
-        .eq('id', studentProfileId)
-        .single();
+        .in('id', studentIds)
+        .maybeSingle();
 
       const coachId = student?.coach_id || null;
 
@@ -1068,13 +1108,13 @@ export async function enrollStudentInCourse(
         .from('homework_assignments')
         .select('id')
         .eq('chapter_id', firstChapterId)
-        .eq('student_id', studentProfileId)
+        .in('student_id', studentIds)
         .maybeSingle();
 
       if (!existingAsgn) {
         await admin.from('homework_assignments').insert({
           chapter_id: firstChapterId,
-          student_id: studentProfileId,
+          student_id: resolvedStudentId,
           coach_id: coachId,
           status: 'assigned',
           unlocked: true,
@@ -1084,7 +1124,7 @@ export async function enrollStudentInCourse(
       }
     }
 
-    return { success: true, data: enrolled };
+    return { success: true, data: enrolled || ({} as any) };
   } catch (error) {
     if (error instanceof BaseError) return { success: false, error };
     return { success: false, error: new InternalServerError(error instanceof Error ? error.message : 'Unknown error') };
@@ -1096,10 +1136,13 @@ export async function getStudentEnrollmentsById(studentProfileId: string): Promi
     await assertAdminOrCoach();
     const admin = createSupabaseAdmin();
 
+    const resolvedStudentId = await resolveStudentProfileId(admin, studentProfileId);
+    const studentIds = Array.from(new Set([studentProfileId, resolvedStudentId])).filter(Boolean);
+
     const { data: enrollments, error: eErr } = await admin
       .from('lms_course_enrollments')
       .select('*')
-      .eq('student_id', studentProfileId);
+      .in('student_id', studentIds);
 
     if (eErr) {
       return { success: false, error: new DatabaseError('Failed to fetch student enrollments', eErr) };
@@ -1142,11 +1185,14 @@ export async function unenrollStudentFromCourse(
     await assertAdminOrCoach();
     const admin = createSupabaseAdmin();
 
+    const resolvedStudentId = await resolveStudentProfileId(admin, studentProfileId);
+    const studentIds = Array.from(new Set([studentProfileId, resolvedStudentId])).filter(Boolean);
+
     // 1. Delete course enrollment
     const { error: eErr } = await admin
       .from('lms_course_enrollments')
       .delete()
-      .eq('student_id', studentProfileId)
+      .in('student_id', studentIds)
       .eq('course_id', courseId);
 
     if (eErr) {
@@ -1164,7 +1210,7 @@ export async function unenrollStudentFromCourse(
       await admin
         .from('homework_assignments')
         .delete()
-        .eq('student_id', studentProfileId)
+        .in('student_id', studentIds)
         .in('chapter_id', chapterIds);
     }
 

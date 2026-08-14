@@ -305,17 +305,40 @@ export default function ClassroomWorkspace({
   };
 
   // Callback passed to ChessWorkspace to capture live board moves
+  // ChessWorkspace encodes clean SAN history after '__HISTORY__:' marker in pgn param
   const handleBoardMove = useCallback((fen: string, pgn: string) => {
-    const rawMoves = pgn.replace(/\[.*?\]/g, '').replace(/\d+\./g, '').trim().split(/\s+/).filter(Boolean);
-    setGameMoves(rawMoves);
-    setCurrentMoveIndex(rawMoves.length - 1);
-    setCurrentFen(fen);
-    if (typeof window !== 'undefined' && classId && rawMoves.length > 0) {
-      try {
-        localStorage.setItem(`classroom_moves_${classId}`, JSON.stringify(rawMoves));
-      } catch {}
+    let rawMoves: string[] = [];
+    const marker = '\n\n__HISTORY__:';
+    const mIdx = pgn.indexOf(marker);
+    if (mIdx !== -1) {
+      try { rawMoves = JSON.parse(pgn.slice(mIdx + marker.length)); } catch { rawMoves = []; }
+    } else {
+      rawMoves = pgn
+        .replace(/\[.*?\]/g, '')
+        .replace(/\d+\.{1,3}\s*/g, '')
+        .replace(/\s*(1-0|0-1|1\/2-1\/2|\*)\s*$/, '')
+        .trim().split(/\s+/).filter(Boolean);
     }
-  }, [classId]);
+    setCurrentFen(fen);
+    if (rawMoves.length === 0) return;
+
+    setGameMoves((prevMoves) => {
+      let updated: string[];
+      // If rawMoves starts from move 1 (matches prevMoves[0] or prevMoves empty), rawMoves is full history
+      if (prevMoves.length === 0 || rawMoves[0] === prevMoves[0]) {
+        updated = rawMoves;
+      } else {
+        // Continuation played from an earlier stepped position: merge prefix + rawMoves
+        const prefix = currentMoveIndex >= 0 ? prevMoves.slice(0, currentMoveIndex + 1) : [];
+        updated = [...prefix, ...rawMoves];
+      }
+      setCurrentMoveIndex(updated.length - 1);
+      if (typeof window !== 'undefined' && classId && updated.length > 0) {
+        try { localStorage.setItem(`classroom_moves_${classId}`, JSON.stringify(updated)); } catch {}
+      }
+      return updated;
+    });
+  }, [classId, currentMoveIndex]);
 
   const handleJumpToMove = (idx: number) => {
     if (idx < 0) {
@@ -392,6 +415,12 @@ export default function ClassroomWorkspace({
           setBoardKey((k) => k + 1);
           setGameMoves([]);
           setCurrentMoveIndex(-1);
+        }
+      })
+      .on('broadcast', { event: 'free-moves' }, ({ payload }: any) => {
+        // Students receive coach's free-moves toggle
+        if (!isCoach && payload?.allowIllegalMoves !== undefined) {
+          setAllowIllegalMoves(payload.allowIllegalMoves);
         }
       })
       .on('broadcast', { event: 'status-change' }, ({ payload }: any) => {
@@ -756,6 +785,7 @@ export default function ClassroomWorkspace({
               userId={userId}
               isEditorOpen={showSetPositionModal}
               onToggleEditorOpen={setShowSetPositionModal}
+              allowIllegalMovesExternal={allowIllegalMoves}
             />
           </div>
 
@@ -777,7 +807,16 @@ export default function ClassroomWorkspace({
             onToggleVideo={webRTC.toggleVideo}
             onToggleMoveDots={() => setShowMoveDots((d) => !d)}
             onToggleBoardLock={() => setIsBoardLocked((l) => !l)}
-            onToggleIllegalMoves={() => setAllowIllegalMoves((i) => !i)}
+            onToggleIllegalMoves={() => {
+              const next = !allowIllegalMoves;
+              setAllowIllegalMoves(next);
+              // Broadcast free-moves state to all students in real-time
+              mainChannelRef.current?.send({
+                type: 'broadcast',
+                event: 'free-moves',
+                payload: { allowIllegalMoves: next },
+              });
+            }}
             onFlip={() => setBoardFlipped((f) => !f)}
             onToggleCoordinates={() => setShowCoordinates((c) => !c)}
             onToggleEngine={() => setShowEngine((e) => !e)}

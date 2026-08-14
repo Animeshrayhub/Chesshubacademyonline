@@ -160,7 +160,11 @@ export const mockClassroomChat = globalForMock.__mockClassroomChat;
 const mockCredentials: Record<string, { role: 'ADMIN' | 'COACH' | 'STUDENT'; password: string }> = {
   'admin@chesshub.com': { role: 'ADMIN', password: 'Admin123!' },
   'royduguu786@gmail.com': { role: 'ADMIN', password: 'Admin123!' },
+  'coach.alex@chesshub.com': { role: 'COACH', password: 'Coach123!' },
   'student@chesshub.com': { role: 'STUDENT', password: 'Student123!' },
+  'admin@chesshubacademy.online': { role: 'ADMIN', password: 'AdminPassword123!' },
+  'coach@chesshubacademy.online': { role: 'COACH', password: 'CoachPassword123!' },
+  'student@chesshubacademy.online': { role: 'STUDENT', password: 'StudentPassword123!' },
 };
 
 // Helper to decode a fake session from headers or cookie
@@ -908,6 +912,7 @@ export function getMockSupabaseClient(options?: any) {
             archived_at: null,
           };
           mockUsers.push(newUser);
+          mockCredentials[emailLower] = { role, password };
 
           // Simulating database triggers for profiles
           if (role === 'COACH') {

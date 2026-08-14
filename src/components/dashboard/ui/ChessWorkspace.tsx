@@ -40,6 +40,8 @@ interface ChessWorkspaceProps {
   userId?: string;
   isEditorOpen?: boolean;
   onToggleEditorOpen?: (open: boolean) => void;
+  /** Controlled from parent (ClassroomWorkspace toolbar button) */
+  allowIllegalMovesExternal?: boolean;
 }
 
 interface StockfishLine {
@@ -112,6 +114,9 @@ const BOARD_THEMES: BoardTheme[] = [
 
 const DEFAULT_START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
+// Raw piece map type for board editor — bypasses chess.js validation during piece placement
+type RawPiece = { type: string; color: 'w' | 'b' };
+
 function safeChessInstance(rawFen?: string): { chess: Chess; validFen: string } {
   if (!rawFen || !rawFen.trim()) {
     return { chess: new Chess(DEFAULT_START_FEN), validFen: DEFAULT_START_FEN };
@@ -168,6 +173,7 @@ export default function ChessWorkspace({
   userId,
   isEditorOpen = false,
   onToggleEditorOpen,
+  allowIllegalMovesExternal,
 }: ChessWorkspaceProps) {
   // Authorization permissions
   const isCoach = userRole === 'coach' || userRole === 'admin' || !userRole;
@@ -230,7 +236,12 @@ export default function ChessWorkspace({
     }
   }, [initialFen, targetSolution, classId, isCoach]);
 
-  const [allowIllegalMoves, setAllowIllegalMoves] = useState(false);
+  // allowIllegalMoves: controlled externally (from ClassroomWorkspace toolbar)
+  // or internally (standalone mode). External prop wins when provided.
+  const [allowIllegalMovesInternal, setAllowIllegalMovesInternal] = useState(false);
+  const allowIllegalMoves = allowIllegalMovesExternal !== undefined
+    ? allowIllegalMovesExternal
+    : allowIllegalMovesInternal;
   const [moveHistory, setMoveHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(0); // For undo/redo & history playback
   const [boardOrientation, setBoardOrientation] = useState<'white' | 'black'>('white');
@@ -303,6 +314,15 @@ export default function ChessWorkspace({
     setEngineLines({});
     undoneMovesRef.current = [];
   }, [initialFen]);
+
+  // On mount: if editor is already open (e.g. after boardKey remount), sync the piece map
+  // so stale pieces don't reflood the board on the next editor click.
+  useEffect(() => {
+    if (isEditorMode) {
+      initEditorPieceMap();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once on mount only
 
   // Load saved PGN / FEN position for this classId on initial mount!
   useEffect(() => {
@@ -377,7 +397,13 @@ export default function ChessWorkspace({
   useEffect(() => {
     if (isEditorOpen !== undefined) {
       setIsEditorMode(isEditorOpen);
+      if (isEditorOpen) {
+        // Snapshot current board into the raw piece map when editor opens
+        // We do this in a timeout so gameRef.current is ready
+        setTimeout(() => { initEditorPieceMap(); }, 0);
+      }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditorOpen]);
   const [editorActivePiece, setEditorActivePiece] = useState<string | null>(null); // e.g. 'wP', 'wN', 'wB', 'wR', 'wQ', 'wK', 'bP', 'bN', 'bB', 'bR', 'bQ', 'bK', or 'trash'
   const [editorSideToMove, setEditorSideToMove] = useState<'w' | 'b'>('w');
@@ -390,6 +416,10 @@ export default function ChessWorkspace({
   const [editorEnPassant, setEditorEnPassant] = useState('-');
   const [editorHalfMove, setEditorHalfMove] = useState('0');
   const [editorFullMove, setEditorFullMove] = useState('1');
+
+  // Raw piece map for editor — avoids chess.js validation during piece placement
+  // Keys: square strings 'a1'–'h8', Values: { type, color }
+  const editorPieceMapRef = useRef<Record<string, RawPiece>>({});
 
   // Input & Bot states
   const [fenInput, setFenInput] = useState('');
@@ -449,6 +479,52 @@ export default function ChessWorkspace({
 
   const { percentage: whiteEvalPercentage, scoreText: evalText } = getEvaluationStats();
 
+  // Build FEN piece-placement string from raw editorPieceMap (bypasses chess.js validation)
+  const buildFenFromPieceMap = (map: Record<string, RawPiece>): string => {
+    const ranks: string[] = [];
+    for (let rank = 8; rank >= 1; rank--) {
+      let rankStr = '';
+      let empty = 0;
+      for (let fileIdx = 0; fileIdx < 8; fileIdx++) {
+        const file = String.fromCharCode(97 + fileIdx); // 'a'–'h'
+        const sq = `${file}${rank}`;
+        const p = map[sq];
+        if (p) {
+          if (empty > 0) { rankStr += empty; empty = 0; }
+          const ch = p.type; // lowercase
+          rankStr += p.color === 'w' ? ch.toUpperCase() : ch.toLowerCase();
+        } else {
+          empty++;
+        }
+      }
+      if (empty > 0) rankStr += empty;
+      ranks.push(rankStr);
+    }
+    return ranks.join('/');
+  };
+
+  // Parse current FEN into editorPieceMap when editor opens
+  const initEditorPieceMap = () => {
+    const map: Record<string, RawPiece> = {};
+    const piecePart = gameRef.current.fen().split(' ')[0];
+    const rankRows = piecePart.split('/');
+    for (let rIdx = 0; rIdx < rankRows.length; rIdx++) {
+      const rank = 8 - rIdx;
+      let fIdx = 0;
+      for (const ch of rankRows[rIdx]) {
+        if (/\d/.test(ch)) {
+          fIdx += parseInt(ch, 10);
+        } else {
+          const sq = `${String.fromCharCode(97 + fIdx)}${rank}`;
+          const color: 'w' | 'b' = ch === ch.toUpperCase() ? 'w' : 'b';
+          map[sq] = { type: ch.toLowerCase(), color };
+          fIdx++;
+        }
+      }
+    }
+    editorPieceMapRef.current = map;
+  };
+
   // Recalculate side controls based on FEN in editor mode
   const parseEditorStateFromFen = (currFen: string) => {
     try {
@@ -497,72 +573,20 @@ export default function ChessWorkspace({
       } catch (e) {}
     }
 
-    if (onMove) onMove(nextFen, g.pgn());
-
-  const applyEditorConfig = useCallback(() => {
-    try {
-      const boardFen = gameRef.current.fen().split(' ')[0];
-      const castlingStr = `${editorCastling.wK ? 'K' : ''}${editorCastling.wQ ? 'Q' : ''}${editorCastling.bK ? 'k' : ''}${editorCastling.bQ ? 'q' : ''}` || '-';
-      const fullFen = `${boardFen} ${editorSideToMove} ${castlingStr} ${editorEnPassant} ${editorHalfMove} ${editorFullMove}`;
-      
-      const safe = safeChessInstance(fullFen);
-      gameRef.current = safe.chess;
-      syncFromGame(safe.chess);
-      if (classId) {
-        channelRef.current?.send({
-          type: 'broadcast',
-          event: 'move',
-          payload: { fen: safe.validFen, history: [], sentAt: Date.now() },
-        });
-      }
-    } catch (err) {
-      console.error('Apply editor config error:', err);
+    if (onMove) {
+      // Pass history as JSON-encoded string appended after PGN so ClassroomWorkspace
+      // can extract the clean SAN array without fragile PGN string parsing.
+      // Format: pgn + '\n\n__HISTORY__:' + JSON.stringify(history)
+      const historyJson = JSON.stringify(g.history());
+      onMove(nextFen, `${g.pgn()}\n\n__HISTORY__:${historyJson}`);
     }
-  }, [editorCastling, editorSideToMove, editorEnPassant, editorHalfMove, editorFullMove, classId, syncFromGame]);
-
-  const handleSquareLeftClick = useCallback(({ square }: { piece?: any; square: string }) => {
-    if (!isCoach) return;
-    try {
-      if (editorActivePiece === 'trash') {
-        gameRef.current.remove(square as any);
-      } else if (editorActivePiece) {
-        const color = editorActivePiece[0] === 'w' ? 'w' : 'b';
-        const type = editorActivePiece[1].toLowerCase() as any;
-        gameRef.current.remove(square as any);
-        gameRef.current.put({ type, color }, square as any);
-      }
-      const boardFen = gameRef.current.fen().split(' ')[0];
-      const castlingStr = `${editorCastling.wK ? 'K' : ''}${editorCastling.wQ ? 'Q' : ''}${editorCastling.bK ? 'k' : ''}${editorCastling.bQ ? 'q' : ''}` || '-';
-      const nextFen = `${boardFen} ${editorSideToMove} ${castlingStr} ${editorEnPassant} ${editorHalfMove} ${editorFullMove}`;
-      
-      setFen(nextFen);
-      if (classId) {
-        channelRef.current?.send({
-          type: 'broadcast',
-          event: 'move',
-          payload: { fen: nextFen, history: [], sentAt: Date.now() },
-        });
-      }
-    } catch (err) {
-      console.error('Editor square click error:', err);
-    }
-  }, [isCoach, editorActivePiece, editorCastling, editorSideToMove, editorEnPassant, editorHalfMove, editorFullMove, classId]);
 
     const canBroadcast = isCoach || (!isCoach && !isBoardLocked);
     if (classId && canBroadcast) {
       channelRef.current?.send({
         type: 'broadcast',
         event: 'move',
-        payload: {
-          fen: nextFen,
-          history: g.history(),
-          sentAt: Date.now(),
-        },
-      });
-      channelRef.current?.send({
-        type: 'broadcast',
-        event: 'arrows',
-        payload: { arrows: [], highlights: {} },
+        payload: { fen: nextFen, history: g.history(), sentAt: Date.now() },
       });
     }
   }, [onMove, classId, isCoach, isBoardLocked, fenHistory, historyIndex]);
@@ -860,33 +884,42 @@ export default function ChessWorkspace({
 
     if (isEditorMode && isCoach) {
       try {
-        const pieceOnSource = sourceSquare ? gameRef.current.get(sourceSquare as any) : null;
-        const pieceStr = typeof piece === 'string' ? piece : (piece?.pieceType || piece?.piece || (pieceOnSource ? `${pieceOnSource.color}${pieceOnSource.type.toUpperCase()}` : 'wP'));
-        const color = (pieceStr[0] || 'w').toLowerCase() === 'b' ? 'b' : 'w';
-        const type = (pieceStr[1] || 'p').toLowerCase() as 'p' | 'n' | 'b' | 'r' | 'q' | 'k';
-        if (sourceSquare) gameRef.current.remove(sourceSquare as any);
-        gameRef.current.remove(targetSquare as any);
-        gameRef.current.put({ type, color }, targetSquare as any);
+        // Use raw piece map for editor drops — bypasses chess.js validation
+        const map = { ...editorPieceMapRef.current };
+        const pieceOnSource = sourceSquare ? map[sourceSquare] : null;
+        let placePiece: RawPiece;
 
-        const boardFen = gameRef.current.fen().split(' ')[0];
+        if (pieceOnSource) {
+          // Moving an existing piece from source to target
+          placePiece = pieceOnSource;
+          delete map[sourceSquare];
+        } else {
+          // Placing a new piece from the palette (piece string like 'wR', 'bK')
+          const pieceStr = typeof piece === 'string' ? piece
+            : (piece?.pieceType || piece?.piece || 'wP');
+          const color: 'w' | 'b' = (pieceStr[0] || 'w').toLowerCase() === 'b' ? 'b' : 'w';
+          const type = (pieceStr[1] || 'p').toLowerCase();
+          placePiece = { type, color };
+        }
+
+        map[targetSquare] = placePiece;
+        editorPieceMapRef.current = map;
+
         const castlingStr = `${editorCastling.wK ? 'K' : ''}${editorCastling.wQ ? 'Q' : ''}${editorCastling.bK ? 'k' : ''}${editorCastling.bQ ? 'q' : ''}` || '-';
-        const nextFen = `${boardFen} ${editorSideToMove} ${castlingStr} ${editorEnPassant} ${editorHalfMove} ${editorFullMove}`;
+        const piecePart = buildFenFromPieceMap(map);
+        const nextFen = `${piecePart} ${editorSideToMove} ${castlingStr} ${editorEnPassant || '-'} ${editorHalfMove} ${editorFullMove}`;
         setFen(nextFen);
 
         if (classId) {
           channelRef.current?.send({
             type: 'broadcast',
             event: 'move',
-            payload: {
-              fen: nextFen,
-              history: gameRef.current.history(),
-              sentAt: Date.now(),
-            },
+            payload: { fen: nextFen, history: [], sentAt: Date.now() },
           });
         }
         return true;
       } catch (err) {
-        console.error('Editor move drop error:', err);
+        console.error('Editor drop error:', err);
         return false;
       }
     }
@@ -1007,7 +1040,103 @@ export default function ChessWorkspace({
     if (!isCoach && isBoardLocked) return;
     if (isReadOnly) return;
 
-    // 1. If clicked on a valid move square, make the move
+    // 0. Board Editor Placement mode (Coach stamping/erasing pieces)
+    // Uses raw piece map — bypasses chess.js validation so any position can be built
+    if (isEditorMode && isCoach) {
+      const map = { ...editorPieceMapRef.current };
+
+      if (editorActivePiece === 'trash') {
+        delete map[square];
+      } else if (editorActivePiece) {
+        const color = editorActivePiece[0] as 'w' | 'b';
+        const type = editorActivePiece[1].toLowerCase();
+        map[square] = { type, color };
+      } else {
+        // Drag/stamp mode with no active piece: toggle — click occupied square to clear it
+        if (map[square]) {
+          delete map[square];
+        }
+      }
+
+      editorPieceMapRef.current = map;
+
+      const castlingStr = `${editorCastling.wK ? 'K' : ''}${editorCastling.wQ ? 'Q' : ''}${editorCastling.bK ? 'k' : ''}${editorCastling.bQ ? 'q' : ''}` || '-';
+      const piecePart = buildFenFromPieceMap(map);
+      const displayFen = `${piecePart} ${editorSideToMove} ${castlingStr} ${editorEnPassant || '-'} ${editorHalfMove} ${editorFullMove}`;
+
+      // Show on board — use the display FEN directly (may be chess.js-invalid)
+      // We bypass safeChessInstance here to avoid falling back to start position
+      setFen(displayFen);
+
+      if (classId) {
+        channelRef.current?.send({
+          type: 'broadcast',
+          event: 'move',
+          payload: { fen: displayFen, history: [], sentAt: Date.now() },
+        });
+      }
+      return;
+    }
+
+    // 1. Free Moves Mode (Illegal/Arbitrary Moves)
+    if (allowIllegalMoves) {
+      if (selectedSquare && selectedSquare !== square) {
+        try {
+          const pieceOnSource = gameRef.current.get(selectedSquare as any);
+          if (pieceOnSource) {
+            gameRef.current.remove(selectedSquare as any);
+            gameRef.current.remove(square as any);
+            gameRef.current.put(pieceOnSource, square as any);
+
+            let nextFen = '';
+            try {
+              nextFen = gameRef.current.fen();
+            } catch {
+              const boardParts = fen.split(' ');
+              nextFen = `${gameRef.current.fen().split(' ')[0]} ${boardParts[1] || 'w'} ${boardParts[2] || '-'} ${boardParts[3] || '-'} ${boardParts[4] || '0'} ${boardParts[5] || '1'}`;
+            }
+
+            setFen(nextFen);
+            undoneMovesRef.current = [];
+            setSelectedSquare(null);
+            setOptionSquares({});
+            syncFromGame(gameRef.current, false);
+
+            if (classId) {
+              channelRef.current?.send({
+                type: 'broadcast',
+                event: 'move',
+                payload: {
+                  fen: nextFen,
+                  history: [],
+                  sentAt: Date.now(),
+                },
+              });
+            }
+            return;
+          }
+        } catch (err) {
+          console.error('Free move click error:', err);
+        }
+      }
+
+      const pc = gameRef.current.get(square as any);
+      if (pc) {
+        setSelectedSquare(square);
+        setOptionSquares({
+          [square]: {
+            boxShadow: 'inset 0 0 0 3.5px #3b82f6',
+            backgroundColor: 'rgba(59, 130, 246, 0.15)',
+          },
+        });
+      } else {
+        setSelectedSquare(null);
+        setOptionSquares({});
+      }
+      return;
+    }
+
+    // 2. Standard Legal Moves mode - If clicked on a valid move square, make the move
     if (optionSquares[square]) {
       try {
         const isPromotion =
@@ -1030,32 +1159,30 @@ export default function ChessWorkspace({
       } catch {}
     }
 
-    // 2. Otherwise, check if we clicked on our own piece to select it
+    // 3. Select piece and highlight legal target squares
+    // Allow clicking any piece (not restricted by turn) so both coach and student
+    // can select pieces freely. Only legal move execution is turn-restricted.
     const piece = gameRef.current.get(square as any);
-    if (piece && piece.color === gameRef.current.turn()) {
+    if (piece) {
       setSelectedSquare(square);
 
-      // Find legal moves
-      const moves = gameRef.current.moves({ square: square as any, verbose: true });
       const newOptionSquares: Record<string, React.CSSProperties> = {};
-
-      // Selection highlight (Chess.com style blue border/glow)
       newOptionSquares[square] = {
         boxShadow: 'inset 0 0 0 3.5px #3b82f6',
         backgroundColor: 'rgba(59, 130, 246, 0.15)',
       };
 
-      if (showMoveDots) {
+      // Only show legal move dots for pieces of the current turn's color
+      if (showMoveDots && piece.color === gameRef.current.turn()) {
+        const moves = gameRef.current.moves({ square: square as any, verbose: true });
         moves.forEach((m) => {
           const targetPiece = gameRef.current.get(m.to as any);
           if (targetPiece) {
-            // Enemy piece capture: Red Ring Highlight
             newOptionSquares[m.to] = {
               boxShadow: 'inset 0 0 0 4px #ef4444',
               backgroundColor: 'rgba(239, 68, 68, 0.25)',
             };
           } else {
-            // Empty square: Vibrant Red Dot
             newOptionSquares[m.to] = {
               background: 'radial-gradient(circle, #ef4444 32%, transparent 35%)',
             };
@@ -1068,55 +1195,28 @@ export default function ChessWorkspace({
       setSelectedSquare(null);
       setOptionSquares({});
     }
-  }, [isCoach, isBoardLocked, isReadOnly, selectedSquare, optionSquares, showMoveDots, syncFromGame]);
+  }, [
+    isCoach,
+    isBoardLocked,
+    isReadOnly,
+    isEditorMode,
+    editorActivePiece,
+    editorCastling,
+    editorSideToMove,
+    editorEnPassant,
+    editorHalfMove,
+    editorFullMove,
+    classId,
+    onMove,
+    allowIllegalMoves,
+    selectedSquare,
+    optionSquares,
+    showMoveDots,
+    syncFromGame,
+    fen,
+  ]);
 
-  // v5 API: onSquareClick receives ({ piece, square })
-  // Board Editor Placement clicks
-  const handleSquareLeftClick = ({ square }: { piece?: any; square: string }) => {
-    if (!isCoach) return;
-
-    try {
-      if (editorActivePiece === 'trash') {
-        gameRef.current.remove(square as any);
-      } else if (editorActivePiece) {
-        const color = editorActivePiece[0] as 'w' | 'b';
-        const type = editorActivePiece[1].toLowerCase() as 'p' | 'n' | 'b' | 'r' | 'q' | 'k';
-        gameRef.current.remove(square as any);
-        gameRef.current.put({ type, color }, square as any);
-      } else {
-        // Drag / Stamp mode: toggle or clear piece on square
-        const pieceOnSq = gameRef.current.get(square as any);
-        if (pieceOnSq) {
-          gameRef.current.remove(square as any);
-        }
-      }
-
-      const boardFen = gameRef.current.fen().split(' ')[0];
-      const castlingStr = `${editorCastling.wK ? 'K' : ''}${editorCastling.wQ ? 'Q' : ''}${editorCastling.bK ? 'k' : ''}${editorCastling.bQ ? 'q' : ''}` || '-';
-      const nextFen = `${boardFen} ${editorSideToMove} ${castlingStr} ${editorEnPassant} ${editorHalfMove} ${editorFullMove}`;
-
-      const safe = safeChessInstance(nextFen);
-      gameRef.current = safe.chess;
-      setFen(safe.validFen);
-      parseEditorStateFromFen(safe.validFen);
-      if (onMove) onMove(safe.validFen, gameRef.current.pgn());
-
-      // Broadcast placement updates to students instantly
-      if (classId) {
-        channelRef.current?.send({
-          type: 'broadcast',
-          event: 'move',
-          payload: {
-            fen: safe.validFen,
-            history: gameRef.current.history(),
-            sentAt: Date.now(),
-          },
-        });
-      }
-    } catch (err) {
-      console.error('Editor square left click error:', err);
-    }
-  };
+  // (Dead code handleSquareLeftClick removed — logic is unified in handleSquareClick above)
 
   const handleCloseEditor = () => {
     setIsEditorMode(false);
@@ -1125,29 +1225,38 @@ export default function ChessWorkspace({
     }
   };
 
-  // Construct FEN from board editor parameters
+  // Apply the editor position to the game — builds FEN from raw piece map
   const applyEditorConfig = () => {
     try {
-      const piecePart = gameRef.current.fen().split(' ')[0];
+      const map = editorPieceMapRef.current;
+      const piecePart = buildFenFromPieceMap(map);
       const castlingPart = [
         editorCastling.wK ? 'K' : '',
         editorCastling.wQ ? 'Q' : '',
         editorCastling.bK ? 'k' : '',
         editorCastling.bQ ? 'q' : '',
       ].join('') || '-';
-      
+
       const newFen = `${piecePart} ${editorSideToMove} ${castlingPart} ${editorEnPassant || '-'} ${editorHalfMove} ${editorFullMove}`;
       const safe = safeChessInstance(newFen);
       gameRef.current = safe.chess;
-      syncFromGame(safe.chess);
+      setFen(safe.validFen);
+      setMoveHistory([]);
+      setFenHistory([safe.validFen]);
+      setHistoryIndex(0);
+      undoneMovesRef.current = [];
+      setCanUndo(false);
+      setCanRedo(false);
+
       handleCloseEditor();
 
       if (onMove) onMove(safe.validFen, safe.chess.pgn());
 
       // Broadcast updated position to students in realtime!
-      broadcastBoardState(safe.validFen, safe.chess.history());
-    } catch {
-      alert('Invalid Editor parameters. FEN generation failed.');
+      broadcastBoardState(safe.validFen, []);
+    } catch (err) {
+      console.error('Apply editor config error:', err);
+      alert('Could not apply position — please ensure both Kings are on the board.');
     }
   };
 
@@ -1235,6 +1344,8 @@ export default function ChessWorkspace({
       gameRef.current.clear();
     } catch {}
     const emptyFen = '8/8/8/8/8/8/8/8 w - - 0 1';
+    // Clear the raw piece map so editor clicks don't re-flood the board
+    editorPieceMapRef.current = {};
     setFen(emptyFen);
     setMoveHistory([]);
     setFenHistory([emptyFen]);
@@ -1351,6 +1462,8 @@ export default function ChessWorkspace({
             onResetStart={() => {
               gameRef.current = new Chess();
               const startFen = gameRef.current.fen();
+              // Sync the raw piece map so editor clicks reflect the reset position
+              initEditorPieceMap();
               setFen(startFen);
               setFenHistory([startFen]);
               setHistoryIndex(0);

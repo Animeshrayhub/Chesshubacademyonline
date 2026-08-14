@@ -29,7 +29,7 @@ export default async function StudentAllRecordingsPage() {
           {rec.classType} Class ({mins} mins)
         </span>
       ),
-      date: <span className="text-text-secondary text-xs">{formattedDate}</span>,
+      date: <span className="text-text-secondary text-xs" suppressHydrationWarning>{formattedDate}</span>,
       action: (
         <a
           href={rec.recordingUrl}

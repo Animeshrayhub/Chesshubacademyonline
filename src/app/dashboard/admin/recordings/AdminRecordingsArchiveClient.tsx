@@ -65,7 +65,7 @@ export default function AdminRecordingsArchiveClient({
 
   const rows = recordedClasses.map((cls) => {
     const dateStr = cls.scheduled_start
-      ? new Date(cls.scheduled_start).toLocaleDateString('en-US', {
+      ? new Date(cls.scheduled_start).toLocaleString('en-US', {
           dateStyle: 'medium',
           timeStyle: 'short',
         })
@@ -90,7 +90,7 @@ export default function AdminRecordingsArchiveClient({
             : 'No students assigned'}
         </span>
       ),
-      date: <span className="text-text-secondary text-xs">{dateStr}</span>,
+      date: <span className="text-text-secondary text-xs" suppressHydrationWarning>{dateStr}</span>,
       status: cls.recording_url ? (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-purple-100 text-purple-800 border border-purple-200">
           📹 Recording Published

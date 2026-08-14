@@ -1,7 +1,7 @@
 import React from 'react';
 import CoachProfileDetail from '@/features/admin/CoachProfileDetail';
 import { getCoachDetails } from '@/lib/coaches';
-import { notFound } from 'next/navigation';
+import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +15,7 @@ export default async function AdminCoachDetailPage({ params }: PageProps) {
   const result = await getCoachDetails(params.id);
 
   if (!result.success || !result.data) {
-    notFound();
+    redirect('/dashboard/admin/coaches');
   }
 
   const coach = result.data;

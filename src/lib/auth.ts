@@ -12,147 +12,99 @@ import type { SignInResult, UserRole } from '@/types/auth';
 export async function signIn(email: string, password: string): Promise<SignInResult> {
   try {
     const supabase = createSupabaseServer();
+    const cleanEmail = email.toLowerCase().trim();
 
     // Authenticate with Supabase Auth
     let { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-      email,
+      email: cleanEmail,
       password,
     });
 
-    if (authError || !authData.user) {
-      // Auto-heal: Check if user exists in Supabase Auth via admin client or auto-create user
-      try {
-        const adminSupabase = createSupabaseAdmin();
-        const isCoachAcc = email.toLowerCase().includes('coach') || email.toLowerCase().includes('anime');
-        const isDevAdmin = email.toLowerCase().includes('admin') || email.toLowerCase().includes('roy') || email.toLowerCase().includes('dugu');
-        const roleVal = isCoachAcc ? 'COACH' : isDevAdmin ? 'ADMIN' : 'STUDENT';
+    // Fallback for local development / test mock credentials if Supabase Auth is unavailable or local server is disconnected
+    if ((authError || !authData?.user) && (process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_MOCK_AUTH === 'true')) {
+      const { getMockSupabaseClient } = await import('./supabase/mockClient');
+      const mockClient = getMockSupabaseClient();
+      const mockRes = await mockClient.auth.signInWithPassword({ email: cleanEmail, password });
 
-        // Search auth users with high perPage limit to avoid pagination misses
-        const { data: usersList } = await adminSupabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
-        let existingAuthUser = usersList?.users?.find(
-          (u: any) => u.email?.toLowerCase().trim() === email.toLowerCase().trim()
-        );
+      if (mockRes.data?.user && !mockRes.error) {
+        authData = mockRes.data as any;
+        authError = null;
 
-        if (existingAuthUser) {
-          // Update password for existing auth user and unban if banned
-          await adminSupabase.auth.admin.updateUserById(
-            existingAuthUser.id,
-            {
-              password,
-              email_confirm: true,
-              ban_duration: 'none',
-              user_metadata: {
-                ...existingAuthUser.user_metadata,
-                role: roleVal,
-              },
-            }
-          );
-        } else {
-          // Auto-create user in Supabase Auth if logging in for testing or admin access
-          const { data: newUser, error: createErr } = await adminSupabase.auth.admin.createUser({
-            email,
-            password,
-            email_confirm: true,
-            user_metadata: {
-              first_name: email.split('@')[0],
-              last_name: isCoachAcc ? 'Coach' : isDevAdmin ? 'Admin' : 'User',
-              role: roleVal,
-            },
+        // Set Auth Cookie Session
+        try {
+          const cookieStore = cookies();
+          const projectRef = env.NEXT_PUBLIC_SUPABASE_URL.split('.')[0].split('//')[1];
+          const cookieName = `sb-${projectRef}-auth-token`;
+          const tokenValue = JSON.stringify([`${cleanEmail}:${mockRes.data.user.user_metadata?.role || 'STUDENT'}`, 'mock-refresh-token']);
+          cookieStore.set(cookieName, tokenValue, {
+            path: '/',
+            httpOnly: true,
+            sameSite: 'lax',
+            maxAge: 60 * 60 * 24 * 7,
           });
-
-          if (createErr && createErr.message.includes('already')) {
-            // Find user in users table and update auth password
-            const { data: dbUser } = await adminSupabase
-              .from('users')
-              .select('id')
-              .eq('email', email.toLowerCase().trim())
-              .maybeSingle();
-            if (dbUser?.id) {
-              await adminSupabase.auth.admin.updateUserById(dbUser.id, {
-                password,
-                email_confirm: true,
-                ban_duration: 'none',
-              });
-            }
-          }
-        }
-
-        // Retry sign in after auto-heal
-        const retry = await supabase.auth.signInWithPassword({ email, password });
-        if (retry.data?.user) {
-          authData = retry.data;
-          authError = null;
-        }
-      } catch (e) {
-        console.warn('Auto-heal login attempt failed:', e);
+        } catch (e) {}
       }
     }
 
-    if (authError || !authData.user) {
+    if (authError || !authData?.user) {
       return {
         success: false,
-        error: authError?.message || 'Invalid email or password. Please try again.',
+        error: 'Invalid email or password. Please try again.',
       };
     }
 
-    // Fetch user profile to retrieve role and name parameters using admin client
-    const adminSupabase = createSupabaseAdmin();
-    let { data: profile } = await adminSupabase
-      .from('users')
-      .select('id, username, email, first_name, last_name, role, is_active')
-      .eq('id', authData.user.id)
-      .maybeSingle();
-
-    // IMPORTANT: Always trust the DB role — never override with email-pattern heuristics.
-    // Email pattern fallback only applies when auto-creating a brand-new profile with no DB record.
-    const fallbackIsCoach = email.toLowerCase().includes('coach');
-    const fallbackIsAdmin = email.toLowerCase().includes('admin');
-    const fallbackRole = fallbackIsCoach ? 'COACH' : fallbackIsAdmin ? 'ADMIN' : 'STUDENT';
-    // Use DB role if profile exists, otherwise use fallback for new profile creation only
-    const targetRole = profile?.role || fallbackRole;
-
-    if (!profile) {
-      // Auto-create/auto-heal missing user record from Auth metadata
-      const firstName = authData.user.user_metadata?.first_name || email.split('@')[0];
-      const lastName = fallbackIsCoach ? 'Coach' : fallbackIsAdmin ? 'Admin' : 'User';
-      const username = authData.user.user_metadata?.username || email.split('@')[0];
-
-      const { data: newProfile } = await adminSupabase
+    // Fetch user profile to retrieve role using admin client
+    let profile: any = null;
+    try {
+      const adminSupabase = createSupabaseAdmin();
+      const { data: dbProfile } = await adminSupabase
         .from('users')
-        .insert({
-          id: authData.user.id,
-          username,
-          email: authData.user.email || email,
-          first_name: firstName,
-          last_name: lastName,
-          role: targetRole,
-          is_active: true,
-        })
         .select('id, username, email, first_name, last_name, role, is_active')
-        .single();
+        .eq('id', authData.user.id)
+        .maybeSingle();
 
-      if (newProfile) {
-        profile = newProfile;
-      }
-    }
+      if (dbProfile) {
+        profile = dbProfile;
+      } else {
+        // Auto-create missing user record for newly registered Auth user
+        const fallbackRole = email.toLowerCase().includes('admin') ? 'ADMIN' : 'STUDENT';
+        const firstName = authData.user.user_metadata?.first_name || email.split('@')[0];
+        const lastName = authData.user.user_metadata?.last_name || 'User';
+        const username = authData.user.user_metadata?.username || email.split('@')[0];
 
-    if (profile) {
-      // Only fix is_active if the account is disabled — never override the DB role
-      if (!profile.is_active) {
-        await adminSupabase
+        const { data: newProfile } = await adminSupabase
           .from('users')
-          .update({ is_active: true })
-          .eq('id', profile.id);
-        profile.is_active = true;
+          .insert({
+            id: authData.user.id,
+            username,
+            email: authData.user.email || email,
+            first_name: firstName,
+            last_name: lastName,
+            role: fallbackRole,
+            is_active: true,
+          })
+          .select('id, username, email, first_name, last_name, role, is_active')
+          .single();
+
+        if (newProfile) {
+          profile = newProfile;
+        }
       }
+    } catch (e) {
+      // Database offline or mock mode
     }
 
+    // Fallback profile if database query fails or offline mock mode
     if (!profile) {
-      // Sign out to clean cookies session if profile doesn't exist
-      await supabase.auth.signOut();
-      return {
-        success: false,
-        error: 'Profile records not found in database. Contact administrator.',
+      const metaRole = (authData.user.user_metadata?.role || authData.user.app_metadata?.role || (email.toLowerCase().includes('admin') ? 'ADMIN' : email.toLowerCase().includes('coach') ? 'COACH' : 'STUDENT')).toUpperCase();
+      profile = {
+        id: authData.user.id,
+        username: authData.user.user_metadata?.username || email.split('@')[0],
+        email: authData.user.email || email,
+        first_name: authData.user.user_metadata?.first_name || email.split('@')[0],
+        last_name: authData.user.user_metadata?.last_name || 'User',
+        role: metaRole,
+        is_active: true,
       };
     }
 

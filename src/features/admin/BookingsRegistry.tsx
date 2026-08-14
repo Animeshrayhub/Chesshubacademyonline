@@ -14,6 +14,8 @@ import {
   updateBookingStatusAction,
   assignCoachToBookingAction,
   convertBookingToStudentAction,
+  rescheduleBookingAction,
+  createBookingAction,
 } from '@/actions/bookings';
 
 import type { DbBooking, AdminCoachRow } from '@/types/dashboard';
@@ -27,14 +29,30 @@ export default function BookingsRegistry({ bookings, coaches }: BookingsRegistry
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [page, setPage] = useState(1);
-  const [, startTransition] = useTransition();
+  const [isPending, startTransition] = useTransition();
 
   // Dialog states
   const [assignBooking, setAssignBooking] = useState<DbBooking | null>(null);
   const [selectedCoachId, setSelectedCoachId] = useState('');
-  const [convertBooking, setConvertBooking] = useState<DbBooking | null>(null);
-  
+
+  const [rescheduleBooking, setRescheduleBooking] = useState<DbBooking | null>(null);
+  const [newTimeInput, setNewTimeInput] = useState('');
+
+  const [reviewBooking, setReviewBooking] = useState<DbBooking | null>(null);
+
+  const [showNewBookingModal, setShowNewBookingModal] = useState(false);
+  const [newBookingData, setNewBookingData] = useState({
+    parent_name: '',
+    parent_email: '',
+    parent_phone: '',
+    student_name: '',
+    student_age: 8,
+    preferred_time: 'Mon 5:00 PM EST',
+  });
+  const [createBookingError, setCreateBookingError] = useState('');
+
   // Convert state
+  const [convertBooking, setConvertBooking] = useState<DbBooking | null>(null);
   const [password, setPassword] = useState('');
   const [convertError, setConvertError] = useState('');
   const [convertSuccess, setConvertSuccess] = useState(false);
@@ -44,15 +62,16 @@ export default function BookingsRegistry({ bookings, coaches }: BookingsRegistry
   // Filters
   const filtered = bookings.filter((b) => {
     const query = search.toLowerCase();
-    const nameMatch = b.parent_name.toLowerCase().includes(query) ||
+    const nameMatch =
+      b.parent_name.toLowerCase().includes(query) ||
       b.parent_email.toLowerCase().includes(query) ||
       b.student_name.toLowerCase().includes(query);
-    
+
     const statusMatch = statusFilter === 'ALL' || b.status.toLowerCase() === statusFilter.toLowerCase();
     return nameMatch && statusMatch;
   });
 
-  const totalPages = Math.ceil(filtered.length / pageSize);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   const handleUpdateStatus = (bookingId: string, status: any) => {
@@ -68,6 +87,39 @@ export default function BookingsRegistry({ bookings, coaches }: BookingsRegistry
     if (res.success) {
       setAssignBooking(null);
       setSelectedCoachId('');
+    }
+  };
+
+  const handleRescheduleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rescheduleBooking || !newTimeInput.trim()) return;
+    const res = await rescheduleBookingAction(rescheduleBooking.id, newTimeInput.trim());
+    if (res.success) {
+      setRescheduleBooking(null);
+      setNewTimeInput('');
+    }
+  };
+
+  const handleCreateBookingSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreateBookingError('');
+    if (!newBookingData.parent_name || !newBookingData.parent_email || !newBookingData.student_name) {
+      setCreateBookingError('Parent Name, Email, and Student Name are required.');
+      return;
+    }
+    const res = await createBookingAction(newBookingData);
+    if (res.success) {
+      setShowNewBookingModal(false);
+      setNewBookingData({
+        parent_name: '',
+        parent_email: '',
+        parent_phone: '',
+        student_name: '',
+        student_age: 8,
+        preferred_time: 'Mon 5:00 PM EST',
+      });
+    } else {
+      setCreateBookingError(res.error?.message || 'Failed to create booking request.');
     }
   };
 
@@ -100,11 +152,25 @@ export default function BookingsRegistry({ bookings, coaches }: BookingsRegistry
 
   // Map rows
   const rows = paginated.map((b) => {
-    const actions: TableActionItem[] = [];
+    const actions: TableActionItem[] = [
+      {
+        label: 'Review Details',
+        iconKey: 'eye',
+        onClick: () => setReviewBooking(b),
+      },
+      {
+        label: 'Reschedule Time',
+        iconKey: 'clock',
+        onClick: () => {
+          setRescheduleBooking(b);
+          setNewTimeInput(b.preferred_time || '');
+        },
+      },
+    ];
 
     if (b.status === 'pending' || b.status === 'assigned') {
       actions.push({
-        label: 'Assign Coach',
+        label: 'Assign Instructor',
         iconKey: 'graduationCap',
         onClick: () => {
           setAssignBooking(b);
@@ -118,13 +184,7 @@ export default function BookingsRegistry({ bookings, coaches }: BookingsRegistry
         onClick: () => handleUpdateStatus(b.id, 'assigned'),
       });
       actions.push({
-        label: 'Reject Request',
-        iconKey: 'x',
-        variant: 'danger',
-        onClick: () => handleUpdateStatus(b.id, 'cancelled'),
-      });
-      actions.push({
-        label: 'Convert to Student Account',
+        label: 'Onboard as Student Account',
         iconKey: 'users',
         onClick: () => {
           setConvertBooking(b);
@@ -133,48 +193,64 @@ export default function BookingsRegistry({ bookings, coaches }: BookingsRegistry
           setPassword('');
         },
       });
+      actions.push({
+        label: 'Reject Request',
+        iconKey: 'x',
+        variant: 'danger',
+        onClick: () => handleUpdateStatus(b.id, 'cancelled'),
+      });
     }
 
-    const coachName = coaches.find((c) => c.id === b.assigned_coach_id);
+    const coachObj = coaches.find((c) => c.id === b.assigned_coach_id);
 
     return {
       parent: (
         <div className="flex flex-col">
-          <span className="font-bold text-text-primary">{b.parent_name}</span>
+          <span className="font-bold text-text-primary text-xs">{b.parent_name}</span>
           <span className="text-[10px] text-text-secondary">{b.parent_email}</span>
           <span className="text-[10px] text-text-secondary">{b.parent_phone}</span>
         </div>
       ),
       student: (
         <div className="flex flex-col">
-          <span className="font-semibold text-text-primary">{b.student_name}</span>
-          <span className="text-xs text-text-secondary">{b.student_age} years old</span>
+          <span className="font-semibold text-text-primary text-xs">{b.student_name}</span>
+          <span className="text-[10px] text-text-secondary">{b.student_age} years old</span>
         </div>
       ),
       preferred: <span className="text-xs text-text-primary font-semibold">{b.preferred_time}</span>,
-      coach: coachName ? (
+      coach: coachObj ? (
         <span className="text-xs font-semibold text-text-primary">
-          Coach {coachName.first_name} {coachName.last_name}
+          GM/Coach {coachObj.first_name} {coachObj.last_name}
         </span>
       ) : (
         <span className="text-xs text-text-secondary italic">Unassigned</span>
       ),
       status: <StatusBadge status={b.status} />,
-      actions: actions.length > 0 ? <TableActions actions={actions} /> : <span className="text-xs text-text-secondary">-</span>,
+      actions: <TableActions actions={actions} />,
     };
   });
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Demo Bookings"
-        subtitle="Review, approve, reschedule, and onboard incoming free demo class requests into students."
-      />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <PageHeader
+          title="Demo Bookings Management"
+          subtitle="Review, approve, reschedule, and onboard incoming free demo class requests into permanent student accounts."
+        />
+        <button
+          type="button"
+          onClick={() => setShowNewBookingModal(true)}
+          className="px-4 py-2.5 bg-primary hover:bg-primary-dark text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-2 self-start sm:self-auto"
+        >
+          <span>➕</span>
+          <span>Add Demo Booking Request</span>
+        </button>
+      </div>
 
       <FilterBar
         searchQuery={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Search bookings by parent/student name or email..."
+        searchPlaceholder="Search by parent/student name or email..."
         filters={[
           {
             key: 'status',
@@ -182,22 +258,22 @@ export default function BookingsRegistry({ bookings, coaches }: BookingsRegistry
             value: statusFilter,
             onChange: setStatusFilter,
             options: [
-              { value: 'ALL', label: 'All Bookings' },
-              { value: 'PENDING', label: 'Pending' },
-              { value: 'ASSIGNED', label: 'Assigned / Approved' },
-              { value: 'COMPLETED', label: 'Completed' },
-              { value: 'CANCELLED', label: 'Cancelled' },
+              { value: 'ALL', label: 'All Demo Bookings' },
+              { value: 'PENDING', label: 'Pending Review' },
+              { value: 'ASSIGNED', label: 'Assigned / Scheduled' },
+              { value: 'COMPLETED', label: 'Completed / Onboarded' },
+              { value: 'CANCELLED', label: 'Cancelled / Rejected' },
             ],
           },
         ]}
       />
 
-      <div className="bg-white rounded-2xl border border-border overflow-hidden">
+      <div className="bg-white rounded-2xl border border-border overflow-hidden shadow-card">
         <DashboardTable
           columns={columns}
           rows={rows}
           emptyTitle="No Demo Bookings Available"
-          emptyDescription="Demo bookings requested via the public marketing page will populate here automatically."
+          emptyDescription="Demo bookings requested via the website or added by admins will populate here automatically and persist permanently."
         />
         <Pagination
           currentPage={page}
@@ -206,14 +282,192 @@ export default function BookingsRegistry({ bookings, coaches }: BookingsRegistry
         />
       </div>
 
-      {/* Assign Coach Modal */}
+      {/* ── MODAL: REVIEW BOOKING DETAILS ───────────────────────────────────── */}
+      <Modal
+        isOpen={!!reviewBooking}
+        onClose={() => setReviewBooking(null)}
+        title="Demo Booking Request Details"
+      >
+        {reviewBooking && (
+          <div className="space-y-4 text-xs">
+            <div className="p-3 bg-surface-light rounded-xl border border-border space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="font-bold text-text-secondary uppercase text-[10px]">Booking Reference</span>
+                <StatusBadge status={reviewBooking.status} />
+              </div>
+              <p className="font-mono text-xs font-bold text-text-primary">ID: {reviewBooking.id}</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                <p className="text-[10px] font-extrabold text-slate-500 uppercase">Parent Name</p>
+                <p className="font-bold text-text-primary">{reviewBooking.parent_name}</p>
+                <p className="text-text-secondary text-[11px]">{reviewBooking.parent_email}</p>
+                <p className="text-text-secondary text-[11px]">{reviewBooking.parent_phone}</p>
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                <p className="text-[10px] font-extrabold text-slate-500 uppercase">Student Name</p>
+                <p className="font-bold text-text-primary">{reviewBooking.student_name}</p>
+                <p className="text-text-secondary text-[11px]">Age: {reviewBooking.student_age} years</p>
+                <p className="text-text-secondary text-[11px]">Preferred: {reviewBooking.preferred_time}</p>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setReviewBooking(null)}
+                className="px-4 py-2 bg-primary text-white font-bold rounded-xl text-xs"
+              >
+                Close Details
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── MODAL: RESCHEDULE DEMO TIME ─────────────────────────────────────── */}
+      <Modal
+        isOpen={!!rescheduleBooking}
+        onClose={() => setRescheduleBooking(null)}
+        title="Reschedule Demo Class Time"
+      >
+        <form onSubmit={handleRescheduleSubmit} className="space-y-4">
+          <p className="text-xs text-text-secondary leading-relaxed">
+            Update the preferred session time for <strong>{rescheduleBooking?.student_name}</strong> (Parent: {rescheduleBooking?.parent_name}). Changes will save permanently to the database.
+          </p>
+
+          <Input
+            id="reschedule-time-input"
+            label="New Preferred Date & Time"
+            placeholder="e.g. Wednesday, Aug 20 at 6:00 PM EST"
+            value={newTimeInput}
+            onChange={(e) => setNewTimeInput(e.target.value)}
+            required
+          />
+
+          <div className="flex justify-end gap-2.5 pt-2">
+            <button
+              type="button"
+              onClick={() => setRescheduleBooking(null)}
+              className="px-4 py-2 border border-border hover:bg-surface-light rounded-xl text-xs font-semibold"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isPending || !newTimeInput.trim()}
+              className="px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-xl text-xs font-bold transition-colors disabled:opacity-50"
+            >
+              {isPending ? 'Saving...' : 'Save Rescheduled Time'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ── MODAL: MANUALLY ADD DEMO REQUEST ───────────────────────────────── */}
+      <Modal
+        isOpen={showNewBookingModal}
+        onClose={() => setShowNewBookingModal(false)}
+        title="Add Incoming Demo Class Request"
+      >
+        <form onSubmit={handleCreateBookingSubmit} className="space-y-3">
+          {createBookingError && (
+            <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-xs font-semibold text-red-600">
+              {createBookingError}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              id="new-parent-name"
+              label="Parent Full Name *"
+              placeholder="e.g. Sarah Jenkins"
+              value={newBookingData.parent_name}
+              onChange={(e) => setNewBookingData((p) => ({ ...p, parent_name: e.target.value }))}
+              required
+            />
+            <Input
+              id="new-parent-email"
+              label="Parent Email Address *"
+              type="email"
+              placeholder="sarah@example.com"
+              value={newBookingData.parent_email}
+              onChange={(e) => setNewBookingData((p) => ({ ...p, parent_email: e.target.value }))}
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              id="new-parent-phone"
+              label="Parent Phone / WhatsApp"
+              placeholder="+1 (555) 019-2834"
+              value={newBookingData.parent_phone}
+              onChange={(e) => setNewBookingData((p) => ({ ...p, parent_phone: e.target.value }))}
+            />
+            <Input
+              id="new-student-name"
+              label="Child Full Name *"
+              placeholder="e.g. Leo Jenkins"
+              value={newBookingData.student_name}
+              onChange={(e) => setNewBookingData((p) => ({ ...p, student_name: e.target.value }))}
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="new-student-age" className="block text-xs font-bold text-text-secondary mb-1">
+                Child Age (Years)
+              </label>
+              <input
+                id="new-student-age"
+                type="number"
+                min="4"
+                max="18"
+                value={newBookingData.student_age}
+                onChange={(e) => setNewBookingData((p) => ({ ...p, student_age: parseInt(e.target.value, 10) || 8 }))}
+                className="w-full px-3 py-2 border border-border rounded-xl text-xs font-semibold text-text-primary"
+              />
+            </div>
+            <Input
+              id="new-preferred-time"
+              label="Preferred Time Slot"
+              placeholder="Mon 5:00 PM EST"
+              value={newBookingData.preferred_time}
+              onChange={(e) => setNewBookingData((p) => ({ ...p, preferred_time: e.target.value }))}
+            />
+          </div>
+
+          <div className="flex justify-end gap-2.5 pt-2">
+            <button
+              type="button"
+              onClick={() => setShowNewBookingModal(false)}
+              className="px-4 py-2 border border-border hover:bg-surface-light rounded-xl text-xs font-semibold"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isPending}
+              className="px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-xl text-xs font-bold transition-colors disabled:opacity-50"
+            >
+              {isPending ? 'Saving...' : 'Create & Save Demo Request'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ── MODAL: ASSIGN INSTRUCTOR ────────────────────────────────────────── */}
       <Modal
         isOpen={!!assignBooking}
         onClose={() => setAssignBooking(null)}
         title="Assign Coach for Demo Class"
       >
         <p className="text-xs text-text-secondary mb-4 leading-relaxed">
-          Choose one of our FIDE Grandmasters or international coaches to conduct the free demo class for {assignBooking?.student_name}.
+          Choose an instructor to conduct the free demo class for <strong>{assignBooking?.student_name}</strong>.
         </p>
 
         <form onSubmit={handleAssignCoachSubmit} className="space-y-4">
@@ -255,20 +509,20 @@ export default function BookingsRegistry({ bookings, coaches }: BookingsRegistry
         </form>
       </Modal>
 
-      {/* Convert to Student Account Modal */}
+      {/* ── MODAL: ONBOARD AS STUDENT ACCOUNT ──────────────────────────────── */}
       <Modal
         isOpen={!!convertBooking}
         onClose={() => setConvertBooking(null)}
-        title="Convert to Student Account"
+        title="Onboard & Convert to Student Account"
       >
         <p className="text-xs text-text-secondary mb-4 leading-relaxed">
-          This will create a permanent Student profile for {convertBooking?.student_name} using parent email {convertBooking?.parent_email}.
+          This will create a permanent Student profile for <strong>{convertBooking?.student_name}</strong> using parent email <strong>{convertBooking?.parent_email}</strong>.
         </p>
 
         {convertSuccess ? (
           <div className="space-y-4">
             <div className="p-3 bg-green-50 border border-green-100 rounded-xl text-xs font-semibold text-green-700">
-              The booking has been successfully converted into an active Student Account.
+              ✅ The booking has been permanently converted into an active Student Account in the database.
             </div>
             <button
               type="button"

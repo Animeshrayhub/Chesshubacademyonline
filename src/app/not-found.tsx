@@ -58,7 +58,13 @@ export default function NotFound() {
               href="/"
               className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-primary hover:bg-primary-dark text-white font-semibold rounded-xl transition-all duration-200 shadow-blue"
             >
-              Back to Home
+              🏠 Back to Home
+            </Link>
+            <Link
+              href="/dashboard/student"
+              className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-purple-700 hover:bg-purple-800 text-white font-semibold rounded-xl transition-all duration-200 shadow"
+            >
+              ♟️ Go to Dashboard
             </Link>
             <Link
               href="/book-demo"

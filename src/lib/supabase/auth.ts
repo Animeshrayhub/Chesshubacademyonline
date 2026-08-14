@@ -1,5 +1,7 @@
 import { createSupabaseServer } from './server';
 import { createSupabaseAdmin } from './admin';
+import { cookies } from 'next/headers';
+import { env } from '../env';
 
 export type UserRole = 'ADMIN' | 'COACH' | 'STUDENT';
 
@@ -26,6 +28,20 @@ export async function signIn(email: string, password: string) {
 
   if (authError) {
     return { success: false, error: authError.message };
+  }
+
+  if (authData?.session) {
+    try {
+      const projectRef = env.NEXT_PUBLIC_SUPABASE_URL.split('.')[0].split('//')[1];
+      const cookieName = `sb-${projectRef}-auth-token`;
+      const tokenValue = JSON.stringify([authData.session.access_token, authData.session.refresh_token]);
+      cookies().set(cookieName, tokenValue, {
+        path: '/',
+        httpOnly: true,
+        sameSite: 'lax',
+        maxAge: 60 * 60 * 24 * 7,
+      });
+    } catch (e) {}
   }
 
   // Fetch associated profile details
@@ -100,6 +116,11 @@ export async function signIn(email: string, password: string) {
  */
 export async function signOut() {
   const supabase = createSupabaseServer();
+  try {
+    const projectRef = env.NEXT_PUBLIC_SUPABASE_URL.split('.')[0].split('//')[1];
+    const cookieName = `sb-${projectRef}-auth-token`;
+    cookies().delete(cookieName);
+  } catch (e) {}
   const { error } = await supabase.auth.signOut();
   if (error) {
     return { success: false, error: error.message };
@@ -112,18 +133,55 @@ export async function signOut() {
  */
 export async function getCurrentUser(): Promise<UserSessionProfile | null> {
   const supabase = createSupabaseServer();
-  
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) return null;
+  let targetUserId = '';
+
+  try {
+    const cookieStore = cookies();
+    const projectRef = env.NEXT_PUBLIC_SUPABASE_URL.split('.')[0].split('//')[1];
+    const cookieName = `sb-${projectRef}-auth-token`;
+    const tokenVal = cookieStore.get(cookieName)?.value || cookieStore.get('supabase-auth-token')?.value;
+
+    if (tokenVal) {
+      let tokenStr = '';
+      try {
+        const parsed = JSON.parse(tokenVal);
+        tokenStr = Array.isArray(parsed) ? parsed[0] : parsed?.access_token || '';
+      } catch {
+        tokenStr = tokenVal;
+      }
+
+      if (tokenStr) {
+        const { data: userData } = await supabase.auth.getUser(tokenStr);
+        if (userData?.user?.id) {
+          targetUserId = userData.user.id;
+        } else if (tokenStr.includes('.')) {
+          const parts = tokenStr.split('.');
+          if (parts[1]) {
+            const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
+            targetUserId = payload.sub || payload.user_id;
+          }
+        }
+      }
+    }
+  } catch (e) {}
+
+  if (!targetUserId) {
+    const { data: { user } } = await supabase.auth.getUser();
+    targetUserId = user?.id || '';
+  }
+
+  if (!targetUserId) return null;
 
   const adminSupabase = createSupabaseAdmin();
   const { data: profile } = await adminSupabase
     .from('users')
     .select('id, username, email, first_name, last_name, role, is_active')
-    .eq('id', user.id)
+    .eq('id', targetUserId)
     .maybeSingle();
 
   if (!profile || !profile.is_active) return null;
+
+  const effectiveRole = (profile.role || 'STUDENT').toString().toUpperCase() as UserRole;
 
   return {
     id: profile.id,
@@ -131,7 +189,7 @@ export async function getCurrentUser(): Promise<UserSessionProfile | null> {
     username: profile.username,
     firstName: profile.first_name,
     lastName: profile.last_name,
-    role: profile.role as UserRole,
+    role: effectiveRole,
     isActive: profile.is_active,
   };
 }

@@ -804,3 +804,87 @@ export async function saveLiveClassRecording(
     return { success: false, error: new InternalServerError(err.message || 'Unknown error') };
   }
 }
+
+export interface CompleteClassSessionInput {
+  classId: string;
+  sessionNotes: string;
+  topicCovered?: string;
+  recordingUrl?: string;
+  attendance: Array<{
+    studentId: string;
+    status: 'PRESENT' | 'LATE' | 'ABSENT' | 'EXCUSED';
+    notes?: string;
+  }>;
+}
+
+/**
+ * Completes a class session:
+ * 1. Updates class status to 'COMPLETED' (or 'RECORDING_AVAILABLE' if recordingUrl provided)
+ * 2. Saves session notes & optional Google Drive recording link
+ * 3. Records student attendance records in class_attendance table
+ */
+export async function completeClassSession(
+  input: CompleteClassSessionInput
+): Promise<Result<any>> {
+  try {
+    const admin = createSupabaseAdmin();
+
+    const classStatus = input.recordingUrl?.trim() ? 'RECORDING_AVAILABLE' : 'COMPLETED';
+
+    // 1. Update class record
+    const { data: updatedClass, error: classErr } = await admin
+      .from('classes')
+      .update({
+        status: classStatus,
+        session_notes: input.sessionNotes,
+        recording_url: input.recordingUrl?.trim() || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', input.classId)
+      .select()
+      .single();
+
+    if (classErr) {
+      return { success: false, error: new DatabaseError('Failed to complete class session', classErr) };
+    }
+
+    // 2. Insert attendance records into class_attendance if any
+    if (input.attendance && input.attendance.length > 0) {
+      const attendanceRows = input.attendance.map((a) => ({
+        class_id: input.classId,
+        student_id: a.studentId,
+        status: a.status,
+        notes: a.notes || null,
+        marked_at: new Date().toISOString(),
+      }));
+
+      const { error: attErr } = await admin
+        .from('class_attendance')
+        .upsert(attendanceRows, { onConflict: 'class_id,student_id' });
+
+      if (attErr) {
+        console.warn('[completeClassSession] Attendance upsert warning:', attErr.message);
+      }
+    }
+
+    // 3. Save to class_recordings if recordingUrl provided
+    if (input.recordingUrl?.trim()) {
+      await admin.from('class_recordings').upsert(
+        {
+          class_id: input.classId,
+          recording_url: input.recordingUrl.trim(),
+          recording_source: 'GOOGLE_DRIVE',
+          recorded_date: new Date().toISOString().split('T')[0],
+          duration_seconds: 3600,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'class_id' }
+      );
+    }
+
+    return { success: true, data: updatedClass };
+  } catch (err: any) {
+    return { success: false, error: new InternalServerError(err.message || 'Failed to complete session') };
+  }
+}
+

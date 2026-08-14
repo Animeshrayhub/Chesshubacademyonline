@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useId } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import type { LoginFormValues } from '@/types/auth';
 
@@ -27,6 +27,29 @@ export default function LoginForm() {
     }));
   };
 
+  const [countdown, setCountdown] = useState<number | null>(null);
+
+  // 18-second auto-reload countdown timer when error occurs
+  useEffect(() => {
+    if (errors.general) {
+      setCountdown(18);
+      const timer = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev === null || prev <= 1) {
+            clearInterval(timer);
+            window.location.reload();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      return () => clearInterval(timer);
+    } else {
+      setCountdown(null);
+    }
+  }, [errors.general]);
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     await handleSignIn(values);
@@ -38,25 +61,43 @@ export default function LoginForm() {
       noValidate
       aria-label="Sign in to your ChessHub Academy account"
     >
-      {/* General error */}
+      {/* General error with 18-second auto-reload countdown */}
       {errors.general && (
         <div
           id={generalErrorId}
           role="alert"
           aria-live="assertive"
-          className="mb-6 flex items-start gap-3 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm"
+          className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm space-y-2"
         >
-          <svg
-            className="w-5 h-5 flex-shrink-0 mt-0.5"
-            viewBox="0 0 24 24"
-            fill="none"
-            aria-hidden="true"
-          >
-            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
-            <line x1="12" y1="8" x2="12" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            <line x1="12" y1="16" x2="12.01" y2="16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-          <span>{errors.general}</span>
+          <div className="flex items-start gap-3">
+            <svg
+              className="w-5 h-5 flex-shrink-0 mt-0.5"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+              <line x1="12" y1="8" x2="12" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              <line x1="12" y1="16" x2="12.01" y2="16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            <div className="flex-1">
+              <span className="font-semibold">{errors.general}</span>
+              {countdown !== null && (
+                <div className="mt-2 flex items-center justify-between text-xs text-red-600 bg-red-100/60 p-2 rounded-lg border border-red-200">
+                  <span>
+                    Auto-refreshing page in <strong className="font-mono text-red-800">{countdown}s</strong> to retry credentials...
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => window.location.reload()}
+                    className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white font-medium rounded-md transition-colors"
+                  >
+                    Retry Now 🔄
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

@@ -3,7 +3,7 @@ import StudentProfileDetail from '@/features/admin/StudentProfileDetail';
 import { getStudentDetails } from '@/lib/students';
 import { listCoaches } from '@/lib/coaches';
 import { getStudentEnrollmentsById, listHomework } from '@/lib/homework';
-import { notFound } from 'next/navigation';
+import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +20,7 @@ export default async function AdminStudentDetailPage({ params }: PageProps) {
   ]);
 
   if (!studentRes.success || !studentRes.data) {
-    notFound();
+    redirect('/dashboard/admin/students');
   }
 
   const student = studentRes.data;

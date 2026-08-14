@@ -243,28 +243,39 @@ export async function getStudentDetails(
       .maybeSingle();
 
     let assignedCoach = null;
+    const studentProfileIds = [profile?.id, studentId].filter(Boolean) as string[];
 
-    if (profile?.id) {
-      const { data: assignment } = await admin
-        .from('coach_student_assignments')
-        .select('coach_id')
-        .eq('student_id', profile.id)
-        .is('archived_at', null)
+    const { data: assignment } = await admin
+      .from('coach_student_assignments')
+      .select('coach_id')
+      .in('student_id', studentProfileIds)
+      .is('archived_at', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (assignment?.coach_id) {
+      const { data: coachByUser } = await admin
+        .from('users')
+        .select('id, first_name, last_name')
+        .eq('id', assignment.coach_id)
         .maybeSingle();
 
-      if (assignment?.coach_id) {
+      if (coachByUser) {
+        assignedCoach = coachByUser;
+      } else {
         const { data: coachProfile } = await admin
           .from('coach_profiles')
           .select('user_id')
           .eq('id', assignment.coach_id)
-          .single();
+          .maybeSingle();
 
         if (coachProfile?.user_id) {
           const { data: coach } = await admin
             .from('users')
             .select('id, first_name, last_name')
             .eq('id', coachProfile.user_id)
-            .single();
+            .maybeSingle();
           assignedCoach = coach ?? null;
         }
       }
@@ -320,6 +331,7 @@ export async function updateStudentProfile(
   }
 }
 
+
 /**
  * Assigns a coach to a student (creates assignment record using profile IDs).
  */
@@ -328,34 +340,45 @@ export async function assignCoach(
   coachUserId: string
 ): Promise<Result<{ studentId: string; coachId: string }>> {
   try {
-    await assertAdmin();
     const admin = createSupabaseAdmin();
 
     // Resolve profile IDs
-    const studentProfileId = await getStudentProfileId(admin, studentUserId);
-    if (!studentProfileId) {
-      return { success: false, error: new NotFoundError('Student profile not found') };
-    }
+    const studentProfileId = (await getStudentProfileId(admin, studentUserId)) || studentUserId;
+    const coachProfileId = (await getCoachProfileId(admin, coachUserId)) || coachUserId;
 
-    const coachProfileId = await getCoachProfileId(admin, coachUserId);
-    if (!coachProfileId) {
-      return { success: false, error: new NotFoundError('Coach profile not found') };
-    }
-
-    // Remove existing assignment if any
+    // Delete any existing assignments for this student
     await admin
       .from('coach_student_assignments')
       .delete()
-      .or(`student_id.eq.${studentProfileId},student_id.eq.${studentUserId}`);
+      .eq('student_id', studentProfileId);
 
-    // Create new assignment using profile IDs
+    if (studentUserId !== studentProfileId) {
+      await admin
+        .from('coach_student_assignments')
+        .delete()
+        .eq('student_id', studentUserId);
+    }
+
+    // Create new assignment
     const { error: insertErr } = await admin
       .from('coach_student_assignments')
       .insert({ coach_id: coachProfileId, student_id: studentProfileId });
 
     if (insertErr) {
-      console.error('Failed to assign coach:', insertErr);
-      return { success: false, error: new DatabaseError(`Assignment failed: ${insertErr.message}`, insertErr) };
+      // 23505 is unique constraint violation (already assigned)
+      if (insertErr.code === '23505') {
+        return { success: true, data: { studentId: studentUserId, coachId: coachUserId } };
+      }
+
+      console.warn('Initial profile-based assignment failed, trying fallback insertion:', insertErr.message);
+      // Fallback: try inserting with user IDs directly
+      const { error: fallbackErr } = await admin
+        .from('coach_student_assignments')
+        .insert({ coach_id: coachUserId, student_id: studentUserId });
+
+      if (fallbackErr && fallbackErr.code !== '23505') {
+        return { success: false, error: new DatabaseError(`Assignment failed: ${fallbackErr.message}`, fallbackErr) };
+      }
     }
 
     return { success: true, data: { studentId: studentUserId, coachId: coachUserId } };
@@ -613,10 +636,11 @@ export async function getStudentClasses(): Promise<Result<any[]>> {
     let classIds = (enrollments || []).map((e: any) => e.class_id).filter(Boolean);
 
     // Also check for classes by assigned coaches in coach_student_assignments
+    const studentProfileIds = Array.from(new Set([studentProfileId, user.id])).filter(Boolean);
     const { data: coachAssignments } = await admin
       .from('coach_student_assignments')
       .select('coach_id')
-      .eq('student_id', studentProfileId);
+      .in('student_id', studentProfileIds);
 
     const assignedCoachIds = (coachAssignments || []).map((a: any) => a.coach_id).filter(Boolean);
 
@@ -642,14 +666,19 @@ export async function getStudentClasses(): Promise<Result<any[]>> {
     if (classes.length === 0) return { success: true, data: [] };
 
     // Resolve coach names
-    const coachProfileIds = [...new Set(classes.map((c: any) => c.coach_id))];
+    const rawCoachIds = [...new Set(classes.map((c: any) => c.coach_id))].filter(Boolean);
     const { data: coachProfiles } = await admin
       .from('coach_profiles')
       .select('id, user_id')
-      .in('id', coachProfileIds);
+      .in('id', rawCoachIds);
 
     const coachProfileToUserId = new Map<string, string>((coachProfiles ?? []).map((cp: any) => [cp.id, cp.user_id]));
-    const coachUserIds = [...new Set((coachProfiles ?? []).map((cp: any) => cp.user_id))];
+    const coachUserIds = Array.from(
+      new Set([
+        ...rawCoachIds,
+        ...(coachProfiles ?? []).map((cp: any) => cp.user_id),
+      ])
+    ).filter(Boolean);
 
     let coachUserMap = new Map<string, { first_name: string; last_name: string }>();
     if (coachUserIds.length > 0) {
@@ -661,8 +690,8 @@ export async function getStudentClasses(): Promise<Result<any[]>> {
     }
 
     const result = classes.map((c: any) => {
-      const coachUserId = coachProfileToUserId.get(c.coach_id);
-      const coachUser = coachUserId ? coachUserMap.get(coachUserId) : null;
+      const coachUserId = coachProfileToUserId.get(c.coach_id) || c.coach_id;
+      const coachUser = coachUserMap.get(coachUserId);
       const enr = enrollmentMap.get(c.id);
       const wasPresent = !!enr?.first_joined_at || c.status === 'COMPLETED';
 

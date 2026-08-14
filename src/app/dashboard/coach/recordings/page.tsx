@@ -30,7 +30,7 @@ export default async function AllRecordingsPage() {
           {rec.classType} Class
         </span>
       ),
-      date: <span className="text-text-secondary text-xs">{formattedDate}</span>,
+      date: <span className="text-text-secondary text-xs" suppressHydrationWarning>{formattedDate}</span>,
       duration: <span className="text-text-secondary text-xs">{mins} mins</span>,
       action: (
         <a

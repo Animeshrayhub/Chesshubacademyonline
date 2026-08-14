@@ -50,6 +50,18 @@ export default function ClassroomMoveNotation({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [currentIndex, moves, onJumpToMove]);
 
+  // Toggle Play / Pause auto-play stepper
+  const handleTogglePlay = () => {
+    if (!isPlaying) {
+      if (currentIndex >= moves.length - 1) {
+        onJumpToMove(-1);
+      }
+      setIsPlaying(true);
+    } else {
+      setIsPlaying(false);
+    }
+  };
+
   // Auto-play move stepper interval
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -128,7 +140,7 @@ export default function ClassroomMoveNotation({
           {moves.length > 0 && (
             <button
               type="button"
-              onClick={() => setIsPlaying((p) => !p)}
+              onClick={handleTogglePlay}
               className={`px-2 py-0.5 rounded text-[9px] font-extrabold transition-all border ${
                 isPlaying
                   ? 'bg-amber-500 text-slate-950 border-amber-400 animate-pulse'

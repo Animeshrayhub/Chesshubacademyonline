@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import CoachClassCompletionModal from './CoachClassCompletionModal';
 
 export interface ClassData {
   id: string;
@@ -42,6 +43,7 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
   const [selectedRosterClass, setSelectedRosterClass] = useState<ClassData | null>(null);
   const [rescheduleClass, setRescheduleClass] = useState<ClassData | null>(null);
   const [rescheduleDate, setRescheduleDate] = useState('');
+  const [completionClass, setCompletionClass] = useState<ClassData | null>(null);
 
   // Extract student names list
   const allStudentNames = Array.from(
@@ -129,6 +131,45 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
     if (sortBy === 'duration') return b.duration_minutes - a.duration_minutes;
     return 0;
   });
+
+  // Real dynamic calculation for COMPLETED tab metrics
+  const completedClassesList = rawClasses.filter(
+    (c) => c.status === 'COMPLETED' || c.status === 'RECORDING_AVAILABLE'
+  );
+
+  const totalCompletedCount = completedClassesList.length;
+  const individualCompletedCount = completedClassesList.filter(
+    (c) => c.class_type?.toUpperCase() === 'PRIVATE' || c.class_type?.toUpperCase() === 'INDIVIDUAL'
+  ).length;
+  const groupCompletedCount = completedClassesList.filter(
+    (c) => c.class_type?.toUpperCase() !== 'PRIVATE' && c.class_type?.toUpperCase() !== 'INDIVIDUAL'
+  ).length;
+
+  const totalMins = completedClassesList.reduce((acc, c) => acc + (c.duration_minutes || 60), 0);
+  const indMins = completedClassesList
+    .filter((c) => c.class_type?.toUpperCase() === 'PRIVATE' || c.class_type?.toUpperCase() === 'INDIVIDUAL')
+    .reduce((acc, c) => acc + (c.duration_minutes || 60), 0);
+  const grpMins = completedClassesList
+    .filter((c) => c.class_type?.toUpperCase() !== 'PRIVATE' && c.class_type?.toUpperCase() !== 'INDIVIDUAL')
+    .reduce((acc, c) => acc + (c.duration_minutes || 60), 0);
+
+  const formatMinsToDuration = (mins: number) => {
+    if (mins <= 0) return '0h 0m';
+    const days = Math.floor(mins / (24 * 60));
+    const remMins = mins % (24 * 60);
+    const hours = Math.floor(remMins / 60);
+    const m = remMins % 60;
+
+    let res = '';
+    if (days > 0) res += `${days}d `;
+    if (hours > 0 || days > 0) res += `${hours}h `;
+    res += `${m}m`;
+    return res.trim();
+  };
+
+  const totalDurationFormatted = formatMinsToDuration(totalMins);
+  const indDurationFormatted = formatMinsToDuration(indMins);
+  const grpDurationFormatted = formatMinsToDuration(grpMins);
 
   const formatDateBox = (dateStr: string) => {
     const d = new Date(dateStr);
@@ -306,22 +347,28 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
       )}
 
       {/* ═══════════════════════════════════════════════════════════════════
-          COMPLETED TAB SUMMARY METRIC CARDS — Matches Reference Screenshot
+          COMPLETED TAB SUMMARY METRIC CARDS — Real Dynamic Calculations
       ═══════════════════════════════════════════════════════════════════ */}
       {activeTab === 'COMPLETED' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-sky-50 border border-sky-200 rounded-2xl p-4 text-center shadow-sm">
             <span className="text-xs font-black text-slate-700 uppercase tracking-wider block">Total Classes</span>
             <span className="text-3xl font-black text-purple-700 block my-1">
-              {rawClasses.length > 0 ? rawClasses.length : 39}
+              {totalCompletedCount}
             </span>
-            <span className="text-[11px] font-bold text-slate-500 block">Individual: 26 | Group: 13</span>
+            <span className="text-[11px] font-bold text-slate-500 block">
+              Individual: {individualCompletedCount} | Group: {groupCompletedCount}
+            </span>
           </div>
 
           <div className="bg-sky-50 border border-sky-200 rounded-2xl p-4 text-center shadow-sm">
             <span className="text-xs font-black text-slate-700 uppercase tracking-wider block">Total Duration</span>
-            <span className="text-3xl font-black text-purple-700 block my-1">1d 9h 48m</span>
-            <span className="text-[11px] font-bold text-slate-500 block">Individual: 20h 41m 40s | Group: 13h 7m 6s</span>
+            <span className="text-3xl font-black text-purple-700 block my-1">
+              {totalDurationFormatted}
+            </span>
+            <span className="text-[11px] font-bold text-slate-500 block">
+              Individual: {indDurationFormatted} | Group: {grpDurationFormatted}
+            </span>
           </div>
         </div>
       )}
@@ -389,7 +436,7 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
                       📅
                     </button>
                   </div>
-                  <p className="text-xs font-semibold text-slate-500 mt-0.5">By Animesh Ray</p>
+                  <p className="text-xs font-semibold text-slate-500 mt-0.5">FIDE Instructor Session</p>
                   <p className="text-[11px] font-medium text-slate-400 mt-0.5">
                     {c.coachLoginTime
                       ? `Coach Login: ${c.coachLoginTime}`
@@ -450,12 +497,21 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
                       </Link>
                     </div>
                   ) : (
-                    <Link
-                      href={`/classroom/${c.id}`}
-                      className="px-4 py-1.5 border-2 border-purple-600 text-purple-700 hover:bg-purple-600 hover:text-white font-black text-xs rounded-xl tracking-wider transition-all shadow-sm flex items-center gap-1"
-                    >
-                      <span>JOIN</span>
-                    </Link>
+                    <div className="flex items-center gap-2">
+                      <Link
+                        href={`/classroom/${c.id}`}
+                        className="px-4 py-1.5 border-2 border-purple-600 text-purple-700 hover:bg-purple-600 hover:text-white font-black text-xs rounded-xl tracking-wider transition-all shadow-sm flex items-center gap-1"
+                      >
+                        <span>JOIN</span>
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => setCompletionClass(c)}
+                        className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white font-extrabold text-xs rounded-xl shadow transition-all"
+                      >
+                        🏁 Complete Class
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -505,6 +561,24 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
             </button>
           </div>
         </div>
+      )}
+
+      {/* Class Completion Modal */}
+      {completionClass && (
+        <CoachClassCompletionModal
+          isOpen={!!completionClass}
+          onClose={() => setCompletionClass(null)}
+          classId={completionClass.id}
+          className={`${completionClass.class_type} Lesson (${completionClass.studentNames.join(', ')})`}
+          students={completionClass.studentNames.map((name, idx) => ({
+            id: `st-${idx}-${completionClass.id}`,
+            name,
+            email: `${name.toLowerCase().replace(/\s+/g, '.')}@student.com`,
+          }))}
+          onCompleted={() => {
+            completionClass.status = 'COMPLETED';
+          }}
+        />
       )}
     </div>
   );

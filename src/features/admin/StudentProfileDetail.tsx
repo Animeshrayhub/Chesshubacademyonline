@@ -82,10 +82,11 @@ export default function StudentProfileDetail({ student, coaches, enrollments, co
 
   const handleEnrollStudent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedEnrollCourseId || !student.profile?.id) return;
+    const targetProfileId = student.profile?.id || student.id;
+    if (!selectedEnrollCourseId || !targetProfileId) return;
     setEnrollLoading(true);
     setMessage(null);
-    const res = await enrollStudentAction(student.profile.id, selectedEnrollCourseId);
+    const res = await enrollStudentAction(targetProfileId, selectedEnrollCourseId);
     setEnrollLoading(false);
     if (res.success) {
       setSelectedEnrollCourseId('');
@@ -99,11 +100,12 @@ export default function StudentProfileDetail({ student, coaches, enrollments, co
   };
 
   const handleUnenrollStudent = async (courseId: string) => {
-    if (!student.profile?.id) return;
+    const targetProfileId = student.profile?.id || student.id;
+    if (!targetProfileId) return;
     if (!confirm('Are you sure you want to unenroll the student from this course? This will remove all unlocked homework progress.')) return;
     setUnenrollLoadingId(courseId);
     setMessage(null);
-    const res = await unenrollStudentAction(student.profile.id, courseId);
+    const res = await unenrollStudentAction(targetProfileId, courseId);
     setUnenrollLoadingId('');
     if (res.success) {
       setMessage({ type: 'success', text: 'Student unenrolled from course successfully.' });
