@@ -47,8 +47,14 @@ jobs:
         env:
           CI: true
           PORT: 3000
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'http://localhost:54321' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'mock-key' }}
           TEST_ADMIN_EMAIL: ${{ secrets.TEST_ADMIN_EMAIL || 'admin@chesshubacademy.online' }}
           TEST_ADMIN_PASSWORD: ${{ secrets.TEST_ADMIN_PASSWORD || 'AdminPassword123!' }}
+          TEST_COACH_EMAIL: ${{ secrets.TEST_COACH_EMAIL || 'coach@chesshubacademy.online' }}
+          TEST_COACH_PASSWORD: ${{ secrets.TEST_COACH_PASSWORD || 'CoachPassword123!' }}
+          TEST_STUDENT_EMAIL: ${{ secrets.TEST_STUDENT_EMAIL || 'student@chesshubacademy.online' }}
+          TEST_STUDENT_PASSWORD: ${{ secrets.TEST_STUDENT_PASSWORD || 'StudentPassword123!' }}
 
       - name: Upload HTML Test Report Artifact
         if: always()

@@ -44,9 +44,9 @@ const accounts = [
     email: 'royduguu786@gmail.com',
     password: 'Admin123!',
     role: 'ADMIN',
-    username: 'royduguu',
-    firstName: 'Roy',
-    lastName: 'Duguu',
+    username: 'animeshray',
+    firstName: 'Animesh',
+    lastName: 'Ray',
     meta: {
       title: 'Administrator',
       whatsapp: '+1000000000',

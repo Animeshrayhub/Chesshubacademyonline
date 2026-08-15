@@ -64,11 +64,11 @@ export async function middleware(request: NextRequest) {
 
     // Strict Role-Based Route Protection
     if (role === 'COACH' && pathname.startsWith('/dashboard/') && !pathname.startsWith('/dashboard/coach')) {
-      return redirectWithCookies(new URL('/dashboard/coach', request.url));
+      return redirectWithCookies(new URL('/unauthorized', request.url));
     }
 
     if (role === 'STUDENT' && pathname.startsWith('/dashboard/') && !pathname.startsWith('/dashboard/student')) {
-      return redirectWithCookies(new URL('/dashboard/student', request.url));
+      return redirectWithCookies(new URL('/unauthorized', request.url));
     }
   }
 
