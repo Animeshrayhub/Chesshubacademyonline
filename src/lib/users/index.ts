@@ -722,16 +722,32 @@ export async function createAdmin(data: CreateAdminInput): Promise<Result<any>> 
     }
 
     const validated = validation.data;
+    const cleanEmail = validated.email.toLowerCase().trim();
     const adminClient = createSupabaseAdmin();
 
+    // 1. Pre-check for duplicate email in public.users
+    const { data: existingUser } = await adminClient
+      .from('users')
+      .select('id, role')
+      .eq('email', cleanEmail)
+      .maybeSingle();
+
+    if (existingUser) {
+      return {
+        success: false,
+        error: new ValidationError('An account with this login ID already exists.'),
+      };
+    }
+
+    // 2. Create Auth user
     const { data: authUser, error: authError } = await adminClient.auth.admin.createUser({
-      email: validated.email,
+      email: cleanEmail,
       password: validated.password,
       email_confirm: true,
       app_metadata: { role: 'ADMIN' },
       user_metadata: {
         role: 'ADMIN',
-        username: validated.username || validated.email,
+        username: validated.username || cleanEmail,
         first_name: validated.firstName,
         last_name: validated.lastName,
         display_name: `${validated.firstName} ${validated.lastName}`,
@@ -739,12 +755,42 @@ export async function createAdmin(data: CreateAdminInput): Promise<Result<any>> 
     });
 
     if (authError || !authUser.user) {
+      const isDuplicate = authError?.message?.toLowerCase().includes('already registered') ||
+        authError?.message?.toLowerCase().includes('already exists');
       return {
         success: false,
         error: new DatabaseError(
-          authError?.message || 'Authentication user creation failed',
+          isDuplicate ? 'An account with this login ID already exists.' : (authError?.message || 'Authentication user creation failed'),
           authError
         ),
+      };
+    }
+
+    const newUserId = authUser.user.id;
+
+    // 3. Upsert into public.users table atomically
+    try {
+      const { error: userErr } = await adminClient.from('users').upsert({
+        id: newUserId,
+        username: validated.username || cleanEmail,
+        email: cleanEmail,
+        first_name: validated.firstName,
+        last_name: validated.lastName,
+        role: 'ADMIN',
+        is_active: true,
+        password: '__auth_managed__',
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' });
+
+      if (userErr) throw userErr;
+    } catch (dbSyncErr: any) {
+      console.error('Database sync error during admin creation. Rolling back auth user:', dbSyncErr);
+      try {
+        await adminClient.auth.admin.deleteUser(newUserId);
+      } catch (rbErr) {}
+      return {
+        success: false,
+        error: new DatabaseError(`Account creation failed: ${dbSyncErr?.message || 'Database synchronization error'}`),
       };
     }
 

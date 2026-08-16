@@ -20,36 +20,6 @@ export async function signIn(email: string, password: string): Promise<SignInRes
       password,
     });
 
-    // Fallback for local development / test mock credentials if Supabase Auth is unavailable or user not yet in live DB
-    if (authError || !authData?.user) {
-      const { getMockSupabaseClient } = await import('./supabase/mockClient');
-      const mockClient = getMockSupabaseClient();
-      const mockRes = await mockClient.auth.signInWithPassword({ email: cleanEmail, password });
-
-      if (mockRes.data?.user && !mockRes.error) {
-        authData = mockRes.data as any;
-        authError = null;
-
-        // Set Auth Cookie Session
-        try {
-          const cookieStore = cookies();
-          const urlHost = env.NEXT_PUBLIC_SUPABASE_URL.includes('//')
-            ? env.NEXT_PUBLIC_SUPABASE_URL.split('//')[1]
-            : env.NEXT_PUBLIC_SUPABASE_URL;
-          const projectRef = urlHost ? urlHost.split('.')[0] || 'placeholder' : 'placeholder';
-          const cookieName = `sb-${projectRef}-auth-token`;
-          const userRole = (mockRes.data.user.role || mockRes.data.user.user_metadata?.role || mockRes.data.user.app_metadata?.role || 'STUDENT').toString().toUpperCase();
-          const tokenValue = JSON.stringify([`${cleanEmail}:${userRole}`, 'mock-refresh-token']);
-          cookieStore.set(cookieName, tokenValue, {
-            path: '/',
-            httpOnly: true,
-            sameSite: 'lax',
-            maxAge: 60 * 60 * 24 * 7,
-          });
-        } catch (e) {}
-      }
-    }
-
     if (authError || !authData?.user) {
       return {
         success: false,
@@ -61,55 +31,72 @@ export async function signIn(email: string, password: string): Promise<SignInRes
     let profile: any = null;
     try {
       const adminSupabase = createSupabaseAdmin();
-      const { data: dbProfile } = await adminSupabase
+      let { data: dbProfile } = await adminSupabase
         .from('users')
         .select('id, username, email, first_name, last_name, role, is_active')
         .eq('id', authData.user.id)
         .maybeSingle();
 
+      if (!dbProfile) {
+        // Fallback: search by normalized email
+        const { data: dbProfileByEmail } = await adminSupabase
+          .from('users')
+          .select('id, username, email, first_name, last_name, role, is_active')
+          .eq('email', cleanEmail)
+          .maybeSingle();
+
+        if (dbProfileByEmail) {
+          dbProfile = dbProfileByEmail;
+          // Sync public.users id to match auth.users id
+          if (dbProfileByEmail.id !== authData.user.id) {
+            await adminSupabase
+              .from('users')
+              .update({ id: authData.user.id, updated_at: new Date().toISOString() })
+              .eq('email', cleanEmail);
+            dbProfile.id = authData.user.id;
+          }
+        }
+      }
+
       if (dbProfile) {
         profile = dbProfile;
       } else {
-        // Auto-create missing user record for newly registered Auth user using trusted auth metadata
-        const fallbackRole = (authData.user.user_metadata?.role || authData.user.app_metadata?.role || 'STUDENT').toString().toUpperCase();
-        const firstName = authData.user.user_metadata?.first_name || email.split('@')[0];
-        const lastName = authData.user.user_metadata?.last_name || 'User';
-        const username = authData.user.user_metadata?.username || email.split('@')[0];
+        // Create user record for newly registered Auth user using trusted auth metadata
+        const trustedRole = (authData.user.app_metadata?.role || authData.user.user_metadata?.role || '').toString().toUpperCase();
+        if (['ADMIN', 'COACH', 'STUDENT'].includes(trustedRole)) {
+          const firstName = authData.user.user_metadata?.first_name || cleanEmail.split('@')[0];
+          const lastName = authData.user.user_metadata?.last_name || 'User';
+          const username = authData.user.user_metadata?.username || cleanEmail.split('@')[0];
 
-        const { data: newProfile } = await adminSupabase
-          .from('users')
-          .insert({
-            id: authData.user.id,
-            username,
-            email: authData.user.email || email,
-            password: '__auth_managed__',
-            first_name: firstName,
-            last_name: lastName,
-            role: fallbackRole,
-            is_active: true,
-          })
-          .select('id, username, email, first_name, last_name, role, is_active')
-          .single();
+          const { data: newProfile } = await adminSupabase
+            .from('users')
+            .insert({
+              id: authData.user.id,
+              username,
+              email: authData.user.email || cleanEmail,
+              password: '__auth_managed__',
+              first_name: firstName,
+              last_name: lastName,
+              role: trustedRole,
+              is_active: true,
+            })
+            .select('id, username, email, first_name, last_name, role, is_active')
+            .single();
 
-        if (newProfile) {
-          profile = newProfile;
+          if (newProfile) {
+            profile = newProfile;
+          }
         }
       }
     } catch (e) {
-      // Database offline or mock mode
+      console.error('Profile resolution error during sign in:', e);
     }
 
-    // Fallback profile if database query fails or offline mock mode
     if (!profile) {
-      const metaRole = (authData.user.user_metadata?.role || authData.user.app_metadata?.role || 'STUDENT').toString().toUpperCase();
-      profile = {
-        id: authData.user.id,
-        username: authData.user.user_metadata?.username || email.split('@')[0],
-        email: authData.user.email || email,
-        first_name: authData.user.user_metadata?.first_name || email.split('@')[0],
-        last_name: authData.user.user_metadata?.last_name || 'User',
-        role: metaRole,
-        is_active: true,
+      await supabase.auth.signOut();
+      return {
+        success: false,
+        error: 'Your account role could not be verified. Please contact the administrator.',
       };
     }
 

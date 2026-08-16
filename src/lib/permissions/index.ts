@@ -8,7 +8,7 @@ import { ForbiddenError, AuthenticationError } from '../errors';
 export async function assertAdmin(): Promise<void> {
   const currentUser = await getCurrentUser();
   if (!currentUser) {
-    throw new AuthenticationError('User is not authenticated.');
+    throw new AuthenticationError('User is not authenticated. Please log in as an Administrator.');
   }
 
   const role = (currentUser.role || '').toUpperCase();
