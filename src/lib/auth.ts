@@ -82,6 +82,7 @@ export async function signIn(email: string, password: string): Promise<SignInRes
             id: authData.user.id,
             username,
             email: authData.user.email || email,
+            password: '__auth_managed__',
             first_name: firstName,
             last_name: lastName,
             role: fallbackRole,
