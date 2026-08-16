@@ -143,7 +143,7 @@ export default function ClassroomVideoGrid({
   onOpenBgModal,
 }: ClassroomVideoGridProps) {
   const emojis = ['👏', '👍', '🔥', '🎯', '💡', '❓'];
-  const [layoutMode, setLayoutMode] = useState<LayoutMode>('sidebar');
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>('grid');
   const [showScreenZoomModal, setShowScreenZoomModal] = useState(false);
 
   return (
