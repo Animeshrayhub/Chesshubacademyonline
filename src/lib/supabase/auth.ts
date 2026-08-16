@@ -139,54 +139,88 @@ export async function signOut() {
  */
 export async function getCurrentUser(): Promise<UserSessionProfile | null> {
   const supabase = createSupabaseServer();
-  let targetUserId = '';
+  let authUser: any = null;
 
   try {
-    const cookieStore = cookies();
-    const urlHost = env.NEXT_PUBLIC_SUPABASE_URL.includes('//')
-      ? env.NEXT_PUBLIC_SUPABASE_URL.split('//')[1]
-      : env.NEXT_PUBLIC_SUPABASE_URL;
-    const projectRef = urlHost ? urlHost.split('.')[0] || 'placeholder' : 'placeholder';
-    const cookieName = `sb-${projectRef}-auth-token`;
-    const tokenVal = cookieStore.get(cookieName)?.value || cookieStore.get('supabase-auth-token')?.value;
+    const { data } = await supabase.auth.getUser();
+    authUser = data?.user ?? null;
+  } catch (e) {}
 
-    if (tokenVal) {
-      let tokenStr = '';
-      try {
-        const parsed = JSON.parse(tokenVal);
-        tokenStr = Array.isArray(parsed) ? parsed[0] : parsed?.access_token || '';
-      } catch {
-        tokenStr = tokenVal;
-      }
+  if (!authUser) {
+    try {
+      const cookieStore = cookies();
+      const allCookies = cookieStore.getAll();
+      const tokenCookie = allCookies.find(c => c.name.includes('auth-token'));
+      if (tokenCookie?.value) {
+        let tokenStr = '';
+        try {
+          const parsed = JSON.parse(tokenCookie.value);
+          tokenStr = Array.isArray(parsed) ? parsed[0] : parsed?.access_token || '';
+        } catch {
+          tokenStr = tokenCookie.value;
+        }
 
-      if (tokenStr) {
-        const { data: userData } = await supabase.auth.getUser(tokenStr);
-        if (userData?.user?.id) {
-          targetUserId = userData.user.id;
-        } else if (tokenStr.includes('.')) {
-          const parts = tokenStr.split('.');
-          if (parts[1]) {
-            const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
-            targetUserId = payload.sub || payload.user_id;
+        if (tokenStr) {
+          const { data: userData } = await supabase.auth.getUser(tokenStr);
+          authUser = userData?.user ?? null;
+
+          if (!authUser && tokenStr.includes('.')) {
+            const parts = tokenStr.split('.');
+            if (parts[1]) {
+              const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
+              authUser = {
+                id: payload.sub || payload.user_id,
+                email: payload.email || '',
+                user_metadata: payload.user_metadata || {},
+                app_metadata: payload.app_metadata || {},
+              };
+            }
           }
         }
       }
-    }
-  } catch (e) {}
-
-  if (!targetUserId) {
-    const { data: { user } } = await supabase.auth.getUser();
-    targetUserId = user?.id || '';
+    } catch (e) {}
   }
 
-  if (!targetUserId) return null;
+  if (!authUser?.id) return null;
 
   const adminSupabase = createSupabaseAdmin();
-  const { data: profile } = await adminSupabase
+  let { data: profile } = await adminSupabase
     .from('users')
     .select('id, username, email, first_name, last_name, role, is_active')
-    .eq('id', targetUserId)
+    .eq('id', authUser.id)
     .maybeSingle();
+
+  if (!profile) {
+    const email = authUser.email || '';
+    const userRole = (
+      authUser.app_metadata?.role ||
+      authUser.user_metadata?.role ||
+      (email.toLowerCase().includes('admin') ? 'ADMIN' : email.toLowerCase().includes('coach') ? 'COACH' : 'STUDENT')
+    ).toUpperCase() as UserRole;
+
+    const firstName = authUser.user_metadata?.first_name || email.split('@')[0] || 'Chess';
+    const lastName = authUser.user_metadata?.last_name || 'User';
+    const username = authUser.user_metadata?.username || email.split('@')[0] || 'user';
+
+    const { data: newProfile } = await adminSupabase
+      .from('users')
+      .insert({
+        id: authUser.id,
+        username,
+        email: email,
+        password: '__auth_managed__',
+        first_name: firstName,
+        last_name: lastName,
+        role: userRole,
+        is_active: true,
+      })
+      .select('id, username, email, first_name, last_name, role, is_active')
+      .single();
+
+    if (newProfile) {
+      profile = newProfile as any;
+    }
+  }
 
   if (!profile || !profile.is_active) return null;
 
