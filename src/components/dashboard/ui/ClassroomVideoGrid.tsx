@@ -378,7 +378,21 @@ export default function ClassroomVideoGrid({
               studentProfileId: p.peerId,
             }));
 
-          const activeStudentTiles = [...rosterTiles, ...extraRemoteTiles].filter(
+          const presenceStudentTiles = onlineUserIds
+            .filter((id) => id !== userName && id !== coachName && !id.toLowerCase().includes('coach') && !id.toLowerCase().includes('instructor'))
+            .filter((id) => !rosterTiles.some((r) => r.studentName === id || r.firstName.toLowerCase() === id.toLowerCase()))
+            .filter((id) => !extraRemoteTiles.some((e) => e.studentName === id || e.firstName.toLowerCase() === id.toLowerCase()))
+            .map((id) => ({
+              studentName: id,
+              firstName: id.split(' ')[0] || id,
+              lastName: id.split(' ')[1] || '',
+              stream: remotePeers.find((p) => p.userName === id || p.peerId === id)?.stream || null,
+              isMe: false,
+              isOnline: true,
+              studentProfileId: id,
+            }));
+
+          const activeStudentTiles = [...rosterTiles, ...extraRemoteTiles, ...presenceStudentTiles].filter(
             (t) => t.isOnline || t.isMe || !!t.stream
           );
 

@@ -205,7 +205,8 @@ export function useWebRTC({ classId, userName, userRole, userId }: UseWebRTCOpti
           }
         })
         .on('broadcast', { event: 'webrtc-offer' }, async ({ payload }: any) => {
-          if (payload.targetId === myPeerId) {
+          const isForMe = payload.targetId === myPeerId || payload.targetId === userName || (userId && payload.targetId === userId);
+          if (isForMe) {
             try {
               let pc = peerConnectionsRef.current[payload.senderId];
               if (!pc) {
@@ -246,7 +247,8 @@ export function useWebRTC({ classId, userName, userRole, userId }: UseWebRTCOpti
           }
         })
         .on('broadcast', { event: 'webrtc-answer' }, async ({ payload }: any) => {
-          if (payload.targetId === myPeerId) {
+          const isForMe = payload.targetId === myPeerId || payload.targetId === userName || (userId && payload.targetId === userId);
+          if (isForMe) {
             try {
               const pc = peerConnectionsRef.current[payload.senderId];
               if (pc && pc.signalingState === 'have-local-offer') {
@@ -265,7 +267,8 @@ export function useWebRTC({ classId, userName, userRole, userId }: UseWebRTCOpti
           }
         })
         .on('broadcast', { event: 'webrtc-ice' }, async ({ payload }: any) => {
-          if (payload.targetId === myPeerId && payload.candidate) {
+          const isForMe = payload.targetId === myPeerId || payload.targetId === userName || (userId && payload.targetId === userId);
+          if (isForMe && payload.candidate) {
             const pc = peerConnectionsRef.current[payload.senderId];
             if (pc && pc.remoteDescription && pc.remoteDescription.type) {
               try {
