@@ -25,6 +25,9 @@ const ICE_SERVERS: RTCConfiguration = {
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    { urls: 'stun:global.stun.twilio.com:3478' },
   ],
 };
 
@@ -351,6 +354,17 @@ export function useWebRTC({ classId, userName, userRole, userId }: UseWebRTCOpti
       const nextEnabled = explicitState !== undefined ? explicitState : !videoTrack.enabled;
       videoTrack.enabled = nextEnabled;
       setIsVideoMuted(!nextEnabled);
+
+      // Sync video track state across all peer connections
+      Object.values(peerConnectionsRef.current).forEach((pc) => {
+        const senders = pc.getSenders();
+        const videoSender = senders.find((s) => s.track?.kind === 'video');
+        if (videoSender) {
+          videoSender.replaceTrack(videoTrack!);
+        } else if (localStreamRef.current) {
+          pc.addTrack(videoTrack!, localStreamRef.current);
+        }
+      });
     }
   };
 

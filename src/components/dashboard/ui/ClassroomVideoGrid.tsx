@@ -306,81 +306,123 @@ export default function ClassroomVideoGrid({
           : 'grid-cols-2'
       }`}>
         {/* Coach Video Tile */}
-        <div className={`relative bg-[#1a1a32] rounded-xl overflow-hidden border-2 border-amber-500/60 group flex flex-col items-center justify-center shadow-md transition-all ${
-          layoutMode === 'sidebar' ? 'h-24' : layoutMode === 'spotlight' ? 'h-44' : 'h-36'
-        }`}>
-          {isCoach && localStream && !isVideoMuted ? (
-            <VideoElement stream={localStream} isMuted={true} bgType={bgType} customBgUrl={customBgUrl} />
-          ) : (
-            <div className="w-10 h-10 rounded-full bg-emerald-600 flex items-center justify-center text-white font-extrabold text-base border-2 border-emerald-400">
-              {coachName.charAt(0).toUpperCase()}
+        {(() => {
+          const coachPeer = remotePeers.find(
+            (p) => p.userRole === 'coach' || p.userRole === 'admin' || p.userName === coachName || p.userName.toLowerCase().includes('coach')
+          );
+          const coachStream = isCoach ? localStream : coachPeer?.stream;
+          const isCoachVideoVisible = isCoach ? (!isVideoMuted && !!localStream) : !!coachStream;
+
+          return (
+            <div className={`relative bg-[#1a1a32] rounded-xl overflow-hidden border-2 border-amber-500/60 group flex flex-col items-center justify-center shadow-md transition-all ${
+              layoutMode === 'sidebar' ? 'h-24' : layoutMode === 'spotlight' ? 'h-44' : 'h-36'
+            }`}>
+              {isCoachVideoVisible ? (
+                <VideoElement stream={coachStream} isMuted={isCoach} bgType={isCoach ? bgType : 'none'} customBgUrl={isCoach ? customBgUrl : ''} />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-emerald-600 flex items-center justify-center text-white font-extrabold text-base border-2 border-emerald-400">
+                  {coachName.charAt(0).toUpperCase()}
+                </div>
+              )}
+
+              {/* Branding Watermark Badge */}
+              <div className="absolute top-1.5 left-2 z-20 flex items-center gap-1 px-2 py-0.5 bg-black/70 backdrop-blur rounded-md text-[9px] font-extrabold text-amber-400 border border-amber-500/30">
+                <span>♟️</span>
+                <span>CHESSHUB</span>
+              </div>
+
+              <span className="absolute bottom-1.5 left-2 z-20 text-[10px] font-extrabold text-white bg-black/70 px-2 py-0.5 rounded-md backdrop-blur truncate max-w-[85%]">
+                {coachName.split(' ').slice(0, 2).join(' ')} {isCoach && '(You)'}
+              </span>
+              <span className="absolute top-2 right-2 z-20 w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" />
             </div>
-          )}
-
-          {/* Branding Watermark Badge */}
-          <div className="absolute top-1.5 left-2 z-20 flex items-center gap-1 px-2 py-0.5 bg-black/70 backdrop-blur rounded-md text-[9px] font-extrabold text-amber-400 border border-amber-500/30">
-            <span>♟️</span>
-            <span>CHESSHUB</span>
-          </div>
-
-          <span className="absolute bottom-1.5 left-2 z-20 text-[10px] font-extrabold text-white bg-black/70 px-2 py-0.5 rounded-md backdrop-blur truncate max-w-[85%]">
-            {coachName.split(' ').slice(0, 2).join(' ')} {isCoach && '(You)'}
-          </span>
-          <span className="absolute top-2 right-2 z-20 w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" />
-        </div>
+          );
+        })()}
 
         {/* Student Video Tiles */}
-        {students
-          .filter((student) => {
-            const studentName = `${student.firstName} ${student.lastName}`;
-            const isOnline = onlineUserIds.some(
-              (id: string) => id === studentName || id.toLowerCase().includes(student.firstName.toLowerCase())
-            );
-            const isMe = !isCoach && (studentName === userName || userName.toLowerCase().includes(student.firstName.toLowerCase()));
-            const isPeer = remotePeers.some((p) => p.userName === studentName);
-            return isOnline || isMe || isPeer;
-          })
-          .map((student, i) => {
-            const studentName = `${student.firstName} ${student.lastName}`;
-            const isOnline = onlineUserIds.some(
-              (id: string) => id === studentName || id.toLowerCase().includes(student.firstName.toLowerCase())
-            );
-            const isMe = !isCoach && (studentName === userName || userName.toLowerCase().includes(student.firstName.toLowerCase()));
-            const remotePeer = remotePeers.find((p) => p.userName === studentName);
-            const studentStream = isMe ? localStream : remotePeer?.stream;
+        {(() => {
+          const studentPeers = remotePeers.filter(
+            (p) => p.userRole !== 'coach' && p.userRole !== 'admin' && p.userName !== coachName
+          );
 
+          const rosterTiles = students.map((student) => {
+            const studentName = `${student.firstName} ${student.lastName}`;
+            const isMe = !isCoach && (studentName === userName || userName.toLowerCase().includes(student.firstName.toLowerCase()));
+            const rPeer = studentPeers.find(
+              (p) => p.userName === studentName || p.userName.toLowerCase().includes(student.firstName.toLowerCase())
+            );
+            const isOnline = isMe || !!rPeer || onlineUserIds.some(
+              (id: string) => id === studentName || id.toLowerCase().includes(student.firstName.toLowerCase()) || id === student.studentProfileId || id === student.email
+            );
+            const stream = isMe ? localStream : (rPeer?.stream || null);
+            return {
+              studentName,
+              firstName: student.firstName,
+              lastName: student.lastName,
+              stream,
+              isMe,
+              isOnline,
+              studentProfileId: student.studentProfileId || student.email,
+            };
+          });
+
+          const extraRemoteTiles = studentPeers
+            .filter((p) => !rosterTiles.some((r) => r.studentName === p.userName || r.firstName.toLowerCase() === p.userName.toLowerCase()))
+            .map((p) => ({
+              studentName: p.userName,
+              firstName: p.userName.split(' ')[0] || p.userName,
+              lastName: p.userName.split(' ')[1] || '',
+              stream: p.stream,
+              isMe: false,
+              isOnline: true,
+              studentProfileId: p.peerId,
+            }));
+
+          const activeStudentTiles = [...rosterTiles, ...extraRemoteTiles].filter(
+            (t) => t.isOnline || t.isMe || !!t.stream
+          );
+
+          if (activeStudentTiles.length === 0) {
+            return (
+              <div className="col-span-1 h-24 flex items-center justify-center rounded-xl border border-dashed border-[#2a2a4a] bg-[#0d0d1e]">
+                <p className="text-[10px] text-[#555577] text-center px-2 leading-tight">Waiting for<br/>students...</p>
+              </div>
+            );
+          }
+
+          return activeStudentTiles.map((st, i) => {
             const colors = ['#7c3aed', '#2563eb', '#d97706', '#16a34a', '#db2777'];
             const color = colors[i % colors.length];
 
             return (
-              <div key={i} className={`relative bg-[#1a1a32] rounded-xl overflow-hidden border border-[#2a2a4a] flex flex-col items-center justify-center transition-all ${
+              <div key={st.studentName + i} className={`relative bg-[#1a1a32] rounded-xl overflow-hidden border border-[#2a2a4a] flex flex-col items-center justify-center transition-all ${
                 layoutMode === 'sidebar' ? 'h-24' : 'h-36'
               }`}>
-                {studentStream && (!isMe || !isVideoMuted) ? (
-                  <VideoElement stream={studentStream} isMuted={isMe} bgType={isMe ? bgType : 'none'} customBgUrl={isMe ? customBgUrl : ''} />
+                {st.stream && (!st.isMe || !isVideoMuted) ? (
+                  <VideoElement stream={st.stream} isMuted={st.isMe} bgType={st.isMe ? bgType : 'none'} customBgUrl={st.isMe ? customBgUrl : ''} />
                 ) : (
                   <div
                     className="w-10 h-10 rounded-full flex items-center justify-center text-white font-extrabold text-sm border-2"
                     style={{ backgroundColor: color, borderColor: color }}
                   >
-                    {student.firstName.charAt(0)}{student.lastName.charAt(0)}
+                    {st.firstName.charAt(0)}{st.lastName ? st.lastName.charAt(0) : ''}
                   </div>
                 )}
 
                 {/* Overlay Name */}
                 <span className="absolute bottom-1.5 left-2 z-20 text-[10px] font-extrabold text-white bg-black/70 px-2 py-0.5 rounded-md backdrop-blur truncate max-w-[80%]">
-                  {student.firstName} {student.lastName[0]}.{isMe && ' (You)'}
+                  {st.firstName} {st.lastName ? st.lastName[0] + '.' : ''}{st.isMe && ' (You)'}
                 </span>
 
                 {/* Online Indicator */}
-                <span className={`absolute top-2 right-2 z-20 w-2.5 h-2.5 rounded-full ${isOnline ? 'bg-green-400 animate-pulse' : 'bg-[#444466]'}`} />
+                <span className={`absolute top-2 right-2 z-20 w-2.5 h-2.5 rounded-full ${st.isOnline ? 'bg-green-400 animate-pulse' : 'bg-[#444466]'}`} />
 
                 {/* Coach Moderation Menu for Student Tile */}
-                {isCoach && (
+                {isCoach && !st.isMe && (
                   <div className="absolute top-1.5 left-2 z-30 flex items-center gap-1 opacity-0 hover:opacity-100 transition-opacity bg-black/80 p-1 rounded-md backdrop-blur border border-white/10">
                     <button
                       type="button"
-                      onClick={() => onCoachMuteStudent(studentName)}
+                      onClick={() => onCoachMuteStudent(st.studentName)}
                       className="text-xs hover:text-red-400 px-1"
                       title="Mute Student Mic"
                     >
@@ -388,7 +430,7 @@ export default function ClassroomVideoGrid({
                     </button>
                     <button
                       type="button"
-                      onClick={() => onCoachStopStudentVideo(studentName)}
+                      onClick={() => onCoachStopStudentVideo(st.studentName)}
                       className="text-xs hover:text-red-400 px-1"
                       title="Turn Off Student Video"
                     >
@@ -396,7 +438,7 @@ export default function ClassroomVideoGrid({
                     </button>
                     <button
                       type="button"
-                      onClick={() => onToggleSpotlight(student.studentProfileId || student.email, studentName)}
+                      onClick={() => onToggleSpotlight(st.studentProfileId || st.studentName, st.studentName)}
                       className="text-xs hover:text-amber-400 px-1"
                       title="Spotlight student board"
                     >
@@ -406,20 +448,8 @@ export default function ClassroomVideoGrid({
                 )}
               </div>
             );
-          })}
-
-        {/* Empty state when no students have joined yet */}
-        {students.filter((student) => {
-          const studentName = `${student.firstName} ${student.lastName}`;
-          const isOnline = onlineUserIds.some((id: string) => id === studentName || id.toLowerCase().includes(student.firstName.toLowerCase()));
-          const isMe = !isCoach && (studentName === userName || userName.toLowerCase().includes(student.firstName.toLowerCase()));
-          const isPeer = remotePeers.some((p) => p.userName === studentName);
-          return isOnline || isMe || isPeer;
-        }).length === 0 && (
-          <div className="col-span-1 h-24 flex items-center justify-center rounded-xl border border-dashed border-[#2a2a4a] bg-[#0d0d1e]">
-            <p className="text-[10px] text-[#555577] text-center px-2 leading-tight">Waiting for<br/>students...</p>
-          </div>
-        )}
+          });
+        })()}
       </div>
 
       {/* Live Reaction Emojis Bar */}
