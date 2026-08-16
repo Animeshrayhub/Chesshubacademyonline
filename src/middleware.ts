@@ -57,9 +57,11 @@ export async function middleware(request: NextRequest) {
 
     const userEmail = (user.email || '').toLowerCase();
     const userMetaRole = (user.user_metadata?.role || '').toString().toUpperCase();
-    const profileName = `${profile?.first_name || ''} ${profile?.last_name || ''}`.toLowerCase();
+    let role = (profile?.role || user.app_metadata?.role || user.user_metadata?.role || '').toString().toUpperCase(); // 'ADMIN' | 'COACH' | 'STUDENT'
 
-    let role = (profile?.role || user.user_metadata?.role || 'STUDENT').toString().toUpperCase(); // 'ADMIN' | 'COACH' | 'STUDENT'
+    if (!['ADMIN', 'COACH', 'STUDENT'].includes(role)) {
+      return redirectWithCookies(new URL('/unauthorized', request.url));
+    }
 
     // If Maintenance Mode is active and user is NOT an Admin, redirect to /maintenance
     if (isMaintenanceActive && role !== 'ADMIN' && pathname !== '/maintenance') {
