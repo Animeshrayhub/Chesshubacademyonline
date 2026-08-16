@@ -11,7 +11,7 @@ import type { SignInResult, UserRole } from '@/types/auth';
  */
 export async function signIn(email: string, password: string): Promise<SignInResult> {
   try {
-    const supabase = createSupabaseServer();
+    const supabase = createSupabaseAdmin();
     const cleanEmail = email.toLowerCase().trim();
 
     // Authenticate with Supabase Auth
