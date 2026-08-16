@@ -107,3 +107,14 @@ export async function changeRoleAction(userId: string, newRole: string) {
   }
   return serializeResult(result);
 }
+
+export async function deleteUserAction(userId: string) {
+  const result = await usersService.deleteUser(userId);
+  if (result.success) {
+    revalidatePath('/dashboard/admin/students');
+    revalidatePath('/dashboard/admin/coaches');
+    revalidatePath('/dashboard/admin/admins');
+    revalidatePath('/dashboard/admin');
+  }
+  return serializeResult(result);
+}

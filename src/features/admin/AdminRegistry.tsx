@@ -23,6 +23,7 @@ import {
   enableUserAction,
   archiveUserAction,
   resetPasswordAction,
+  deleteUserAction,
 } from '@/actions/users';
 
 import type { DbUser } from '@/types/dashboard';
@@ -51,6 +52,7 @@ export default function AdminRegistry({ admins }: AdminRegistryProps) {
   const [confirmArchive, setConfirmArchive] = useState<DbUser | null>(null);
   const [confirmDisable, setConfirmDisable] = useState<DbUser | null>(null);
   const [confirmEnable, setConfirmEnable] = useState<DbUser | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<DbUser | null>(null);
 
   const pageSize = 10;
 
@@ -129,6 +131,14 @@ export default function AdminRegistry({ admins }: AdminRegistryProps) {
     });
   };
 
+  const handleConfirmDelete = () => {
+    if (!confirmDelete) return;
+    startTransition(async () => {
+      await deleteUserAction(confirmDelete.id);
+      setConfirmDelete(null);
+    });
+  };
+
   // Build columns
   const columns = [
     { key: 'name', label: 'Name' },
@@ -172,6 +182,13 @@ export default function AdminRegistry({ admins }: AdminRegistryProps) {
         onClick: () => setConfirmEnable(a),
       });
     }
+
+    actions.push({
+      label: 'Delete Account',
+      iconKey: 'x',
+      variant: 'danger',
+      onClick: () => setConfirmDelete(a),
+    });
 
     let status = 'active';
     if (a.archived_at) status = 'archived';
@@ -284,6 +301,15 @@ export default function AdminRegistry({ admins }: AdminRegistryProps) {
         confirmLabel="Enable User"
         onConfirm={handleConfirmEnable}
         onCancel={() => setConfirmEnable(null)}
+      />
+
+      <ConfirmationModal
+        isOpen={!!confirmDelete}
+        title="Delete Admin Account Permanently?"
+        description="This will permanently delete this account from Supabase Auth and database records. This action cannot be undone."
+        confirmLabel="Delete Admin Account"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setConfirmDelete(null)}
       />
 
       {/* Reset Password Modal */}

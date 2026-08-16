@@ -26,6 +26,7 @@ import {
   enableUserAction,
   archiveUserAction,
   resetPasswordAction,
+  deleteUserAction,
 } from '@/actions/users';
 
 import { useRouter } from 'next/navigation';
@@ -62,6 +63,7 @@ export default function CoachRegistry({ coaches }: CoachRegistryProps) {
   const [confirmArchive, setConfirmArchive] = useState<AdminCoachRow | null>(null);
   const [confirmDisable, setConfirmDisable] = useState<AdminCoachRow | null>(null);
   const [confirmEnable, setConfirmEnable] = useState<AdminCoachRow | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<AdminCoachRow | null>(null);
   const [photoCoach, setPhotoCoach] = useState<AdminCoachRow | null>(null);
 
   const pageSize = 10;
@@ -164,6 +166,17 @@ export default function CoachRegistry({ coaches }: CoachRegistryProps) {
     });
   };
 
+  const handleConfirmDelete = () => {
+    if (!confirmDelete) return;
+    const targetId = confirmDelete.id;
+    setCoachList((prev) => prev.filter((c) => c.id !== targetId));
+    setConfirmDelete(null);
+    startTransition(async () => {
+      await deleteUserAction(targetId);
+      router.refresh();
+    });
+  };
+
   // Build columns
   const columns = [
     { key: 'name', label: 'Name' },
@@ -205,7 +218,6 @@ export default function CoachRegistry({ coaches }: CoachRegistryProps) {
       },
     ];
 
-
     if (c.is_active) {
       actions.push({
         label: 'Disable Account',
@@ -221,6 +233,13 @@ export default function CoachRegistry({ coaches }: CoachRegistryProps) {
         onClick: () => setConfirmEnable(c),
       });
     }
+
+    actions.push({
+      label: 'Delete Account',
+      iconKey: 'x',
+      variant: 'danger',
+      onClick: () => setConfirmDelete(c),
+    });
 
     let status = 'active';
     if (c.archived_at) status = 'archived';
@@ -338,6 +357,15 @@ export default function CoachRegistry({ coaches }: CoachRegistryProps) {
         confirmLabel="Enable User"
         onConfirm={handleConfirmEnable}
         onCancel={() => setConfirmEnable(null)}
+      />
+
+      <ConfirmationModal
+        isOpen={!!confirmDelete}
+        title="Delete Coach Account Permanently?"
+        description="This will permanently delete this account from Supabase Auth and database records. This action cannot be undone."
+        confirmLabel="Delete Coach Account"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setConfirmDelete(null)}
       />
 
       {/* Reset Password Modal */}

@@ -23,6 +23,7 @@ import {
   enableUserAction,
   archiveUserAction,
   resetPasswordAction,
+  deleteUserAction,
 } from '@/actions/users';
 
 import type { AdminStudentRow, StudentLevel } from '@/types/dashboard';
@@ -62,6 +63,7 @@ export default function StudentRegistry({ students, coaches }: StudentRegistryPr
   const [confirmArchive, setConfirmArchive] = useState<AdminStudentRow | null>(null);
   const [confirmDisable, setConfirmDisable] = useState<AdminStudentRow | null>(null);
   const [confirmEnable, setConfirmEnable] = useState<AdminStudentRow | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<AdminStudentRow | null>(null);
 
   const pageSize = 10;
 
@@ -166,6 +168,17 @@ export default function StudentRegistry({ students, coaches }: StudentRegistryPr
     });
   };
 
+  const handleConfirmDelete = () => {
+    if (!confirmDelete) return;
+    const targetId = confirmDelete.id;
+    setStudentList((prev) => prev.filter((s) => s.id !== targetId));
+    setConfirmDelete(null);
+    startTransition(async () => {
+      await deleteUserAction(targetId);
+      router.refresh();
+    });
+  };
+
   // Build columns
   const columns = [
     { key: 'name', label: 'Name' },
@@ -217,6 +230,13 @@ export default function StudentRegistry({ students, coaches }: StudentRegistryPr
         onClick: () => setConfirmEnable(s),
       });
     }
+
+    actions.push({
+      label: 'Delete Account',
+      iconKey: 'x',
+      variant: 'danger',
+      onClick: () => setConfirmDelete(s),
+    });
 
     let status = 'active';
     if (s.archived_at) status = 'archived';
@@ -362,6 +382,15 @@ export default function StudentRegistry({ students, coaches }: StudentRegistryPr
         confirmLabel="Enable User"
         onConfirm={handleConfirmEnable}
         onCancel={() => setConfirmEnable(null)}
+      />
+
+      <ConfirmationModal
+        isOpen={!!confirmDelete}
+        title="Delete Student Account Permanently?"
+        description="This will permanently delete this account from Supabase Auth and database records. This action cannot be undone."
+        confirmLabel="Delete User Account"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setConfirmDelete(null)}
       />
 
       {/* Reset Password Modal */}

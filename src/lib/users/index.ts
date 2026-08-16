@@ -928,3 +928,39 @@ export async function updateUser(
   }
 }
 
+/**
+ * Permanently deletes a user account (Auth and database).
+ * Only callable by active Admins.
+ */
+export async function deleteUser(userId: string): Promise<Result<{ id: string }>> {
+  try {
+    await assertAdmin();
+    const admin = createSupabaseAdmin();
+
+    // 1. Delete profile records
+    await admin.from('student_profiles').delete().eq('user_id', userId);
+    await admin.from('coach_profiles').delete().eq('user_id', userId);
+
+    // 2. Delete public.users record
+    const { error: dbError } = await admin.from('users').delete().eq('id', userId);
+    if (dbError) {
+      return { success: false, error: new DatabaseError('Failed to delete user database record', dbError) };
+    }
+
+    // 3. Delete Supabase Auth user
+    try {
+      await admin.auth.admin.deleteUser(userId);
+    } catch (e) {
+      // Ignore if auth user was already removed
+    }
+
+    return { success: true, data: { id: userId } };
+  } catch (error) {
+    if (error instanceof BaseError) return { success: false, error };
+    return {
+      success: false,
+      error: new InternalServerError(error instanceof Error ? error.message : 'Unknown error'),
+    };
+  }
+}
+
