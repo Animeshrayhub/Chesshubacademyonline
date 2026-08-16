@@ -173,13 +173,6 @@ export default function AdminRegistry({ admins }: AdminRegistryProps) {
       });
     }
 
-    actions.push({
-      label: 'Archive (Soft Delete)',
-      iconKey: 'trash',
-      variant: 'danger',
-      onClick: () => setConfirmArchive(a),
-    });
-
     let status = 'active';
     if (a.archived_at) status = 'archived';
     else if (!a.is_active) status = 'disabled';

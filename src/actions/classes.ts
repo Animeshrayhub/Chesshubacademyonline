@@ -25,6 +25,10 @@ export async function createClassAction(data: classesService.CreateClassInput) {
   const result = await classesService.createClass(data);
   if (result.success) {
     revalidatePath('/dashboard/admin/classes');
+    revalidatePath('/dashboard/coach/classes');
+    revalidatePath('/dashboard/student/classes');
+    revalidatePath('/dashboard/coach');
+    revalidatePath('/dashboard/student');
     revalidatePath('/dashboard/admin/recordings');
     revalidatePath('/dashboard/admin');
   }
@@ -157,6 +161,14 @@ export async function submitClassEndReportAction(data: {
     }
 
     const result = await classesService.setClassStatus(data.classId, 'COMPLETED');
+    try {
+      const { createSupabaseAdmin } = await import('@/lib/supabase/admin');
+      const admin = createSupabaseAdmin();
+      await admin.from('classroom_chat').delete().eq('class_id', data.classId);
+    } catch (chatErr) {
+      console.warn('Classroom chat cleanup note:', chatErr);
+    }
+
     try {
       revalidatePath(`/classroom/${data.classId}`);
       revalidatePath(`/classroom/${data.classId}/review`);

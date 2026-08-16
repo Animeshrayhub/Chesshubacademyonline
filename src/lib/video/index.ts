@@ -51,10 +51,11 @@ export async function createClassMeeting(
         },
       };
     }
-    console.warn(
-      '[VideoService] Zoom API unconfigured or failed. Auto-falling back to Jitsi Meet:',
-      zoomRes.error?.message
-    );
+    // Explicit error for missing/unconfigured Zoom credentials instead of silent fake URL creation
+    return {
+      success: false,
+      error: zoomRes.error || { message: 'Zoom API credentials are missing or invalid.', code: 'ZOOM_CONFIG_ERROR', status: 400 },
+    };
   }
 
   // 3. Jitsi Meet (Default & Universal Fallback - Zero Login & Deterministic Room)

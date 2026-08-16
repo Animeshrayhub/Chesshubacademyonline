@@ -85,6 +85,7 @@ export default function UserFormModal({
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -343,8 +344,44 @@ export default function UserFormModal({
 
             {!isEdit && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-border">
-                <Input id="ufm-password" label="Password" type="password" placeholder="Min 6 characters" value={formData.password} onChange={handleTextChange('password')} error={errors.password} required />
-                <Input id="ufm-confirmPassword" label="Confirm Password" type="password" placeholder="Repeat password" value={formData.confirmPassword} onChange={handleTextChange('confirmPassword')} error={errors.confirmPassword} required />
+                <div className="relative">
+                  <Input
+                    id="ufm-password"
+                    label="Password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Min 6 characters"
+                    value={formData.password}
+                    onChange={handleTextChange('password')}
+                    error={errors.password}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-8 text-xs font-semibold text-text-secondary hover:text-text-primary focus:outline-none"
+                  >
+                    {showPassword ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                <div className="relative">
+                  <Input
+                    id="ufm-confirmPassword"
+                    label="Confirm Password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Repeat password"
+                    value={formData.confirmPassword}
+                    onChange={handleTextChange('confirmPassword')}
+                    error={errors.confirmPassword}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-8 text-xs font-semibold text-text-secondary hover:text-text-primary focus:outline-none"
+                  >
+                    {showPassword ? 'Hide' : 'Show'}
+                  </button>
+                </div>
               </div>
             )}
 

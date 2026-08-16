@@ -204,7 +204,7 @@ export default async function ClassroomPage({ params }: { params: { classId: str
       scheduledStart={cls.scheduled_start}
       initialStatus={cls.status}
       students={mappedStudents}
-      zoomStartUrl={cls.zoom_start_url || ''}
+      zoomStartUrl={role === 'coach' || role === 'admin' ? (cls.zoom_start_url || '') : ''}
       zoomJoinUrl={cls.zoom_join_url || ''}
       userId={user.id}
       startedAt={cls.started_at || null}

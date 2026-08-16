@@ -18,7 +18,7 @@ export async function createZoomMeetingAction(classId: string) {
  * Syncs a Zoom recording to Google Drive and updates the class status.
  */
 export async function syncClassRecordingToDriveAction(classId: string, durationSeconds?: number) {
-  const result = await zoomService.syncClassRecordingToDrive(classId, durationSeconds);
+  const result = await zoomService.syncClassRecordingToDrive(classId, undefined, durationSeconds);
   if (result.success) {
     revalidatePath('/dashboard/admin/classes');
   }

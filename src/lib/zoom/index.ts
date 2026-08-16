@@ -140,12 +140,19 @@ export async function createZoomMeeting(
  */
 export async function syncClassRecordingToDrive(
   classId: string,
+  recordingUrl?: string,
   durationSeconds = 3600
 ): Promise<Result<DriveRecordingDetails>> {
   try {
-    const fileId = `drive_file_${Math.random().toString(36).substring(2, 12)}`;
-    const url = `https://drive.google.com/file/d/${fileId}/view`;
+    if (!recordingUrl || !recordingUrl.trim()) {
+      return {
+        success: false,
+        error: new DatabaseError('No valid recording URL provided by video provider.'),
+      };
+    }
 
+    const cleanUrl = recordingUrl.trim();
+    const fileId = cleanUrl.includes('/d/') ? cleanUrl.split('/d/')[1]?.split('/')[0] || 'drive_recording' : 'recording';
     const admin = createSupabaseAdmin();
     
     // Check if class exists
@@ -164,8 +171,8 @@ export async function syncClassRecordingToDrive(
       .from('class_recordings')
       .upsert({
         class_id: classId,
-        recording_url: url,
-        recording_source: 'GOOGLE_DRIVE',
+        recording_url: cleanUrl,
+        recording_source: cleanUrl.includes('drive.google.com') ? 'GOOGLE_DRIVE' : 'ZOOM_CLOUD',
         recorded_date: new Date().toISOString().split('T')[0],
         duration_seconds: durationSeconds,
         updated_at: new Date().toISOString(),
@@ -187,7 +194,7 @@ export async function syncClassRecordingToDrive(
       success: true,
       data: {
         fileId,
-        url,
+        url: cleanUrl,
         durationSeconds,
       },
     };

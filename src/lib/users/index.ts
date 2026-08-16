@@ -46,17 +46,32 @@ export async function createCoach(data: CreateCoachInput): Promise<Result<any>> 
     }
 
     const validated = validation.data;
+    const cleanEmail = validated.email.toLowerCase().trim();
     const adminClient = createSupabaseAdmin();
 
-    // Create Auth user (which triggers database sync handles)
+    // 1. Pre-check for duplicate email in public.users
+    const { data: existingUser } = await adminClient
+      .from('users')
+      .select('id, role')
+      .eq('email', cleanEmail)
+      .maybeSingle();
+
+    if (existingUser) {
+      return {
+        success: false,
+        error: new ValidationError('An account with this login ID already exists.'),
+      };
+    }
+
+    // 2. Create Auth user
     const { data: authUser, error: authError } = await adminClient.auth.admin.createUser({
-      email: validated.email,
+      email: cleanEmail,
       password: validated.password,
       email_confirm: true,
       app_metadata: { role: 'COACH' },
       user_metadata: {
         role: 'COACH',
-        username: validated.username || validated.email,
+        username: validated.username || cleanEmail,
         first_name: validated.firstName,
         last_name: validated.lastName,
         title: validated.title,
@@ -72,30 +87,38 @@ export async function createCoach(data: CreateCoachInput): Promise<Result<any>> 
     });
 
     if (authError || !authUser.user) {
+      const isDuplicate = authError?.message?.toLowerCase().includes('already registered') ||
+        authError?.message?.toLowerCase().includes('already exists');
       return {
         success: false,
         error: new DatabaseError(
-          authError?.message || 'Authentication user creation failed',
+          isDuplicate ? 'An account with this login ID already exists.' : (authError?.message || 'Authentication user creation failed'),
           authError
         ),
       };
     }
 
-    // Ensure public.users and coach_profiles database records are created with is_active = true
+    const newUserId = authUser.user.id;
+
+    // 3. Ensure public.users and coach_profiles database records are created atomically
     try {
-      await adminClient.from('users').upsert({
-        id: authUser.user.id,
-        username: validated.username || validated.email,
-        email: validated.email,
+      const { error: userErr } = await adminClient.from('users').upsert({
+        id: newUserId,
+        username: validated.username || cleanEmail,
+        email: cleanEmail,
         first_name: validated.firstName,
         last_name: validated.lastName,
         role: 'COACH',
         is_active: true,
+        password: '__auth_managed__',
         updated_at: new Date().toISOString(),
       }, { onConflict: 'id' });
 
-      await adminClient.from('coach_profiles').upsert({
-        user_id: authUser.user.id,
+      if (userErr) throw userErr;
+
+      const { error: profileErr } = await adminClient.from('coach_profiles').upsert({
+        id: newUserId,
+        user_id: newUserId,
         title: validated.title || 'Coach',
         whatsapp: validated.whatsapp || '',
         languages: validated.languages || ['English'],
@@ -103,8 +126,19 @@ export async function createCoach(data: CreateCoachInput): Promise<Result<any>> 
         bio: validated.bio || '',
         created_at: new Date().toISOString(),
       }, { onConflict: 'user_id' });
-    } catch (dbSyncErr) {
-      console.warn('Profile sync warning during coach creation:', dbSyncErr);
+
+      if (profileErr) throw profileErr;
+    } catch (dbSyncErr: any) {
+      console.error('Profile sync error during coach creation. Rolling back auth user:', dbSyncErr);
+      try {
+        await adminClient.auth.admin.deleteUser(newUserId);
+      } catch (rbErr) {
+        console.error('Failed to rollback auth user:', rbErr);
+      }
+      return {
+        success: false,
+        error: new DatabaseError(`Account creation failed: ${dbSyncErr?.message || 'Database synchronization error'}`),
+      };
     }
 
     return { success: true, data: authUser.user };
@@ -142,17 +176,32 @@ export async function createStudent(data: CreateStudentInput): Promise<Result<an
     }
 
     const validated = validation.data;
+    const cleanEmail = validated.email.toLowerCase().trim();
     const adminClient = createSupabaseAdmin();
 
-    // Create Auth user
+    // 1. Pre-check for duplicate email in public.users
+    const { data: existingUser } = await adminClient
+      .from('users')
+      .select('id, role')
+      .eq('email', cleanEmail)
+      .maybeSingle();
+
+    if (existingUser) {
+      return {
+        success: false,
+        error: new ValidationError('An account with this login ID already exists.'),
+      };
+    }
+
+    // 2. Create Auth user
     const { data: authUser, error: authError } = await adminClient.auth.admin.createUser({
-      email: validated.email,
+      email: cleanEmail,
       password: validated.password,
       email_confirm: true,
       app_metadata: { role: 'STUDENT' },
       user_metadata: {
         role: 'STUDENT',
-        username: validated.username || validated.email,
+        username: validated.username || cleanEmail,
         first_name: validated.firstName,
         last_name: validated.lastName,
         age: validated.age,
@@ -168,38 +217,58 @@ export async function createStudent(data: CreateStudentInput): Promise<Result<an
     });
 
     if (authError || !authUser.user) {
+      const isDuplicate = authError?.message?.toLowerCase().includes('already registered') ||
+        authError?.message?.toLowerCase().includes('already exists');
       return {
         success: false,
         error: new DatabaseError(
-          authError?.message || 'Authentication user creation failed',
+          isDuplicate ? 'An account with this login ID already exists.' : (authError?.message || 'Authentication user creation failed'),
           authError
         ),
       };
     }
 
-    // Ensure public.users and student_profiles database records are created with is_active = true
+    const newUserId = authUser.user.id;
+
+    // 3. Ensure public.users and student_profiles database records are created atomically
     try {
-      await adminClient.from('users').upsert({
-        id: authUser.user.id,
-        username: validated.username || validated.email,
-        email: validated.email,
+      const { error: userErr } = await adminClient.from('users').upsert({
+        id: newUserId,
+        username: validated.username || cleanEmail,
+        email: cleanEmail,
         first_name: validated.firstName,
         last_name: validated.lastName,
         role: 'STUDENT',
         is_active: true,
+        password: '__auth_managed__',
         updated_at: new Date().toISOString(),
       }, { onConflict: 'id' });
 
-      await adminClient.from('student_profiles').upsert({
-        user_id: authUser.user.id,
+      if (userErr) throw userErr;
+
+      const { error: profileErr } = await adminClient.from('student_profiles').upsert({
+        id: newUserId,
+        user_id: newUserId,
+        age: validated.age || 10,
         level: validated.level || 'BEGINNER',
         parent_name: validated.parentName || '',
         parent_whatsapp: validated.parentWhatsapp || '',
         notes: validated.notes || null,
         created_at: new Date().toISOString(),
       }, { onConflict: 'user_id' });
-    } catch (dbSyncErr) {
-      console.warn('Profile sync warning during student creation:', dbSyncErr);
+
+      if (profileErr) throw profileErr;
+    } catch (dbSyncErr: any) {
+      console.error('Profile sync error during student creation. Rolling back auth user:', dbSyncErr);
+      try {
+        await adminClient.auth.admin.deleteUser(newUserId);
+      } catch (rbErr) {
+        console.error('Failed to rollback auth user:', rbErr);
+      }
+      return {
+        success: false,
+        error: new DatabaseError(`Account creation failed: ${dbSyncErr?.message || 'Database synchronization error'}`),
+      };
     }
 
     // 2. Perform coach-student assignment if coach is assigned
@@ -261,6 +330,30 @@ export async function disableUser(
     await assertAdmin();
     const adminClient = createSupabaseAdmin();
     const isActive = !disabled;
+
+    if (disabled) {
+      // Check if user being disabled is an ADMIN
+      const { data: targetUser } = await adminClient
+        .from('users')
+        .select('role')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (targetUser?.role === 'ADMIN') {
+        const { count } = await adminClient
+          .from('users')
+          .select('id', { count: 'exact', head: true })
+          .eq('role', 'ADMIN')
+          .eq('is_active', true);
+
+        if ((count ?? 0) <= 1) {
+          return {
+            success: false,
+            error: new ValidationError('At least one active administrator must remain.'),
+          };
+        }
+      }
+    }
 
     // 1. Update public.users table
     const { data, error: dbError } = await adminClient

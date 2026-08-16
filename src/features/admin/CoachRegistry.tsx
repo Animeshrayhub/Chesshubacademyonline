@@ -222,13 +222,6 @@ export default function CoachRegistry({ coaches }: CoachRegistryProps) {
       });
     }
 
-    actions.push({
-      label: 'Archive (Soft Delete)',
-      iconKey: 'trash',
-      variant: 'danger',
-      onClick: () => setConfirmArchive(c),
-    });
-
     let status = 'active';
     if (c.archived_at) status = 'archived';
     else if (!c.is_active) status = 'disabled';

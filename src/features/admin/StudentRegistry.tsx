@@ -218,13 +218,6 @@ export default function StudentRegistry({ students, coaches }: StudentRegistryPr
       });
     }
 
-    actions.push({
-      label: 'Archive (Soft Delete)',
-      iconKey: 'trash',
-      variant: 'danger',
-      onClick: () => setConfirmArchive(s),
-    });
-
     let status = 'active';
     if (s.archived_at) status = 'archived';
     else if (!s.is_active) status = 'disabled';

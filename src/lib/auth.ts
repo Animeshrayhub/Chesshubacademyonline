@@ -38,7 +38,7 @@ export async function signIn(email: string, password: string): Promise<SignInRes
             : env.NEXT_PUBLIC_SUPABASE_URL;
           const projectRef = urlHost ? urlHost.split('.')[0] || 'placeholder' : 'placeholder';
           const cookieName = `sb-${projectRef}-auth-token`;
-          const userRole = (mockRes.data.user.role || mockRes.data.user.user_metadata?.role || (cleanEmail.includes('admin') ? 'ADMIN' : cleanEmail.includes('coach') ? 'COACH' : 'STUDENT')).toString().toUpperCase();
+          const userRole = (mockRes.data.user.role || mockRes.data.user.user_metadata?.role || mockRes.data.user.app_metadata?.role || 'STUDENT').toString().toUpperCase();
           const tokenValue = JSON.stringify([`${cleanEmail}:${userRole}`, 'mock-refresh-token']);
           cookieStore.set(cookieName, tokenValue, {
             path: '/',
@@ -70,8 +70,8 @@ export async function signIn(email: string, password: string): Promise<SignInRes
       if (dbProfile) {
         profile = dbProfile;
       } else {
-        // Auto-create missing user record for newly registered Auth user
-        const fallbackRole = email.toLowerCase().includes('admin') ? 'ADMIN' : 'STUDENT';
+        // Auto-create missing user record for newly registered Auth user using trusted auth metadata
+        const fallbackRole = (authData.user.user_metadata?.role || authData.user.app_metadata?.role || 'STUDENT').toString().toUpperCase();
         const firstName = authData.user.user_metadata?.first_name || email.split('@')[0];
         const lastName = authData.user.user_metadata?.last_name || 'User';
         const username = authData.user.user_metadata?.username || email.split('@')[0];
@@ -101,7 +101,7 @@ export async function signIn(email: string, password: string): Promise<SignInRes
 
     // Fallback profile if database query fails or offline mock mode
     if (!profile) {
-      const metaRole = (authData.user.user_metadata?.role || authData.user.app_metadata?.role || (email.toLowerCase().includes('admin') ? 'ADMIN' : email.toLowerCase().includes('coach') ? 'COACH' : 'STUDENT')).toUpperCase();
+      const metaRole = (authData.user.user_metadata?.role || authData.user.app_metadata?.role || 'STUDENT').toString().toUpperCase();
       profile = {
         id: authData.user.id,
         username: authData.user.user_metadata?.username || email.split('@')[0],
@@ -122,15 +122,23 @@ export async function signIn(email: string, password: string): Promise<SignInRes
     }
 
     // Map database roles (case-insensitive) to frontend types
-    const dbRoleUpper = (profile.role || 'STUDENT').toString().toUpperCase();
+    const dbRoleUpper = (profile.role || '').toString().toUpperCase();
     const roleMapping: Record<string, UserRole> = {
       ADMIN: 'admin',
       COACH: 'coach',
       STUDENT: 'student',
     };
 
-    const mappedRole = roleMapping[dbRoleUpper] || 'student';
-    const fullName = `${profile.first_name} ${profile.last_name}`.trim() || profile.username;
+    const mappedRole = roleMapping[dbRoleUpper];
+    if (!mappedRole) {
+      await supabase.auth.signOut();
+      return {
+        success: false,
+        error: 'Your account role could not be verified. Please contact the administrator.',
+      };
+    }
+
+    const fullName = `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.username;
 
     // Record Security Audit Entry
     try {
