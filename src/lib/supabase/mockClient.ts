@@ -21,7 +21,7 @@ if (!globalForMock.__mockUsers) {
       id: 'usr-admin-roy',
       username: 'animeshray',
       email: 'royduguu786@gmail.com',
-      password: 'Admin123!',
+      password: 'Animesh@1',
       first_name: 'Animesh',
       last_name: 'Ray',
       role: 'ADMIN',
@@ -159,7 +159,7 @@ export const mockClassroomChat = globalForMock.__mockClassroomChat;
 // Allowed accounts and passwords in offline mock mode
 const mockCredentials: Record<string, { role: 'ADMIN' | 'COACH' | 'STUDENT'; password: string }> = {
   'admin@chesshub.com': { role: 'ADMIN', password: 'Admin123!' },
-  'royduguu786@gmail.com': { role: 'ADMIN', password: 'Admin123!' },
+  'royduguu786@gmail.com': { role: 'ADMIN', password: 'Animesh@1' },
   'coach.alex@chesshub.com': { role: 'COACH', password: 'Coach123!' },
   'student@chesshub.com': { role: 'STUDENT', password: 'Student123!' },
   'admin@chesshubacademy.online': { role: 'ADMIN', password: 'AdminPassword123!' },

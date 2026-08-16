@@ -21,6 +21,7 @@ export const metadata: Metadata = {
     canonical: SITE_URL,
   },
   openGraph: {
+    type: 'website',
     title: `${SITE_NAME} — ${SITE_TAGLINE}`,
     description:
       'Premium online chess coaching from FIDE-rated grandmasters. 500+ students, 20+ countries. Book your free demo class today.',

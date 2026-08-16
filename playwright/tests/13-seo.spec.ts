@@ -21,14 +21,14 @@ test.describe('Section 16: SEO Audits', () => {
     await page.goto('/');
     const ogTitle = page.locator('meta[property="og:title"]');
     const ogType = page.locator('meta[property="og:type"]');
-    await expect(ogTitle.or(page.locator('head'))).toHaveCount(1);
-    await expect(ogType.or(page.locator('head'))).toHaveCount(1);
+    await expect(ogTitle).toHaveAttribute('content', /.+/);
+    await expect(ogType).toHaveAttribute('content', /.+/);
   });
 
   test('✓ Twitter Tags', async ({ page }) => {
     await page.goto('/');
     const twitterCard = page.locator('meta[name="twitter:card"]');
-    await expect(twitterCard.or(page.locator('head'))).toHaveCount(1);
+    await expect(twitterCard).toHaveAttribute('content', /.+/);
   });
 
   test('✓ robots.txt Accessible', async ({ request, baseURL }) => {

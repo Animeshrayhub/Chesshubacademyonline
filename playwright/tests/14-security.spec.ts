@@ -11,6 +11,7 @@ test.describe('Section 17: Security Audits', () => {
   test('✓ Unauthorized Role Access Blocked (Student accessing Admin)', async ({ loginPage, page }) => {
     await loginPage.navigate();
     await loginPage.login('student@chesshubacademy.online', 'StudentPassword123!');
+    await loginPage.verifyLoginSuccess(/\/dashboard/);
     await page.goto('/dashboard/admin');
     await expect(page).toHaveURL(/\/unauthorized|\/login|\/dashboard\/student/);
   });
@@ -32,15 +33,26 @@ test.describe('Section 17: Security Audits', () => {
     expect(alertFired, 'XSS script execution payload was unexpectedly executed!').toBe(false);
   });
 
-  test('✓ CSRF Protection / Headers Verification', async ({ request }) => {
-    const response = await request.post('/api/book-demo', {
-      data: { test: true },
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    // Should require validation or appropriate response
-    expect([200, 400, 401, 403, 422]).toContain(response.status());
+  /**
+   * EXPECTED SECURITY BEHAVIOR:
+   * Production HTTP responses must include strict security headers:
+   * - X-Frame-Options: SAMEORIGIN (prevents clickjacking)
+   * - X-Content-Type-Options: nosniff (prevents MIME type sniffing)
+   * - Referrer-Policy: strict-origin-when-cross-origin (protects referrer privacy)
+   * - Content-Security-Policy: default-src 'self'... (restricts resource loading)
+   *
+   * ACTUAL BEHAVIOR:
+   * Next.js middleware ('src/middleware.ts') attaches these security headers to all HTTP responses.
+   *
+   * WHY THE EXPECTATION IS CORRECT:
+   * Security headers are essential defense-in-depth protections mandated by OWASP guidelines.
+   */
+  test('✓ Security Headers Verification', async ({ request }) => {
+    const response = await request.get('/dashboard/admin');
+    const headers = response.headers();
+    expect(headers['x-frame-options']?.toLowerCase()).toBe('sameorigin');
+    expect(headers['x-content-type-options']).toBe('nosniff');
+    expect(headers['referrer-policy']).toBe('strict-origin-when-cross-origin');
+    expect(headers['content-security-policy']).toBeDefined();
   });
 });

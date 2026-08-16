@@ -57,6 +57,7 @@ export default function LoginForm() {
 
   return (
     <form
+      method="POST"
       onSubmit={handleSubmit}
       noValidate
       aria-label="Sign in to your ChessHub Academy account"

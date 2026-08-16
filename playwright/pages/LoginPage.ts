@@ -28,13 +28,16 @@ export class LoginPage extends BasePage {
   }
 
   public async login(email: string, pass: string) {
+    await this.emailInput.waitFor({ state: 'visible' });
+    await this.emailInput.click();
     await this.emailInput.fill(email);
+    await this.passwordInput.click();
     await this.passwordInput.fill(pass);
     await this.loginButton.click();
   }
 
   public async verifyLoginSuccess(targetDashboardPattern: RegExp = /\/dashboard/) {
-    await this.page.waitForURL(targetDashboardPattern, { timeout: 15000 });
+    await this.page.waitForURL(targetDashboardPattern);
     expect(this.page.url()).toMatch(targetDashboardPattern);
   }
 

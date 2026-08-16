@@ -33,6 +33,7 @@ test.describe('Section 4: Login Tests', () => {
 
   test('✓ Logout', async ({ loginPage, page }) => {
     await loginPage.login(TEST_USERS.student.email, TEST_USERS.student.password);
+    await loginPage.verifyLoginSuccess(/\/dashboard/);
     await loginPage.logout();
     await expect(page).toHaveURL(/\/login|\/$/);
   });

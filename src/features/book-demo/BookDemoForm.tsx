@@ -139,6 +139,7 @@ export default function BookDemoForm({ onSuccess }: BookDemoFormProps) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <Input
             id="demo-parent-name"
+            name="parentName"
             label="Parent / Guardian Name"
             type="text"
             placeholder="e.g. Sarah Johnson"
@@ -150,6 +151,7 @@ export default function BookDemoForm({ onSuccess }: BookDemoFormProps) {
           />
           <Input
             id="demo-email"
+            name="email"
             label="Email Address"
             type="email"
             placeholder="you@example.com"
@@ -161,6 +163,7 @@ export default function BookDemoForm({ onSuccess }: BookDemoFormProps) {
           />
           <Input
             id="demo-phone"
+            name="phone"
             label="WhatsApp / Phone Number"
             type="tel"
             placeholder="+1 555 123 4567"
@@ -181,6 +184,7 @@ export default function BookDemoForm({ onSuccess }: BookDemoFormProps) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <Input
             id="demo-child-name"
+            name="studentName"
             label="Child's Name"
             type="text"
             placeholder="e.g. Alex Johnson"

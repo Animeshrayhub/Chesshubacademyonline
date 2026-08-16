@@ -42,7 +42,7 @@ const accounts = [
   },
   {
     email: 'royduguu786@gmail.com',
-    password: 'Admin123!',
+    password: 'Animesh@1',
     role: 'ADMIN',
     username: 'animeshray',
     firstName: 'Animesh',

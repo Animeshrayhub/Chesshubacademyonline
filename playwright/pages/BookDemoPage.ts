@@ -19,14 +19,14 @@ export class BookDemoPage extends BasePage {
   constructor(page: Page) {
     super(page);
     this.pageTitle = page.locator('h1:has-text("Book"), h2:has-text("Demo")').first();
-    this.parentNameInput = page.locator('input[name="parentName"], input[id="parentName"]').first();
-    this.studentNameInput = page.locator('input[name="studentName"], input[id="studentName"]').first();
-    this.emailInput = page.locator('input[type="email"], input[name="email"]').first();
-    this.mobileInput = page.locator('input[type="tel"], input[name="mobile"], input[name="phone"]').first();
-    this.gradeSelect = page.locator('select[name="grade"], select[name="class"]').first();
+    this.parentNameInput = page.locator('input[name="parentName"], #demo-parent-name, input[id="parentName"]').first();
+    this.studentNameInput = page.locator('input[name="studentName"], #demo-child-name, input[id="studentName"]').first();
+    this.emailInput = page.locator('input[type="email"], input[name="email"], #demo-email').first();
+    this.mobileInput = page.locator('input[type="tel"], input[name="phone"], #demo-phone').first();
+    this.gradeSelect = page.locator('select[name="grade"], select[name="childAge"], #demo-child-age').first();
     this.datePicker = page.locator('input[type="date"], input[name="preferredDate"]').first();
-    this.timeSelect = page.locator('select[name="preferredTime"]').first();
-    this.submitButton = page.locator('button[type="submit"]:has-text("Book"), button:has-text("Confirm Demo")').first();
+    this.timeSelect = page.locator('select[name="preferredTime"], #demo-time').first();
+    this.submitButton = page.locator('button[type="submit"]:has-text("Book"), button:has-text("Confirm Demo"), button:has-text("Book My Free Demo Class")').first();
     this.successToast = page.locator('.toast-success, [data-testid="demo-success-toast"], text=Booked Successfully').first();
     this.emailValidationMsg = page.locator('#email-error, text=invalid email').first();
     this.mobileValidationMsg = page.locator('#mobile-error, text=invalid phone').first();

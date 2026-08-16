@@ -11,7 +11,7 @@ export async function middleware(request: NextRequest) {
   const isClassroom = pathname.startsWith('/classroom');
 
   if (isDashboard || isClassroom) {
-    // Helper to preserve response cookies on redirect
+    // Helper to preserve response cookies and security headers on redirect
     const redirectWithCookies = (url: URL) => {
       const redirectResponse = NextResponse.redirect(url);
       response.headers.forEach((value, key) => {
@@ -19,6 +19,15 @@ export async function middleware(request: NextRequest) {
           redirectResponse.headers.append(key, value);
         }
       });
+      redirectResponse.headers.set('X-Frame-Options', 'SAMEORIGIN');
+      redirectResponse.headers.set('X-Content-Type-Options', 'nosniff');
+      redirectResponse.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+      redirectResponse.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+      redirectResponse.headers.set('X-XSS-Protection', '1; mode=block');
+      redirectResponse.headers.set(
+        'Content-Security-Policy',
+        "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; frame-src 'self' https://meet.jit.si https://8x8.vc https://jitsi.riot.im https://meet.element.io https://meet.ffmuc.net https://drive.google.com https://zoom.us; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; connect-src 'self' https:;"
+      );
       return redirectResponse;
     };
 
