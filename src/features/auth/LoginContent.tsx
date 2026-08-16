@@ -22,6 +22,7 @@ export default function LoginContent() {
           bg-gradient-to-br from-[#0c1f5e] via-primary-dark to-primary
           flex-col justify-between
           overflow-hidden
+          pointer-events-none lg:pointer-events-auto
         "
       >
         {/* Chess pattern overlay */}

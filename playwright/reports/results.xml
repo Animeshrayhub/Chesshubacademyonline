@@ -1,6 +1,6 @@
-<testsuites id="" name="" tests="1" failures="0" skipped="0" errors="1" time="21.479492999999998">
-<testsuite name="15-classroom-board-editor.spec.ts" timestamp="2026-08-16T19:55:07.741Z" hostname="Desktop Chrome" tests="1" failures="0" skipped="0" time="17.976" errors="1">
-<testcase name="Section 15: Classroom Board Editor, Free Moves, and Move Notations › ✓ Coach Classroom - Board Editor, Free Move, and Notation Full Working Check" classname="15-classroom-board-editor.spec.ts" time="17.976">
+<testsuites id="" name="" tests="8" failures="0" skipped="0" errors="8" time="149.58928400000002">
+<testsuite name="15-classroom-board-editor.spec.ts" timestamp="2026-08-16T19:55:56.687Z" hostname="Desktop Chrome" tests="1" failures="0" skipped="0" time="18.604" errors="1">
+<testcase name="Section 15: Classroom Board Editor, Free Moves, and Move Notations › ✓ Coach Classroom - Board Editor, Free Move, and Notation Full Working Check" classname="15-classroom-board-editor.spec.ts" time="18.604">
 <system-out>
 <![CDATA[
 [[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Desktop-Chrome\test-failed-1.png]]
@@ -44,6 +44,477 @@
     Usage:
 
         npx playwright show-trace ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Desktop-Chrome\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+</testsuite>
+<testsuite name="15-classroom-board-editor.spec.ts" timestamp="2026-08-16T19:55:56.687Z" hostname="Desktop Firefox" tests="1" failures="0" skipped="0" time="18.578" errors="1">
+<testcase name="Section 15: Classroom Board Editor, Free Moves, and Move Notations › ✓ Coach Classroom - Board Editor, Free Move, and Notation Full Working Check" classname="15-classroom-board-editor.spec.ts" time="18.578">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Desktop-Firefox\test-failed-1.png]]
+
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Desktop-Firefox\video.webm]]
+
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Desktop-Firefox\error-context.md]]
+
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Desktop-Firefox\trace.zip]]
+]]>
+</system-out>
+<error message="page.waitForURL: Timeout 15000ms exceeded." type="TimeoutError">
+<![CDATA[  [Desktop Firefox] › 15-classroom-board-editor.spec.ts:5:7 › Section 15: Classroom Board Editor, Free Moves, and Move Notations › ✓ Coach Classroom - Board Editor, Free Move, and Notation Full Working Check 
+
+    TimeoutError: page.waitForURL: Timeout 15000ms exceeded.
+    =========================== logs ===========================
+    waiting for navigation until "load"
+    ============================================================
+
+      11 |
+      12 |     // Wait for redirect to dashboard or classroom
+    > 13 |     await page.waitForURL(/\/(dashboard|classroom)/, { timeout: 15000 });
+         |                ^
+      14 |
+      15 |     // 2. Navigate to Live Classroom Workspace
+      16 |     const testClassId = 'test-class-live-01';
+        at D:\newchesshub\playwright\tests\15-classroom-board-editor.spec.ts:13:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Desktop-Firefox\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Desktop-Firefox\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Desktop-Firefox\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Desktop-Firefox\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Desktop-Firefox\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+</testsuite>
+<testsuite name="15-classroom-board-editor.spec.ts" timestamp="2026-08-16T19:55:56.687Z" hostname="Desktop Safari" tests="1" failures="0" skipped="0" time="17.193" errors="1">
+<testcase name="Section 15: Classroom Board Editor, Free Moves, and Move Notations › ✓ Coach Classroom - Board Editor, Free Move, and Notation Full Working Check" classname="15-classroom-board-editor.spec.ts" time="17.193">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Desktop-Safari\test-failed-1.png]]
+
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Desktop-Safari\video.webm]]
+
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Desktop-Safari\error-context.md]]
+
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Desktop-Safari\trace.zip]]
+]]>
+</system-out>
+<error message="page.waitForURL: Timeout 15000ms exceeded." type="TimeoutError">
+<![CDATA[  [Desktop Safari] › 15-classroom-board-editor.spec.ts:5:7 › Section 15: Classroom Board Editor, Free Moves, and Move Notations › ✓ Coach Classroom - Board Editor, Free Move, and Notation Full Working Check 
+
+    TimeoutError: page.waitForURL: Timeout 15000ms exceeded.
+    =========================== logs ===========================
+    waiting for navigation until "load"
+    ============================================================
+
+      11 |
+      12 |     // Wait for redirect to dashboard or classroom
+    > 13 |     await page.waitForURL(/\/(dashboard|classroom)/, { timeout: 15000 });
+         |                ^
+      14 |
+      15 |     // 2. Navigate to Live Classroom Workspace
+      16 |     const testClassId = 'test-class-live-01';
+        at D:\newchesshub\playwright\tests\15-classroom-board-editor.spec.ts:13:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Desktop-Safari\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Desktop-Safari\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Desktop-Safari\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Desktop-Safari\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Desktop-Safari\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+</testsuite>
+<testsuite name="15-classroom-board-editor.spec.ts" timestamp="2026-08-16T19:55:56.687Z" hostname="Edge" tests="1" failures="0" skipped="0" time="16.889" errors="1">
+<testcase name="Section 15: Classroom Board Editor, Free Moves, and Move Notations › ✓ Coach Classroom - Board Editor, Free Move, and Notation Full Working Check" classname="15-classroom-board-editor.spec.ts" time="16.889">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Edge\test-failed-1.png]]
+
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Edge\video.webm]]
+
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Edge\error-context.md]]
+
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Edge\trace.zip]]
+]]>
+</system-out>
+<error message="page.waitForURL: Timeout 15000ms exceeded." type="TimeoutError">
+<![CDATA[  [Edge] › 15-classroom-board-editor.spec.ts:5:7 › Section 15: Classroom Board Editor, Free Moves, and Move Notations › ✓ Coach Classroom - Board Editor, Free Move, and Notation Full Working Check 
+
+    TimeoutError: page.waitForURL: Timeout 15000ms exceeded.
+    =========================== logs ===========================
+    waiting for navigation until "load"
+    ============================================================
+
+      11 |
+      12 |     // Wait for redirect to dashboard or classroom
+    > 13 |     await page.waitForURL(/\/(dashboard|classroom)/, { timeout: 15000 });
+         |                ^
+      14 |
+      15 |     // 2. Navigate to Live Classroom Workspace
+      16 |     const testClassId = 'test-class-live-01';
+        at D:\newchesshub\playwright\tests\15-classroom-board-editor.spec.ts:13:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Edge\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Edge\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Edge\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Edge\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Edge\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+</testsuite>
+<testsuite name="15-classroom-board-editor.spec.ts" timestamp="2026-08-16T19:55:56.687Z" hostname="iPhone" tests="1" failures="0" skipped="0" time="16.639" errors="1">
+<testcase name="Section 15: Classroom Board Editor, Free Moves, and Move Notations › ✓ Coach Classroom - Board Editor, Free Move, and Notation Full Working Check" classname="15-classroom-board-editor.spec.ts" time="16.639">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-iPhone\test-failed-1.png]]
+
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-iPhone\video.webm]]
+
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-iPhone\error-context.md]]
+
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-iPhone\trace.zip]]
+]]>
+</system-out>
+<error message="page.waitForURL: Timeout 15000ms exceeded." type="TimeoutError">
+<![CDATA[  [iPhone] › 15-classroom-board-editor.spec.ts:5:7 › Section 15: Classroom Board Editor, Free Moves, and Move Notations › ✓ Coach Classroom - Board Editor, Free Move, and Notation Full Working Check 
+
+    TimeoutError: page.waitForURL: Timeout 15000ms exceeded.
+    =========================== logs ===========================
+    waiting for navigation until "load"
+    ============================================================
+
+      11 |
+      12 |     // Wait for redirect to dashboard or classroom
+    > 13 |     await page.waitForURL(/\/(dashboard|classroom)/, { timeout: 15000 });
+         |                ^
+      14 |
+      15 |     // 2. Navigate to Live Classroom Workspace
+      16 |     const testClassId = 'test-class-live-01';
+        at D:\newchesshub\playwright\tests\15-classroom-board-editor.spec.ts:13:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-iPhone\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-iPhone\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-iPhone\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-iPhone\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-iPhone\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+</testsuite>
+<testsuite name="15-classroom-board-editor.spec.ts" timestamp="2026-08-16T19:55:56.687Z" hostname="Pixel" tests="1" failures="0" skipped="0" time="15.8" errors="1">
+<testcase name="Section 15: Classroom Board Editor, Free Moves, and Move Notations › ✓ Coach Classroom - Board Editor, Free Move, and Notation Full Working Check" classname="15-classroom-board-editor.spec.ts" time="15.8">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Pixel\test-failed-1.png]]
+
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Pixel\video.webm]]
+
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Pixel\error-context.md]]
+
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Pixel\trace.zip]]
+]]>
+</system-out>
+<error message="page.click: Timeout 15000ms exceeded." type="TimeoutError">
+<![CDATA[  [Pixel] › 15-classroom-board-editor.spec.ts:5:7 › Section 15: Classroom Board Editor, Free Moves, and Move Notations › ✓ Coach Classroom - Board Editor, Free Move, and Notation Full Working Check 
+
+    TimeoutError: page.click: Timeout 15000ms exceeded.
+    Call log:
+      - waiting for locator('button[type="submit"]')
+        - locator resolved to <button type="submit" aria-busy="false" aria-label="Sign in to your account" class=" w-full py-4 px-6 rounded-xl font-bold text-base bg-primary hover:bg-primary-dark text-white shadow-blue hover:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed disabled:shadow-none flex items-center justify-center gap-3 ">…</button>
+      - attempting click action
+        - waiting for element to be visible, enabled and stable
+        - element is visible, enabled and stable
+        - scrolling into view if needed
+        - done scrolling
+        - <li class="flex items-start gap-3 text-white/70 text-sm">…</li> from <div class=" relative hidden lg:flex lg:w-1/2 xl:w-[55%] bg-gradient-to-br from-[#0c1f5e] via-primary-dark to-primary flex-col justify-between overflow-hidden ">…</div> subtree intercepts pointer events
+      - retrying click action
+        - waiting for element to be visible, enabled and stable
+        - element is visible, enabled and stable
+        - scrolling into view if needed
+        - done scrolling
+        - <main id="main-content" class=" flex-1 flex flex-col items-center justify-center min-h-screen lg:min-h-0 bg-surface-light px-4 py-12 sm:px-8 ">…</main> intercepts pointer events
+      - retrying click action
+        - waiting 20ms
+        - waiting for element to be visible, enabled and stable
+        - element is visible, enabled and stable
+        - scrolling into view if needed
+        - done scrolling
+        - <li class="flex items-start gap-3 text-white/70 text-sm">…</li> from <div class=" relative hidden lg:flex lg:w-1/2 xl:w-[55%] bg-gradient-to-br from-[#0c1f5e] via-primary-dark to-primary flex-col justify-between overflow-hidden ">…</div> subtree intercepts pointer events
+      2 × retrying click action
+          - waiting 100ms
+          - waiting for element to be visible, enabled and stable
+          - element is visible, enabled and stable
+          - scrolling into view if needed
+          - done scrolling
+          - <ul class="space-y-3" aria-label="Academy highlights">…</ul> from <div class=" relative hidden lg:flex lg:w-1/2 xl:w-[55%] bg-gradient-to-br from-[#0c1f5e] via-primary-dark to-primary flex-col justify-between overflow-hidden ">…</div> subtree intercepts pointer events
+      6 × retrying click action
+          - waiting 500ms
+          - waiting for element to be visible, enabled and stable
+          - element is visible, enabled and stable
+          - scrolling into view if needed
+          - done scrolling
+          - <main id="main-content" class=" flex-1 flex flex-col items-center justify-center min-h-screen lg:min-h-0 bg-surface-light px-4 py-12 sm:px-8 ">…</main> intercepts pointer events
+        - retrying click action
+          - waiting 500ms
+          - waiting for element to be visible, enabled and stable
+          - element is visible, enabled and stable
+          - scrolling into view if needed
+          - done scrolling
+          - <li class="flex items-start gap-3 text-white/70 text-sm">…</li> from <div class=" relative hidden lg:flex lg:w-1/2 xl:w-[55%] bg-gradient-to-br from-[#0c1f5e] via-primary-dark to-primary flex-col justify-between overflow-hidden ">…</div> subtree intercepts pointer events
+        - retrying click action
+          - waiting 500ms
+          - waiting for element to be visible, enabled and stable
+          - element is visible, enabled and stable
+          - scrolling into view if needed
+          - done scrolling
+          - <ul class="space-y-3" aria-label="Academy highlights">…</ul> from <div class=" relative hidden lg:flex lg:w-1/2 xl:w-[55%] bg-gradient-to-br from-[#0c1f5e] via-primary-dark to-primary flex-col justify-between overflow-hidden ">…</div> subtree intercepts pointer events
+        - retrying click action
+          - waiting 500ms
+          - waiting for element to be visible, enabled and stable
+          - element is visible, enabled and stable
+          - scrolling into view if needed
+          - done scrolling
+          - <ul class="space-y-3" aria-label="Academy highlights">…</ul> from <div class=" relative hidden lg:flex lg:w-1/2 xl:w-[55%] bg-gradient-to-br from-[#0c1f5e] via-primary-dark to-primary flex-col justify-between overflow-hidden ">…</div> subtree intercepts pointer events
+      - retrying click action
+        - waiting 500ms
+        - waiting for element to be visible, enabled and stable
+        - element is visible, enabled and stable
+        - scrolling into view if needed
+        - done scrolling
+        - <main id="main-content" class=" flex-1 flex flex-col items-center justify-center min-h-screen lg:min-h-0 bg-surface-light px-4 py-12 sm:px-8 ">…</main> intercepts pointer events
+      - retrying click action
+        - waiting 500ms
+
+
+       8 |     await page.fill('input[type="email"]', TEST_USERS.coach.email);
+       9 |     await page.fill('input[type="password"]', TEST_USERS.coach.password);
+    > 10 |     await page.click('button[type="submit"]');
+         |                ^
+      11 |
+      12 |     // Wait for redirect to dashboard or classroom
+      13 |     await page.waitForURL(/\/(dashboard|classroom)/, { timeout: 15000 });
+        at D:\newchesshub\playwright\tests\15-classroom-board-editor.spec.ts:10:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Pixel\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Pixel\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Pixel\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Pixel\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Pixel\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+</testsuite>
+<testsuite name="15-classroom-board-editor.spec.ts" timestamp="2026-08-16T19:55:56.687Z" hostname="Samsung" tests="1" failures="0" skipped="0" time="15.771" errors="1">
+<testcase name="Section 15: Classroom Board Editor, Free Moves, and Move Notations › ✓ Coach Classroom - Board Editor, Free Move, and Notation Full Working Check" classname="15-classroom-board-editor.spec.ts" time="15.771">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Samsung\test-failed-1.png]]
+
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Samsung\video.webm]]
+
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Samsung\error-context.md]]
+
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Samsung\trace.zip]]
+]]>
+</system-out>
+<error message="page.click: Timeout 15000ms exceeded." type="TimeoutError">
+<![CDATA[  [Samsung] › 15-classroom-board-editor.spec.ts:5:7 › Section 15: Classroom Board Editor, Free Moves, and Move Notations › ✓ Coach Classroom - Board Editor, Free Move, and Notation Full Working Check 
+
+    TimeoutError: page.click: Timeout 15000ms exceeded.
+    Call log:
+      - waiting for locator('button[type="submit"]')
+        - locator resolved to <button type="submit" aria-busy="false" aria-label="Sign in to your account" class=" w-full py-4 px-6 rounded-xl font-bold text-base bg-primary hover:bg-primary-dark text-white shadow-blue hover:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed disabled:shadow-none flex items-center justify-center gap-3 ">…</button>
+      - attempting click action
+        - waiting for element to be visible, enabled and stable
+        - element is visible, enabled and stable
+        - scrolling into view if needed
+        - done scrolling
+        - <div class="flex-1 flex flex-col justify-center py-10">…</div> from <div class=" relative hidden lg:flex lg:w-1/2 xl:w-[55%] bg-gradient-to-br from-[#0c1f5e] via-primary-dark to-primary flex-col justify-between overflow-hidden ">…</div> subtree intercepts pointer events
+      - retrying click action
+        - waiting for element to be visible, enabled and stable
+        - element is visible, enabled and stable
+        - scrolling into view if needed
+        - done scrolling
+        - <p class="text-white/25 text-xs">…</p> from <div class=" relative hidden lg:flex lg:w-1/2 xl:w-[55%] bg-gradient-to-br from-[#0c1f5e] via-primary-dark to-primary flex-col justify-between overflow-hidden ">…</div> subtree intercepts pointer events
+      - retrying click action
+        - waiting 20ms
+        2 × waiting for element to be visible, enabled and stable
+          - element is visible, enabled and stable
+          - scrolling into view if needed
+          - done scrolling
+          - <div class="flex-1 flex flex-col justify-center py-10">…</div> from <div class=" relative hidden lg:flex lg:w-1/2 xl:w-[55%] bg-gradient-to-br from-[#0c1f5e] via-primary-dark to-primary flex-col justify-between overflow-hidden ">…</div> subtree intercepts pointer events
+        - retrying click action
+          - waiting 100ms
+        7 × waiting for element to be visible, enabled and stable
+          - element is visible, enabled and stable
+          - scrolling into view if needed
+          - done scrolling
+          - <div class="flex-1 flex flex-col justify-center py-10">…</div> from <div class=" relative hidden lg:flex lg:w-1/2 xl:w-[55%] bg-gradient-to-br from-[#0c1f5e] via-primary-dark to-primary flex-col justify-between overflow-hidden ">…</div> subtree intercepts pointer events
+        - retrying click action
+          - waiting 500ms
+          - waiting for element to be visible, enabled and stable
+          - element is visible, enabled and stable
+          - scrolling into view if needed
+          - done scrolling
+          - <p class="text-white/25 text-xs">…</p> from <div class=" relative hidden lg:flex lg:w-1/2 xl:w-[55%] bg-gradient-to-br from-[#0c1f5e] via-primary-dark to-primary flex-col justify-between overflow-hidden ">…</div> subtree intercepts pointer events
+        - retrying click action
+          - waiting 500ms
+          - waiting for element to be visible, enabled and stable
+          - element is visible, enabled and stable
+          - scrolling into view if needed
+          - done scrolling
+          - <div class="flex-1 flex flex-col justify-center py-10">…</div> from <div class=" relative hidden lg:flex lg:w-1/2 xl:w-[55%] bg-gradient-to-br from-[#0c1f5e] via-primary-dark to-primary flex-col justify-between overflow-hidden ">…</div> subtree intercepts pointer events
+        - retrying click action
+          - waiting 500ms
+          - waiting for element to be visible, enabled and stable
+          - element is visible, enabled and stable
+          - scrolling into view if needed
+          - done scrolling
+          - <div class="flex-1 flex flex-col justify-center py-10">…</div> from <div class=" relative hidden lg:flex lg:w-1/2 xl:w-[55%] bg-gradient-to-br from-[#0c1f5e] via-primary-dark to-primary flex-col justify-between overflow-hidden ">…</div> subtree intercepts pointer events
+        - retrying click action
+          - waiting 500ms
+
+
+       8 |     await page.fill('input[type="email"]', TEST_USERS.coach.email);
+       9 |     await page.fill('input[type="password"]', TEST_USERS.coach.password);
+    > 10 |     await page.click('button[type="submit"]');
+         |                ^
+      11 |
+      12 |     // Wait for redirect to dashboard or classroom
+      13 |     await page.waitForURL(/\/(dashboard|classroom)/, { timeout: 15000 });
+        at D:\newchesshub\playwright\tests\15-classroom-board-editor.spec.ts:10:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Samsung\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Samsung\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Samsung\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Samsung\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-Samsung\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+</testsuite>
+<testsuite name="15-classroom-board-editor.spec.ts" timestamp="2026-08-16T19:55:56.687Z" hostname="iPad" tests="1" failures="0" skipped="0" time="17.243" errors="1">
+<testcase name="Section 15: Classroom Board Editor, Free Moves, and Move Notations › ✓ Coach Classroom - Board Editor, Free Move, and Notation Full Working Check" classname="15-classroom-board-editor.spec.ts" time="17.243">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-iPad\test-failed-1.png]]
+
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-iPad\video.webm]]
+
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-iPad\error-context.md]]
+
+[[ATTACHMENT|test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-iPad\trace.zip]]
+]]>
+</system-out>
+<error message="page.waitForURL: Timeout 15000ms exceeded." type="TimeoutError">
+<![CDATA[  [iPad] › 15-classroom-board-editor.spec.ts:5:7 › Section 15: Classroom Board Editor, Free Moves, and Move Notations › ✓ Coach Classroom - Board Editor, Free Move, and Notation Full Working Check 
+
+    TimeoutError: page.waitForURL: Timeout 15000ms exceeded.
+    =========================== logs ===========================
+    waiting for navigation until "load"
+    ============================================================
+
+      11 |
+      12 |     // Wait for redirect to dashboard or classroom
+    > 13 |     await page.waitForURL(/\/(dashboard|classroom)/, { timeout: 15000 });
+         |                ^
+      14 |
+      15 |     // 2. Navigate to Live Classroom Workspace
+      16 |     const testClassId = 'test-class-live-01';
+        at D:\newchesshub\playwright\tests\15-classroom-board-editor.spec.ts:13:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-iPad\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-iPad\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-iPad\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-iPad\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\reports\test-results\15-classroom-board-editor--3d890-Notation-Full-Working-Check-iPad\trace.zip
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 ]]>
