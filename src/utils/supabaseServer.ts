@@ -24,7 +24,8 @@ export function createServerClient() {
     // Ignore errors
   }
   
-  return createClient(supabaseUrl, supabaseAnonKey, {
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey;
+  return createClient(supabaseUrl, supabaseKey, {
     auth: {
       persistSession: false, // Server side should not persist session globally
       autoRefreshToken: false,
