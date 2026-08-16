@@ -45,6 +45,7 @@ export function useWebRTC({ classId, userName, userRole, userId }: UseWebRTCOpti
   const peerConnectionsRef = useRef<Record<string, RTCPeerConnection>>({});
   const localStreamRef = useRef<MediaStream | null>(null);
   const channelRef = useRef<any>(null);
+  const iceCandidateQueueRef = useRef<Record<string, RTCIceCandidateInit[]>>({});
 
   // Use stable userId as peerId if available, fallback to userName
   const myPeerId = userId || userName;
@@ -205,34 +206,79 @@ export function useWebRTC({ classId, userName, userRole, userId }: UseWebRTCOpti
         })
         .on('broadcast', { event: 'webrtc-offer' }, async ({ payload }: any) => {
           if (payload.targetId === myPeerId) {
-            const pc = createPeerConnection(payload.senderId, payload.senderName || payload.senderId, payload.senderRole, false);
-            await pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            channel.send({
-              type: 'broadcast',
-              event: 'webrtc-answer',
-              payload: {
-                targetId: payload.senderId,
-                senderId: myPeerId,
-                answer,
-              },
-            });
+            try {
+              let pc = peerConnectionsRef.current[payload.senderId];
+              if (!pc) {
+                pc = createPeerConnection(payload.senderId, payload.senderName || payload.senderId, payload.senderRole, false);
+              } else if (pc.signalingState !== 'stable') {
+                // Glare resolution: reset connection if both peers offered simultaneously
+                try {
+                  pc.close();
+                } catch (e) {}
+                delete peerConnectionsRef.current[payload.senderId];
+                pc = createPeerConnection(payload.senderId, payload.senderName || payload.senderId, payload.senderRole, false);
+              }
+
+              await pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
+
+              // Process any queued ICE candidates for this sender
+              const queued = iceCandidateQueueRef.current[payload.senderId] || [];
+              while (queued.length > 0) {
+                const cand = queued.shift();
+                if (cand) await pc.addIceCandidate(new RTCIceCandidate(cand));
+              }
+
+              const answer = await pc.createAnswer();
+              await pc.setLocalDescription(answer);
+
+              channel.send({
+                type: 'broadcast',
+                event: 'webrtc-answer',
+                payload: {
+                  targetId: payload.senderId,
+                  senderId: myPeerId,
+                  answer,
+                },
+              });
+            } catch (err) {
+              console.error('Error handling WebRTC offer:', err);
+            }
           }
         })
         .on('broadcast', { event: 'webrtc-answer' }, async ({ payload }: any) => {
           if (payload.targetId === myPeerId) {
-            const pc = peerConnectionsRef.current[payload.senderId];
-            if (pc) {
-              await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
+            try {
+              const pc = peerConnectionsRef.current[payload.senderId];
+              if (pc && pc.signalingState === 'have-local-offer') {
+                await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
+
+                // Process any queued ICE candidates for this sender
+                const queued = iceCandidateQueueRef.current[payload.senderId] || [];
+                while (queued.length > 0) {
+                  const cand = queued.shift();
+                  if (cand) await pc.addIceCandidate(new RTCIceCandidate(cand));
+                }
+              }
+            } catch (err) {
+              console.error('Error setting remote answer:', err);
             }
           }
         })
         .on('broadcast', { event: 'webrtc-ice' }, async ({ payload }: any) => {
-          if (payload.targetId === myPeerId) {
+          if (payload.targetId === myPeerId && payload.candidate) {
             const pc = peerConnectionsRef.current[payload.senderId];
-            if (pc && payload.candidate) {
-              await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+            if (pc && pc.remoteDescription && pc.remoteDescription.type) {
+              try {
+                await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+              } catch (e) {
+                console.warn('Failed adding ICE candidate immediately:', e);
+              }
+            } else {
+              // Queue candidate until remote description is set
+              if (!iceCandidateQueueRef.current[payload.senderId]) {
+                iceCandidateQueueRef.current[payload.senderId] = [];
+              }
+              iceCandidateQueueRef.current[payload.senderId].push(payload.candidate);
             }
           }
         })

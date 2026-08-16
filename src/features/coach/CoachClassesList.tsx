@@ -125,6 +125,11 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
 
   // Sort logic
   const sortedClasses = [...filteredClasses].sort((a, b) => {
+    const aLive = a.status === 'LIVE' || a.status === 'IN_PROGRESS';
+    const bLive = b.status === 'LIVE' || b.status === 'IN_PROGRESS';
+    if (aLive && !bLive) return -1;
+    if (!aLive && bLive) return 1;
+
     if (sortBy === 'date-asc') return new Date(a.schedule).getTime() - new Date(b.schedule).getTime();
     if (sortBy === 'date-desc') return new Date(b.schedule).getTime() - new Date(a.schedule).getTime();
     if (sortBy === 'name') return (a.studentNames[0] || '').localeCompare(b.studentNames[0] || '');

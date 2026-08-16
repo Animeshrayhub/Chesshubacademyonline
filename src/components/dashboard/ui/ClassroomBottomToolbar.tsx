@@ -146,8 +146,12 @@ export default function ClassroomBottomToolbar({
 
       {/* Move Navigation */}
       <PillBtn icon="⏮" label="Start" onClick={onFirstMove} disabled={!canGoPrev} title="Jump to Start" />
-      <PillBtn icon="◀" label="Undo" onClick={onPrevMove} disabled={!canGoPrev} title="Previous Move" />
-      <PillBtn icon="▶" label="Redo" onClick={onNextMove} disabled={!canGoNext} title="Next Move" />
+      {isCoach && (
+        <>
+          <PillBtn icon="◀" label="Undo" onClick={onPrevMove} disabled={!canGoPrev} title="Previous Move" />
+          <PillBtn icon="▶" label="Redo" onClick={onNextMove} disabled={!canGoNext} title="Next Move" />
+        </>
+      )}
       <PillBtn icon="⏭" label="Latest" onClick={onLastMove} disabled={!canGoNext} title="Jump to Latest" />
 
       <Divider />
