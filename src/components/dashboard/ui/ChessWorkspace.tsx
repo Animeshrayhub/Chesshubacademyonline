@@ -653,6 +653,36 @@ export default function ChessWorkspace({
       .on('broadcast', { event: 'lock-state' }, ({ payload }: any) => {
         setIsBoardLocked(payload.locked);
       })
+      .on('broadcast', { event: 'board-position' }, ({ payload }: any) => {
+        if (payload?.fen) {
+          try {
+            const g = new Chess(payload.fen);
+            gameRef.current = g;
+            setFen(payload.fen);
+            setMoveHistory(payload.moves || g.history());
+            setArrows([]);
+            setHighlights({});
+            setReviewIndex(null);
+          } catch (e) {
+            console.error('Failed to parse board-position:', e);
+          }
+        }
+      })
+      .on('broadcast', { event: 'position-update' }, ({ payload }: any) => {
+        if (payload?.fen) {
+          try {
+            const g = new Chess(payload.fen);
+            gameRef.current = g;
+            setFen(payload.fen);
+            setMoveHistory(payload.moves || []);
+            setArrows([]);
+            setHighlights({});
+            setReviewIndex(null);
+          } catch (e) {
+            console.error('Failed to parse position-update:', e);
+          }
+        }
+      })
       .on('broadcast', { event: 'load-position' }, ({ payload }: any) => {
         const newFen = payload.fen;
         try {
@@ -728,7 +758,7 @@ export default function ChessWorkspace({
       });
     };
 
-    const boardChannelTopic = `classroom-board:${classId}`;
+    const boardChannelTopic = `classroom:${classId}`;
 
     const channel = supabase.channel(boardChannelTopic, {
       config: {

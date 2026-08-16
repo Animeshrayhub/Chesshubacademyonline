@@ -28,6 +28,9 @@ interface ClassroomVideoGridProps {
   spotlightedStudentId: string | null;
   bgType?: BackgroundType;
   customBgUrl?: string;
+  boardControllerId?: string;
+  onGrantBoardControl?: (studentId: string) => void;
+  onTakeBoardControl?: () => void;
   onToggleAudio: () => void;
   onToggleVideo: () => void;
   onToggleScreenShare: () => void;
@@ -131,6 +134,9 @@ export default function ClassroomVideoGrid({
   spotlightedStudentId,
   bgType = 'none',
   customBgUrl = '',
+  boardControllerId,
+  onGrantBoardControl,
+  onTakeBoardControl,
   onToggleAudio,
   onToggleVideo,
   onToggleScreenShare,
@@ -428,8 +434,15 @@ export default function ClassroomVideoGrid({
                   {st.firstName} {st.lastName ? st.lastName[0] + '.' : ''}{st.isMe && ' (You)'}
                 </span>
 
-                {/* Online Indicator */}
-                <span className={`absolute top-2 right-2 z-20 w-2.5 h-2.5 rounded-full ${st.isOnline ? 'bg-green-400 animate-pulse' : 'bg-[#444466]'}`} />
+                {/* Online & Controller Indicators */}
+                <div className="absolute top-2 right-2 z-20 flex items-center gap-1">
+                  {boardControllerId === (st.studentProfileId || st.studentName) && (
+                    <span className="text-[10px] bg-green-500 text-white font-extrabold px-1 rounded shadow" title="Has Board Control">
+                      🎮
+                    </span>
+                  )}
+                  <span className={`w-2.5 h-2.5 rounded-full ${st.isOnline ? 'bg-green-400 animate-pulse' : 'bg-[#444466]'}`} />
+                </div>
 
                 {/* Coach Moderation Menu for Student Tile */}
                 {isCoach && !st.isMe && (
@@ -457,6 +470,21 @@ export default function ClassroomVideoGrid({
                       title="Spotlight student board"
                     >
                       🎯
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const targetId = st.studentProfileId || st.studentName;
+                        if (boardControllerId === targetId) {
+                          onTakeBoardControl?.();
+                        } else {
+                          onGrantBoardControl?.(targetId);
+                        }
+                      }}
+                      className={`text-xs px-1 ${boardControllerId === (st.studentProfileId || st.studentName) ? 'text-green-400 font-bold' : 'hover:text-green-400'}`}
+                      title={boardControllerId === (st.studentProfileId || st.studentName) ? 'Take Board Control' : 'Give Board Control'}
+                    >
+                      🎮
                     </button>
                   </div>
                 )}

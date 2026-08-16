@@ -184,7 +184,7 @@ export function useWebRTC({ classId, userName, userRole, userId }: UseWebRTCOpti
     if (!classId) return;
 
     initLocalStream().then(() => {
-      const topic = `webrtc-signal:${classId}`;
+      const topic = `classroom:${classId}`;
       
       // Clean up any existing channel with this topic first
       if (typeof (supabase as any).getChannels === 'function') {
@@ -195,7 +195,7 @@ export function useWebRTC({ classId, userName, userRole, userId }: UseWebRTCOpti
       }
 
       const channel = supabase.channel(topic, {
-        config: { broadcast: { self: false }, presence: { key: myPeerId } },
+        config: { broadcast: { self: false }, presence: { key: classId } },
       });
 
       channel

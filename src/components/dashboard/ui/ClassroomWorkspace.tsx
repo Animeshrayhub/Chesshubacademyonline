@@ -232,12 +232,8 @@ export default function ClassroomWorkspace({
       setBoardKey((k) => k + 1);
       setGameMoves([]);
       setCurrentMoveIndex(-1);
+      persistAndBroadcastBoardState(pos.fen, [], -1);
     }
-    mainChannelRef.current?.send({
-      type: 'broadcast',
-      event: 'position-update',
-      payload: { fen: pos.fen, solution: pos.solution },
-    });
   };
 
   const handleStepPosition = (newIndex: number) => {
@@ -304,6 +300,55 @@ export default function ClassroomWorkspace({
     }
   };
 
+  /* ── Monotonically Increasing Board Version & Board Controller Authority ──── */
+  const boardVersionRef = useRef<number>(1);
+  const [boardControllerId, setBoardControllerId] = useState<string>(isCoach ? (userId || userName) : '');
+
+  // Board State Persistence Helper: Persists authoritative state to DB and broadcasts to canonical channel
+  const persistAndBroadcastBoardState = useCallback(async (
+    newFen: string,
+    newMoves: string[],
+    newMoveIdx: number,
+    newControllerId?: string
+  ) => {
+    const version = boardVersionRef.current + 1;
+    boardVersionRef.current = version;
+    const controller = newControllerId !== undefined ? newControllerId : boardControllerId;
+
+    const payload = {
+      type: 'BOARD_POSITION',
+      classId,
+      fen: newFen,
+      pgn: '',
+      moves: newMoves,
+      currentMoveIndex: newMoveIdx,
+      version,
+      controllerId: controller,
+      updatedBy: userId || userName,
+      updatedAt: new Date().toISOString(),
+    };
+
+    // 1. Persist to DB (classroom_chat table with sender_name: '__BOARD_STATE__')
+    try {
+      await supabase.from('classroom_chat').insert({
+        class_id: classId,
+        user_id: userId || null,
+        sender_name: '__BOARD_STATE__',
+        sender_role: 'admin',
+        message: JSON.stringify(payload),
+      });
+    } catch (err) {
+      console.warn('[classroom] Board state DB persistence warning:', err);
+    }
+
+    // 2. Broadcast on Canonical Realtime Channel
+    mainChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'board-position',
+      payload,
+    });
+  }, [classId, userId, userName, boardControllerId]);
+
   // Callback passed to ChessWorkspace to capture live board moves
   // ChessWorkspace encodes clean SAN history after '__HISTORY__:' marker in pgn param
   const handleBoardMove = useCallback((fen: string, pgn: string) => {
@@ -324,21 +369,21 @@ export default function ClassroomWorkspace({
 
     setGameMoves((prevMoves) => {
       let updated: string[];
-      // If rawMoves starts from move 1 (matches prevMoves[0] or prevMoves empty), rawMoves is full history
       if (prevMoves.length === 0 || rawMoves[0] === prevMoves[0]) {
         updated = rawMoves;
       } else {
-        // Continuation played from an earlier stepped position: merge prefix + rawMoves
         const prefix = currentMoveIndex >= 0 ? prevMoves.slice(0, currentMoveIndex + 1) : [];
         updated = [...prefix, ...rawMoves];
       }
-      setCurrentMoveIndex(updated.length - 1);
+      const newIdx = updated.length - 1;
+      setCurrentMoveIndex(newIdx);
       if (typeof window !== 'undefined' && classId && updated.length > 0) {
         try { localStorage.setItem(`classroom_moves_${classId}`, JSON.stringify(updated)); } catch {}
       }
+      persistAndBroadcastBoardState(fen, updated, newIdx);
       return updated;
     });
-  }, [classId, currentMoveIndex]);
+  }, [classId, currentMoveIndex, persistAndBroadcastBoardState]);
 
   const handleJumpToMove = (idx: number) => {
     if (idx < 0) {
@@ -383,12 +428,66 @@ export default function ClassroomWorkspace({
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, rightTab]);
 
-  /* ── Realtime Broadcast Setup ───────────────────────────────────────────── */
+  // Board Control Management Handlers (Phase 14 & 16)
+  const handleGrantBoardControl = (studentUserId: string) => {
+    if (!isCoach) return;
+    setBoardControllerId(studentUserId);
+    persistAndBroadcastBoardState(currentFen, gameMoves, currentMoveIndex, studentUserId);
+  };
+
+  const handleTakeBoardControl = () => {
+    if (!isCoach) return;
+    const coachId = userId || userName;
+    setBoardControllerId(coachId);
+    persistAndBroadcastBoardState(currentFen, gameMoves, currentMoveIndex, coachId);
+  };
+
+  // Initial Board State Hydration from DB on Mount (Phase 13)
+  useEffect(() => {
+    if (!classId) return;
+    const fetchInitialBoardState = async () => {
+      try {
+        const { data } = await supabase
+          .from('classroom_chat')
+          .select('*')
+          .eq('class_id', classId)
+          .eq('sender_name', '__BOARD_STATE__')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (data?.message) {
+          const parsed = JSON.parse(data.message);
+          if (parsed.fen && parsed.version && parsed.version >= boardVersionRef.current) {
+            boardVersionRef.current = parsed.version;
+            setCurrentFen(parsed.fen);
+            if (Array.isArray(parsed.moves)) {
+              setGameMoves(parsed.moves);
+              setCurrentMoveIndex(parsed.currentMoveIndex ?? parsed.moves.length - 1);
+            }
+            if (parsed.controllerId) {
+              setBoardControllerId(parsed.controllerId);
+            }
+            setBoardKey((k) => k + 1);
+          }
+        }
+      } catch (err) {
+        console.warn('[classroom] Initial board sync warning:', err);
+      }
+    };
+    fetchInitialBoardState();
+  }, [classId]);
+
+  /* ── Canonical Realtime Channel Setup (classroom:${classId}) ────────────── */
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
   const mainChannelRef = useRef<any>(null);
 
   useEffect(() => {
-    const channelTopic = `classroom-main:${classId}`;
+    const channelTopic = `classroom:${classId}`;
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[classroom] classId: ${classId}, authUserId: ${userId}, role: ${role}`);
+    }
+
     if (typeof supabase.getChannels === 'function') {
       const existing = supabase.getChannels().find((c: any) => c.topic === `realtime:${channelTopic}` || c.topic === channelTopic);
       if (existing) supabase.removeChannel(existing);
@@ -397,6 +496,49 @@ export default function ClassroomWorkspace({
     const channel = supabase
       .channel(channelTopic, {
         config: { broadcast: { self: false }, presence: { key: classId } },
+      })
+      .on('broadcast', { event: 'board-position' }, ({ payload }: any) => {
+        if (payload?.fen && payload?.version) {
+          if (payload.version <= boardVersionRef.current) {
+            if (process.env.NODE_ENV !== 'production') {
+              console.log(`[classroom] Ignored stale board version ${payload.version} <= ${boardVersionRef.current}`);
+            }
+            return;
+          }
+          boardVersionRef.current = payload.version;
+          setCurrentFen(payload.fen);
+          if (Array.isArray(payload.moves)) {
+            setGameMoves(payload.moves);
+            setCurrentMoveIndex(payload.currentMoveIndex ?? payload.moves.length - 1);
+          }
+          if (payload.controllerId) {
+            setBoardControllerId(payload.controllerId);
+          }
+          setBoardKey((k) => k + 1);
+        }
+      })
+      .on('broadcast', { event: 'board-control' }, ({ payload }: any) => {
+        if (payload?.controllerId && payload?.version) {
+          if (payload.version < boardVersionRef.current) return;
+          boardVersionRef.current = payload.version;
+          setBoardControllerId(payload.controllerId);
+        }
+      })
+      .on('broadcast', { event: 'position-update' }, ({ payload }: any) => {
+        if (payload?.fen) {
+          setCurrentFen(payload.fen);
+          setBoardKey((k) => k + 1);
+          setGameMoves([]);
+          setCurrentMoveIndex(-1);
+        }
+      })
+      .on('broadcast', { event: 'load-position' }, ({ payload }: any) => {
+        if (payload?.fen) {
+          setCurrentFen(payload.fen);
+          setBoardKey((k) => k + 1);
+          setGameMoves([]);
+          setCurrentMoveIndex(-1);
+        }
       })
       .on('broadcast', { event: 'homework-assigned' }, ({ payload }: any) => {
         setHomeworkToast(`📝 Homework Assigned by ${payload.assignedBy}! Target position saved.`);
@@ -409,34 +551,15 @@ export default function ClassroomWorkspace({
         });
         if (rightTab !== 'at') setChatUnread((u) => u + 1);
       })
-      .on('broadcast', { event: 'position-update' }, ({ payload }: any) => {
-        if (payload?.fen) {
-          setCurrentFen(payload.fen);
-          setBoardKey((k) => k + 1);
-          setGameMoves([]);
-          setCurrentMoveIndex(-1);
-        }
-      })
       .on('broadcast', { event: 'free-moves' }, ({ payload }: any) => {
-        // Students receive coach's free-moves toggle
         if (!isCoach && payload?.allowIllegalMoves !== undefined) {
           setAllowIllegalMoves(payload.allowIllegalMoves);
         }
       })
       .on('broadcast', { event: 'status-change' }, ({ payload }: any) => {
         if (payload.status) setStatus(payload.status);
-        if (payload.startedAt) {
-          setStartedAtTime(payload.startedAt);
-          if (typeof window !== 'undefined' && classId) {
-            localStorage.setItem(`classroom_started_at_${classId}`, payload.startedAt);
-          }
-        }
-        if (payload.endedAt) {
-          setEndedAtTime(payload.endedAt);
-          if (typeof window !== 'undefined' && classId) {
-            localStorage.setItem(`classroom_ended_at_${classId}`, payload.endedAt);
-          }
-        }
+        if (payload.startedAt) setStartedAtTime(payload.startedAt);
+        if (payload.endedAt) setEndedAtTime(payload.endedAt);
         if (payload.status === 'COMPLETED') {
           const targetRoute = role === 'admin' ? '/dashboard/admin/classes' : isCoach ? '/dashboard/coach/classes' : '/dashboard/student/classes';
           router.push(targetRoute);
@@ -444,12 +567,37 @@ export default function ClassroomWorkspace({
       })
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState();
-        const onlineIds = Object.values(state).flat().map((p: any) => p.userId);
+        const onlineIds = Object.values(state).flat().map((p: any) => p.displayName || p.userId);
         setOnlineUserIds(onlineIds);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[classroom] presence state:', state);
+        }
+      })
+      .on('presence', { event: 'join' }, ({ key, newPresences }: any) => {
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`[classroom] JOIN`, key, newPresences);
+        }
+      })
+      .on('presence', { event: 'leave' }, ({ key, leftPresences }: any) => {
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`[classroom] LEAVE`, key, leftPresences);
+        }
       })
       .subscribe(async (subStatus: string) => {
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`[classroom] channel status: ${subStatus}`);
+        }
         if (subStatus === 'SUBSCRIBED') {
-          await channel.track({ userId: userName, onlineAt: new Date().toISOString() });
+          await channel.track({
+            userId: userId || userName,
+            role: isCoach ? 'COACH' : 'STUDENT',
+            displayName: userName,
+            profileId: userId || userName,
+            joinedAt: new Date().toISOString(),
+            online: true,
+          });
+        } else if (subStatus === 'TIMED_OUT' || subStatus === 'CHANNEL_ERROR') {
+          console.warn(`[classroom] ${subStatus}`);
         }
       });
 
@@ -459,7 +607,7 @@ export default function ClassroomWorkspace({
       mainChannelRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [classId, userName, isCoach]);
+  }, [classId, userName, isCoach, role, userId, rightTab]);
 
   // Coach Auto-Start Session Effect: Automatically start session timer & update DB status when Coach joins
   useEffect(() => {
@@ -782,7 +930,7 @@ export default function ClassroomWorkspace({
               showCoordinates={showCoordinates}
               spotlightedStudentId={spotlightedStudentId}
               spotlightedStudentName={spotlightedStudentName}
-              userId={userId}
+              readOnly={!isCoach && boardControllerId !== (userId || userName)}
               isEditorOpen={showSetPositionModal}
               onToggleEditorOpen={setShowSetPositionModal}
               allowIllegalMovesExternal={allowIllegalMoves}
@@ -871,6 +1019,9 @@ export default function ClassroomWorkspace({
                 spotlightedStudentId={spotlightedStudentId}
                 bgType={bgType}
                 customBgUrl={customBgUrl}
+                boardControllerId={boardControllerId}
+                onGrantBoardControl={handleGrantBoardControl}
+                onTakeBoardControl={handleTakeBoardControl}
                 onOpenBgModal={() => setShowBgModal(true)}
                 onCoachMuteAll={() => {
                   students.forEach((s) => {
@@ -1026,28 +1177,56 @@ export default function ClassroomWorkspace({
 
                 {rightTab === 'participants' && (
                   <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-[#0d0d1a]">
-                    <p className="text-[10px] text-[#555577] uppercase tracking-widest font-bold mb-2">Class Attendance ({students.length + 1})</p>
+                    <p className="text-[10px] text-[#555577] uppercase tracking-widest font-bold mb-2">Class Attendance & Controls ({students.length + 1})</p>
                     <div className="flex items-center gap-2.5 bg-amber-900/20 border border-amber-700/30 rounded-xl p-2.5">
                       <div className="w-7 h-7 rounded-full bg-amber-600/40 flex items-center justify-center text-amber-300 text-[11px] font-bold">
                         {coachName.charAt(0)}
                       </div>
-                      <div className="flex-1">
-                        <p className="text-[11px] font-bold text-amber-200">{coachName}</p>
-                        <p className="text-[9px] text-amber-500">Coach</p>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[11px] font-bold text-amber-200 truncate">{coachName}</p>
+                        <p className="text-[9px] text-amber-500 font-semibold">Assigned Coach (Controller)</p>
                       </div>
-                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                      <span className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" title="Coach Online" />
                     </div>
-                    {students.map((student, i) => (
-                      <div key={i} className="flex items-center gap-2.5 bg-[#1a1a32] border border-[#2a2a4a] rounded-xl p-2.5">
-                        <div className="w-7 h-7 rounded-full bg-[#2a2a4a] flex items-center justify-center text-white text-[10px] font-bold">
-                          {student.firstName.charAt(0)}{student.lastName.charAt(0)}
+                    {students.map((student, i) => {
+                      const studentName = `${student.firstName} ${student.lastName}`;
+                      const isOnline = onlineUserIds.some((id) =>
+                        id === studentName || id.toLowerCase().includes(student.firstName.toLowerCase()) || id === student.studentProfileId || id === student.email
+                      );
+                      const targetId = student.studentProfileId || studentName;
+                      const hasControl = boardControllerId === targetId;
+
+                      return (
+                        <div key={i} className="flex items-center gap-2.5 bg-[#1a1a32] border border-[#2a2a4a] rounded-xl p-2.5">
+                          <div className="w-7 h-7 rounded-full bg-[#2a2a4a] flex items-center justify-center text-white text-[10px] font-bold shrink-0">
+                            {student.firstName.charAt(0)}{student.lastName.charAt(0)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-[11px] font-bold text-white truncate">{studentName}</p>
+                              {hasControl && (
+                                <span className="text-[9px] bg-green-500 text-white font-extrabold px-1 rounded">🎮 Control</span>
+                              )}
+                            </div>
+                            <p className="text-[9px] text-[#666688] truncate">
+                              {isOnline ? 'Online' : 'Offline'} • Pos #{activePositionIndex + 1}
+                            </p>
+                          </div>
+                          <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${isOnline ? 'bg-green-400 animate-pulse' : 'bg-[#444466]'}`} />
+                          {isCoach && (
+                            <button
+                              type="button"
+                              onClick={() => (hasControl ? handleTakeBoardControl() : handleGrantBoardControl(targetId))}
+                              className={`px-2 py-1 text-[10px] font-bold rounded border transition-all ${
+                                hasControl ? 'bg-red-500/20 text-red-300 border-red-500/40 hover:bg-red-500/40' : 'bg-green-500/20 text-green-300 border-green-500/40 hover:bg-green-500/40'
+                              }`}
+                            >
+                              {hasControl ? 'Revoke' : 'Give Control'}
+                            </button>
+                          )}
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[11px] font-bold text-white truncate">{student.firstName} {student.lastName}</p>
-                          <p className="text-[9px] text-[#555577] truncate">{student.email}</p>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
 
