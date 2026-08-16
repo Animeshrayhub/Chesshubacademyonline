@@ -23,7 +23,6 @@ export default function LoginContent() {
           flex-col justify-between
           overflow-hidden
         "
-        aria-hidden="true"
       >
         {/* Chess pattern overlay */}
         <div
