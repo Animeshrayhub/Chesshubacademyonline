@@ -17,7 +17,7 @@ import { useWebRTC } from '@/hooks/useWebRTC';
 import type { TeachingPosition } from '@/types/curriculum.types';
 import ClassroomVirtualBackgroundModal, { type BackgroundType } from './ClassroomVirtualBackgroundModal';
 import ClassroomPreJoinModal from './ClassroomPreJoinModal';
-import { endClassAction, startClassAction, submitClassEndReportAction } from '@/actions/classes';
+import { endClassAction, startClassAction, submitClassEndReportAction, updateParticipantHeartbeatAction } from '@/actions/classes';
 import { listHomeworkAction, listChaptersAction, assignChapterToClassAction } from '@/actions/homework';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
@@ -30,6 +30,8 @@ interface StudentInfo {
 
 interface ClassroomWorkspaceProps {
   classId: string;
+  sessionId?: string;
+  className?: string;
   role: 'admin' | 'coach' | 'student';
   userName: string;
   coachName: string;
@@ -72,6 +74,8 @@ type RightTab = 'at' | 'response' | 'leaderboard' | 'participants' | 'engine';
 /* ─── Component ─────────────────────────────────────────────────────────── */
 export default function ClassroomWorkspace({
   classId,
+  sessionId,
+  className,
   role,
   userName,
   coachName,
@@ -87,13 +91,15 @@ export default function ClassroomWorkspace({
   endedAt,
 }: ClassroomWorkspaceProps) {
   const router = useRouter();
+  const activeSessionId = sessionId || classId;
+  const activeClassName = className || `${classType || 'Group'} (${duration}min)`;
   const [status, setStatus] = useState(initialStatus);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState('');
   const isCoach = role === 'coach' || role === 'admin';
 
   /* ── Native In-House WebRTC Hook (Zero Login / Zero Redirect) ───────────── */
-  const webRTC = useWebRTC({ classId, userName, userRole: role, userId });
+  const webRTC = useWebRTC({ classId, sessionId: activeSessionId, userName, userRole: role, userId });
 
   /* ── Persistent Session Timer ───────────────────────────────────────────── */
   const [startedAtTime, setStartedAtTime] = useState<string | null>(() => {
@@ -318,6 +324,7 @@ export default function ClassroomWorkspace({
     const payload = {
       type: 'BOARD_POSITION',
       classId,
+      sessionId: activeSessionId,
       fen: newFen,
       pgn: '',
       moves: newMoves,
@@ -328,8 +335,20 @@ export default function ClassroomWorkspace({
       updatedAt: new Date().toISOString(),
     };
 
-    // 1. Persist to DB (classroom_chat table with sender_name: '__BOARD_STATE__')
+    // 1. Persist to DB (live_session_board_state table & classroom_chat table fallback)
     try {
+      await supabase.from('live_session_board_state').upsert(
+        {
+          session_id: activeSessionId,
+          fen: newFen,
+          moves: newMoves,
+          current_move_index: newMoveIdx,
+          board_controller_id: controller,
+          updated_by: userId || null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'session_id' }
+      );
       await supabase.from('classroom_chat').insert({
         class_id: classId,
         user_id: userId || null,
@@ -347,7 +366,7 @@ export default function ClassroomWorkspace({
       event: 'board-position',
       payload,
     });
-  }, [classId, userId, userName, boardControllerId]);
+  }, [classId, activeSessionId, userId, userName, boardControllerId]);
 
   // Callback passed to ChessWorkspace to capture live board moves
   // ChessWorkspace encodes clean SAN history after '__HISTORY__:' marker in pgn param
@@ -442,33 +461,54 @@ export default function ClassroomWorkspace({
     persistAndBroadcastBoardState(currentFen, gameMoves, currentMoveIndex, coachId);
   };
 
-  // Initial Board State Hydration from DB on Mount (Phase 13)
+  // Initial Board State Hydration from DB on Mount
   useEffect(() => {
-    if (!classId) return;
+    if (!activeSessionId) return;
     const fetchInitialBoardState = async () => {
       try {
-        const { data } = await supabase
-          .from('classroom_chat')
+        const { data: boardData } = await supabase
+          .from('live_session_board_state')
           .select('*')
-          .eq('class_id', classId)
-          .eq('sender_name', '__BOARD_STATE__')
-          .order('created_at', { ascending: false })
-          .limit(1)
+          .eq('session_id', activeSessionId)
           .maybeSingle();
 
-        if (data?.message) {
-          const parsed = JSON.parse(data.message);
-          if (parsed.fen && parsed.version && parsed.version >= boardVersionRef.current) {
-            boardVersionRef.current = parsed.version;
-            setCurrentFen(parsed.fen);
-            if (Array.isArray(parsed.moves)) {
-              setGameMoves(parsed.moves);
-              setCurrentMoveIndex(parsed.currentMoveIndex ?? parsed.moves.length - 1);
+        if (boardData && boardData.fen) {
+          setCurrentFen(boardData.fen);
+          if (Array.isArray(boardData.moves)) {
+            setGameMoves(boardData.moves as string[]);
+            setCurrentMoveIndex(boardData.current_move_index ?? (boardData.moves as string[]).length - 1);
+          }
+          if (boardData.board_controller_id) {
+            setBoardControllerId(boardData.board_controller_id);
+          }
+          if (boardData.allow_illegal_moves !== undefined) {
+            setAllowIllegalMoves(boardData.allow_illegal_moves);
+          }
+          setBoardKey((k) => k + 1);
+        } else {
+          // Fallback to classroom_chat history
+          const { data } = await supabase
+            .from('classroom_chat')
+            .select('*')
+            .eq('class_id', classId)
+            .eq('sender_name', '__BOARD_STATE__')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (data?.message) {
+            const parsed = JSON.parse(data.message);
+            if (parsed.fen) {
+              setCurrentFen(parsed.fen);
+              if (Array.isArray(parsed.moves)) {
+                setGameMoves(parsed.moves);
+                setCurrentMoveIndex(parsed.currentMoveIndex ?? parsed.moves.length - 1);
+              }
+              if (parsed.controllerId) {
+                setBoardControllerId(parsed.controllerId);
+              }
+              setBoardKey((k) => k + 1);
             }
-            if (parsed.controllerId) {
-              setBoardControllerId(parsed.controllerId);
-            }
-            setBoardKey((k) => k + 1);
           }
         }
       } catch (err) {
@@ -476,36 +516,28 @@ export default function ClassroomWorkspace({
       }
     };
     fetchInitialBoardState();
-  }, [classId]);
+  }, [activeSessionId, classId]);
 
-  /* ── Canonical Realtime Channel Setup (classroom:${classId}) ────────────── */
+  /* ── Canonical Realtime Channel Setup (live-session:${activeSessionId}) ── */
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
   const mainChannelRef = useRef<any>(null);
 
   useEffect(() => {
-    const channelTopic = `classroom:${classId}`;
+    const channelTopic = `live-session:${activeSessionId}`;
     if (process.env.NODE_ENV !== 'production') {
-      console.log(`[classroom] classId: ${classId}, authUserId: ${userId}, role: ${role}`);
-    }
-
-    if (typeof supabase.getChannels === 'function') {
-      const existing = supabase.getChannels().find((c: any) => c.topic === `realtime:${channelTopic}` || c.topic === channelTopic);
-      if (existing) supabase.removeChannel(existing);
+      console.log(`[classroom] JOIN SUCCESS role: ${role}, class_id: ${classId}, session_id: ${activeSessionId}, channel: ${channelTopic}`);
     }
 
     const channel = supabase
       .channel(channelTopic, {
-        config: { broadcast: { self: false }, presence: { key: classId } },
+        config: { broadcast: { self: false }, presence: { key: activeSessionId } },
       })
       .on('broadcast', { event: 'board-position' }, ({ payload }: any) => {
-        if (payload?.fen && payload?.version) {
-          if (payload.version <= boardVersionRef.current) {
-            if (process.env.NODE_ENV !== 'production') {
-              console.log(`[classroom] Ignored stale board version ${payload.version} <= ${boardVersionRef.current}`);
-            }
+        if (payload?.fen) {
+          if (payload.version && payload.version <= boardVersionRef.current) {
             return;
           }
-          boardVersionRef.current = payload.version;
+          if (payload.version) boardVersionRef.current = payload.version;
           setCurrentFen(payload.fen);
           if (Array.isArray(payload.moves)) {
             setGameMoves(payload.moves);
@@ -518,9 +550,9 @@ export default function ClassroomWorkspace({
         }
       })
       .on('broadcast', { event: 'board-control' }, ({ payload }: any) => {
-        if (payload?.controllerId && payload?.version) {
-          if (payload.version < boardVersionRef.current) return;
-          boardVersionRef.current = payload.version;
+        if (payload?.controllerId) {
+          if (payload.version && payload.version < boardVersionRef.current) return;
+          if (payload.version) boardVersionRef.current = payload.version;
           setBoardControllerId(payload.controllerId);
         }
       })
@@ -567,26 +599,20 @@ export default function ClassroomWorkspace({
       })
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState();
-        const onlineIds = Object.values(state).flat().map((p: any) => p.displayName || p.userId);
+        const onlineIds = Object.values(state).flat().map((p: any) => p.displayName || p.userId || p.profileId);
         setOnlineUserIds(onlineIds);
-        if (process.env.NODE_ENV !== 'production') {
-          console.log('[classroom] presence state:', state);
-        }
       })
       .on('presence', { event: 'join' }, ({ key, newPresences }: any) => {
-        if (process.env.NODE_ENV !== 'production') {
-          console.log(`[classroom] JOIN`, key, newPresences);
-        }
+        const state = channel.presenceState();
+        const onlineIds = Object.values(state).flat().map((p: any) => p.displayName || p.userId || p.profileId);
+        setOnlineUserIds(onlineIds);
       })
       .on('presence', { event: 'leave' }, ({ key, leftPresences }: any) => {
-        if (process.env.NODE_ENV !== 'production') {
-          console.log(`[classroom] LEAVE`, key, leftPresences);
-        }
+        const state = channel.presenceState();
+        const onlineIds = Object.values(state).flat().map((p: any) => p.displayName || p.userId || p.profileId);
+        setOnlineUserIds(onlineIds);
       })
       .subscribe(async (subStatus: string) => {
-        if (process.env.NODE_ENV !== 'production') {
-          console.log(`[classroom] channel status: ${subStatus}`);
-        }
         if (subStatus === 'SUBSCRIBED') {
           await channel.track({
             userId: userId || userName,
@@ -596,18 +622,32 @@ export default function ClassroomWorkspace({
             joinedAt: new Date().toISOString(),
             online: true,
           });
-        } else if (subStatus === 'TIMED_OUT' || subStatus === 'CHANNEL_ERROR') {
-          console.warn(`[classroom] ${subStatus}`);
         }
       });
 
     mainChannelRef.current = channel;
+
+    // 15-second heartbeat loop for DB presence tracking
+    const heartbeatInterval = setInterval(() => {
+      if (userId && activeSessionId) {
+        updateParticipantHeartbeatAction(activeSessionId, userId, role, true).catch(() => {});
+      }
+    }, 15000);
+
+    if (userId && activeSessionId) {
+      updateParticipantHeartbeatAction(activeSessionId, userId, role, true).catch(() => {});
+    }
+
     return () => {
+      clearInterval(heartbeatInterval);
+      if (userId && activeSessionId) {
+        updateParticipantHeartbeatAction(activeSessionId, userId, role, false).catch(() => {});
+      }
       supabase.removeChannel(channel);
       mainChannelRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [classId, userName, isCoach, role, userId, rightTab]);
+  }, [activeSessionId, classId, userName, isCoach, role, userId, rightTab]);
 
   // Coach Auto-Start Session Effect: Automatically start session timer & update DB status when Coach joins
   useEffect(() => {
@@ -796,7 +836,7 @@ export default function ClassroomWorkspace({
     return () => { supabase.removeChannel(channel); };
   }, [classId, isCoach]);
 
-  const classLabel = `${classType || 'Group'} (${duration}min)`;
+  const displayTitle = activeClassName || `${classType || 'Group'} (${duration}min)`;
 
   return (
     <div className="fixed inset-0 bg-[#0f0f1f] text-white flex flex-col overflow-hidden select-none" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -808,7 +848,10 @@ export default function ClassroomWorkspace({
         {/* Left: Class title & timer */}
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-extrabold text-white tracking-tight">{classLabel}</span>
+            <span className="text-sm font-extrabold text-amber-400 tracking-tight flex items-center gap-1.5">
+              <span className="text-xs">♟️</span>
+              <span>{displayTitle}</span>
+            </span>
             <span className="px-2 py-0.5 text-[10px] font-bold bg-[#1e1e3e] border border-[#2a2a4a] text-[#8888cc] rounded tracking-widest uppercase">
               {status === 'LIVE' ? 'LIVE SESSION' : status === 'SCHEDULED' ? 'SCHEDULED' : 'CUSTOM MEETING'}
             </span>

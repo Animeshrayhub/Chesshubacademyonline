@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 
+import SmartVirtualBackgroundCanvas from './SmartVirtualBackgroundCanvas';
+
 export type BackgroundType = 'none' | 'blur' | 'wood' | 'library' | 'neon' | 'custom';
 
 interface ClassroomVirtualBackgroundModalProps {
@@ -29,7 +31,6 @@ export default function ClassroomVirtualBackgroundModal({
 }: ClassroomVirtualBackgroundModalProps) {
   const [selectedType, setSelectedType] = useState<BackgroundType>(currentBgType);
   const [customUrl, setCustomUrl] = useState<string>(currentCustomUrl || '');
-  const videoRef = useRef<HTMLVideoElement>(null);
   const [previewStream, setPreviewStream] = useState<MediaStream | null>(null);
 
   useEffect(() => {
@@ -37,9 +38,6 @@ export default function ClassroomVirtualBackgroundModal({
       navigator.mediaDevices?.getUserMedia({ video: true, audio: false })
         .then((stream) => {
           setPreviewStream(stream);
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-          }
         })
         .catch(() => {});
     } else {
@@ -92,21 +90,12 @@ export default function ClassroomVirtualBackgroundModal({
 
         {/* Camera Preview */}
         <div className="relative w-full h-52 bg-[#0a0a1a] rounded-2xl overflow-hidden border border-[#222244] flex items-center justify-center group shadow-inner">
-          {activeWallpaperUrl && selectedType !== 'none' && selectedType !== 'blur' && (
-            <div
-              className="absolute inset-0 bg-cover bg-center transition-all"
-              style={{ backgroundImage: `url(${activeWallpaperUrl})` }}
-            />
-          )}
-
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className={`relative z-10 w-full h-full object-cover transition-all ${
-              selectedType === 'blur' ? 'blur-md opacity-90 scale-105' : selectedType !== 'none' ? 'opacity-85' : ''
-            }`}
+          <SmartVirtualBackgroundCanvas
+            stream={previewStream}
+            bgType={selectedType}
+            customBgUrl={customUrl}
+            isMuted={true}
+            className="w-full h-full"
           />
 
           {/* ChessHub Watermark Overlay */}

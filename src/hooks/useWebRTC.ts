@@ -15,6 +15,7 @@ export interface RemotePeer {
 
 interface UseWebRTCOptions {
   classId: string;
+  sessionId?: string;
   userName: string;
   userRole: 'admin' | 'coach' | 'student';
   userId?: string; // Added: stable user ID for peer identification
@@ -31,7 +32,7 @@ const ICE_SERVERS: RTCConfiguration = {
   ],
 };
 
-export function useWebRTC({ classId, userName, userRole, userId }: UseWebRTCOptions) {
+export function useWebRTC({ classId, sessionId, userName, userRole, userId }: UseWebRTCOptions) {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [isAudioMuted, setIsAudioMuted] = useState(false);
@@ -179,23 +180,16 @@ export function useWebRTC({ classId, userName, userRole, userId }: UseWebRTCOpti
     [myPeerId, userName, userRole]
   );
 
-  // Set up Supabase Realtime channel for WebRTC signaling
+  // Set up Supabase Realtime channel for WebRTC signaling derived from authoritative session_id
   useEffect(() => {
-    if (!classId) return;
+    const activeSessionId = sessionId || classId;
+    if (!activeSessionId) return;
 
     initLocalStream().then(() => {
-      const topic = `classroom:${classId}`;
-      
-      // Clean up any existing channel with this topic first
-      if (typeof (supabase as any).getChannels === 'function') {
-        const existing = (supabase as any).getChannels().find((c: any) => c.topic === `realtime:${topic}` || c.topic === topic);
-        if (existing) {
-          supabase.removeChannel(existing);
-        }
-      }
+      const topic = `live-session:${activeSessionId}`;
 
       const channel = supabase.channel(topic, {
-        config: { broadcast: { self: false }, presence: { key: classId } },
+        config: { broadcast: { self: false }, presence: { key: activeSessionId } },
       });
 
       channel
@@ -340,7 +334,7 @@ export function useWebRTC({ classId, userName, userRole, userId }: UseWebRTCOpti
     };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [classId, myPeerId, userName, userRole]);
+  }, [classId, sessionId, myPeerId, userName, userRole]);
 
 
   // Toggle Audio (Mute / Unmute Mic)

@@ -888,3 +888,129 @@ export async function completeClassSession(
   }
 }
 
+/**
+ * Resolves or creates the ONE authoritative active live session for an Admin-created class.
+ */
+export async function getOrCreateActiveLiveSession(
+  classId: string,
+  userId: string,
+  role: string
+): Promise<Result<{ sessionId: string; classId: string; className: string; status: string; startedAt: string }>> {
+  try {
+    const admin = createSupabaseAdmin();
+
+    // 1. Try calling atomic RPC function get_or_create_active_live_session
+    const { data: rpcData, error: rpcErr } = await admin.rpc('get_or_create_active_live_session', {
+      p_class_id: classId,
+      p_user_id: userId || null,
+      p_role: role.toLowerCase(),
+    });
+
+    if (!rpcErr && rpcData?.session_id) {
+      return {
+        success: true,
+        data: {
+          sessionId: rpcData.session_id,
+          classId: rpcData.class_id,
+          className: rpcData.class_name || 'Chess Classroom Session',
+          status: rpcData.status || 'active',
+          startedAt: rpcData.started_at || new Date().toISOString(),
+        },
+      };
+    }
+
+    // Fallback query if RPC initializing
+    const { data: cls } = await admin
+      .from('classes')
+      .select('topic, title, name')
+      .eq('id', classId)
+      .maybeSingle();
+
+    const className = cls?.title || cls?.topic || cls?.name || 'Chess Classroom Session';
+
+    let { data: existingSession } = await admin
+      .from('live_sessions')
+      .select('*')
+      .eq('class_id', classId)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (!existingSession) {
+      const { data: newSession } = await admin
+        .from('live_sessions')
+        .insert({ class_id: classId, status: 'active', started_at: new Date().toISOString() })
+        .select()
+        .single();
+      existingSession = newSession;
+    }
+
+    if (existingSession) {
+      if (userId) {
+        await admin.from('live_session_participants').upsert(
+          {
+            session_id: existingSession.id,
+            user_id: userId,
+            role: role.toLowerCase(),
+            is_online: true,
+            last_seen: new Date().toISOString(),
+          },
+          { onConflict: 'session_id,user_id' }
+        );
+      }
+
+      return {
+        success: true,
+        data: {
+          sessionId: existingSession.id,
+          classId: existingSession.class_id,
+          className,
+          status: existingSession.status,
+          startedAt: existingSession.started_at,
+        },
+      };
+    }
+
+    return {
+      success: false,
+      error: new DatabaseError('Could not resolve active live session', rpcErr),
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: new InternalServerError(err.message || 'Failed to resolve active live session'),
+    };
+  }
+}
+
+/**
+ * Updates participant heartbeat timestamp and online status.
+ */
+export async function updateParticipantHeartbeat(
+  sessionId: string,
+  userId: string,
+  role: string,
+  isOnline: boolean = true
+): Promise<Result<{ updated: boolean }>> {
+  try {
+    const admin = createSupabaseAdmin();
+    const { error } = await admin.from('live_session_participants').upsert(
+      {
+        session_id: sessionId,
+        user_id: userId,
+        role: role.toLowerCase(),
+        is_online: isOnline,
+        last_seen: new Date().toISOString(),
+        ...(isOnline ? {} : { left_at: new Date().toISOString() }),
+      },
+      { onConflict: 'session_id,user_id' }
+    );
+
+    if (error) {
+      return { success: false, error: new DatabaseError('Heartbeat failed', error) };
+    }
+    return { success: true, data: { updated: true } };
+  } catch (err: any) {
+    return { success: false, error: new InternalServerError(err.message) };
+  }
+}
+

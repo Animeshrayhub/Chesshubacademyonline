@@ -2,7 +2,7 @@ import React from 'react';
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/supabase/auth';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
-import { getClassStudents } from '@/lib/classes';
+import { getClassStudents, getOrCreateActiveLiveSession } from '@/lib/classes';
 import ClassroomWorkspace from '@/components/dashboard/ui/ClassroomWorkspace';
 
 export const dynamic = 'force-dynamic';
@@ -193,9 +193,15 @@ export default async function ClassroomPage({ params }: { params: { classId: str
     email: s.email,
   }));
 
+  const className = cls.title || cls.topic || cls.name || 'Chess Classroom Session';
+  const sessionRes = await getOrCreateActiveLiveSession(params.classId, user.id, role);
+  const sessionId = sessionRes.success && sessionRes.data ? sessionRes.data.sessionId : params.classId;
+
   return (
     <ClassroomWorkspace
       classId={params.classId}
+      sessionId={sessionId}
+      className={className}
       role={role}
       userName={`${user.firstName} ${user.lastName}`}
       coachName={coachName}

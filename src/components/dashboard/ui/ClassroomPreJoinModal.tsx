@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import type { BackgroundType } from './ClassroomVirtualBackgroundModal';
+import SmartVirtualBackgroundCanvas from './SmartVirtualBackgroundCanvas';
 
 interface ClassroomPreJoinModalProps {
   isOpen: boolean;
@@ -120,22 +121,14 @@ export default function ClassroomPreJoinModal({
 
         {/* Video Preview Canvas */}
         <div className="relative w-full h-56 bg-[#0a0a1a] rounded-2xl overflow-hidden border border-[#222244] flex items-center justify-center shadow-inner">
-          {bgPreview && bgType !== 'none' && bgType !== 'blur' && (
-            <div
-              className="absolute inset-0 bg-cover bg-center"
-              style={{ backgroundImage: `url(${bgPreview})` }}
-            />
-          )}
-
           {!isVideoMuted ? (
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className={`relative z-10 w-full h-full object-cover transition-all ${
-                bgType === 'blur' ? 'blur-md opacity-90 scale-105' : bgType !== 'none' ? 'opacity-85' : ''
-              }`}
+            <SmartVirtualBackgroundCanvas
+              stream={streamRef.current}
+              bgType={bgType}
+              customBgUrl={customBgUrl}
+              isMuted={true}
+              userName={userName}
+              className="w-full h-full"
             />
           ) : (
             <div className="w-16 h-16 rounded-full bg-emerald-600 border-2 border-emerald-400 flex items-center justify-center text-xl font-bold text-white shadow-lg">

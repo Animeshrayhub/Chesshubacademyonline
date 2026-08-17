@@ -232,3 +232,13 @@ export async function completeClassSessionAction(input: classesService.CompleteC
   }
 }
 
+export async function getOrCreateActiveLiveSessionAction(classId: string, userId: string, role: string) {
+  const result = await classesService.getOrCreateActiveLiveSession(classId, userId, role);
+  return serializeResult(result);
+}
+
+export async function updateParticipantHeartbeatAction(sessionId: string, userId: string, role: string, isOnline: boolean = true) {
+  const result = await classesService.updateParticipantHeartbeat(sessionId, userId, role, isOnline);
+  return serializeResult(result);
+}
+

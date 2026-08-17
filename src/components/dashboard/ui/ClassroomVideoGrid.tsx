@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { BackgroundType } from './ClassroomVirtualBackgroundModal';
 import ClassroomScreenShareModal from './ClassroomScreenShareModal';
+import SmartVirtualBackgroundCanvas from './SmartVirtualBackgroundCanvas';
 
 interface StudentInfo {
   firstName: string;
@@ -56,64 +57,16 @@ function VideoElement({
   bgType?: BackgroundType;
   customBgUrl?: string;
 }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-
-  useEffect(() => {
-    if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream;
-      videoRef.current.play().catch(() => {});
-
-      const handleTrackChange = () => {
-        if (videoRef.current && stream) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play().catch(() => {});
-        }
-      };
-
-      stream.addEventListener('addtrack', handleTrackChange);
-      stream.addEventListener('removetrack', handleTrackChange);
-      return () => {
-        stream.removeEventListener('addtrack', handleTrackChange);
-        stream.removeEventListener('removetrack', handleTrackChange);
-      };
-    }
-  }, [stream]);
-
   if (!stream) return null;
 
-  const bgPreview = bgType === 'wood'
-    ? "https://raw.githubusercontent.com/GiorgioMegrelli/chess.com-boards-and-pieces/master/boards/walnut.png"
-    : bgType === 'library'
-    ? "https://images.unsplash.com/photo-1529699211952-734e80c4d42b?w=800&h=500&fit=crop&q=85"
-    : bgType === 'neon'
-    ? "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=800&h=500&fit=crop&q=85"
-    : bgType === 'custom'
-    ? customBgUrl
-    : '';
-
   return (
-    <div className="relative w-full h-full overflow-hidden flex items-center justify-center">
-      {bgPreview && bgType !== 'none' && bgType !== 'blur' && (
-        <div
-          className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: `url(${bgPreview})` }}
-        />
-      )}
-      <video
-        ref={(node) => {
-          if (node && stream) {
-            node.srcObject = stream;
-            node.play().catch(() => {});
-          }
-        }}
-        autoPlay
-        playsInline
-        muted={isMuted}
-        className={`relative z-10 w-full h-full object-cover rounded-lg transition-all ${
-          bgType === 'blur' ? 'blur-md opacity-90 scale-105' : bgType !== 'none' ? 'opacity-85' : ''
-        }`}
-      />
-    </div>
+    <SmartVirtualBackgroundCanvas
+      stream={stream}
+      bgType={bgType}
+      customBgUrl={customBgUrl}
+      isMuted={isMuted}
+      className="w-full h-full rounded-lg"
+    />
   );
 }
 
