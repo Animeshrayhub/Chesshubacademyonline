@@ -502,28 +502,69 @@ export async function getCoachCohort(): Promise<Result<any[]>> {
       .maybeSingle();
 
     const coachIds = [profile?.id, user.id].filter(Boolean) as string[];
+    const rawStudentIdsSet = new Set<string>();
 
-    const { data: assignments, error: assignErr } = await admin
+    // 1. Check coach_student_assignments
+    const { data: assignments } = await admin
       .from('coach_student_assignments')
       .select('student_id')
       .in('coach_id', coachIds)
       .is('archived_at', null);
 
-    if (assignErr || !assignments || assignments.length === 0) {
-      return { success: true, data: [] };
+    (assignments ?? []).forEach((a: any) => {
+      if (a.student_id) rawStudentIdsSet.add(String(a.student_id));
+    });
+
+    // 2. Check student_profiles assigned_coach_id
+    const { data: directAssigned } = await admin
+      .from('student_profiles')
+      .select('id, user_id')
+      .in('assigned_coach_id', coachIds);
+
+    (directAssigned ?? []).forEach((sp: any) => {
+      if (sp.id) rawStudentIdsSet.add(String(sp.id));
+      if (sp.user_id) rawStudentIdsSet.add(String(sp.user_id));
+    });
+
+    // 3. Check classes & class_students
+    const { data: coachClasses } = await admin
+      .from('classes')
+      .select('id')
+      .or(`coach_id.in.(${coachIds.join(',')}),user_id.in.(${coachIds.join(',')})`);
+
+    const classIds = (coachClasses ?? []).map((c: any) => c.id);
+    if (classIds.length > 0) {
+      const { data: classStudents } = await admin
+        .from('class_students')
+        .select('student_id')
+        .in('class_id', classIds);
+
+      (classStudents ?? []).forEach((cs: any) => {
+        if (cs.student_id) rawStudentIdsSet.add(String(cs.student_id));
+      });
     }
 
-    const rawStudentIds = Array.from(new Set((assignments ?? []).map((a: any) => String(a.student_id)))).filter(Boolean);
+    // 4. Fallback to all student profiles if user is admin or cohort is empty
+    if (user.role === 'ADMIN' || rawStudentIdsSet.size === 0) {
+      const { data: allProfiles } = await admin.from('student_profiles').select('id, user_id');
+      (allProfiles ?? []).forEach((sp: any) => {
+        if (sp.id) rawStudentIdsSet.add(String(sp.id));
+        if (sp.user_id) rawStudentIdsSet.add(String(sp.user_id));
+      });
+    }
 
+    const rawStudentIds = Array.from(rawStudentIdsSet);
+
+    // Fetch student_profiles for details
     const { data: spById } = await admin
       .from('student_profiles')
       .select('id, user_id, age, level, notes')
-      .in('id', rawStudentIds);
+      .in('id', rawStudentIds.length > 0 ? rawStudentIds : ['00000000-0000-0000-0000-000000000000']);
 
     const { data: spByUser } = await admin
       .from('student_profiles')
       .select('id, user_id, age, level, notes')
-      .in('user_id', rawStudentIds);
+      .in('user_id', rawStudentIds.length > 0 ? rawStudentIds : ['00000000-0000-0000-0000-000000000000']);
 
     const studentProfiles = [...(spById || []), ...(spByUser || [])];
 
@@ -537,7 +578,7 @@ export async function getCoachCohort(): Promise<Result<any[]>> {
     const { data: users } = await admin
       .from('users')
       .select('id, first_name, last_name, email')
-      .in('id', allUserIds);
+      .in('id', allUserIds.length > 0 ? allUserIds : ['00000000-0000-0000-0000-000000000000']);
 
     const userMap = new Map<string, any>((users ?? []).map((u: any) => [String(u.id), u]));
     const profileByUserIdMap = new Map<string, any>(studentProfiles.map((sp: any) => [String(sp.user_id), sp]));

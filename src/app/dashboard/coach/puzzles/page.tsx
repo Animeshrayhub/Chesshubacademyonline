@@ -5,6 +5,8 @@ import { getCurrentUser } from '@/lib/supabase/auth';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import CoachPuzzleManager from '@/features/coach/CoachPuzzleManager';
 
+import { getCoachCohort } from '@/lib/coaches';
+
 export const dynamic = 'force-dynamic';
 
 export default async function CoachPuzzlesPage() {
@@ -24,29 +26,15 @@ export default async function CoachPuzzlesPage() {
     redirect('/dashboard');
   }
 
-  // Fetch coach's assigned students
-  const { data: coachProfile } = await admin
-    .from('coach_profiles')
-    .select('id')
-    .eq('user_id', user.id)
-    .maybeSingle();
+  // Fetch comprehensive coach student cohort
+  const cohortRes = await getCoachCohort();
+  const cohort = cohortRes.success && cohortRes.data ? cohortRes.data : [];
 
-  let assignedStudents: Array<{ id: string; name: string; email: string }> = [];
-
-  if (coachProfile) {
-    const { data: studentsData } = await admin
-      .from('student_profiles')
-      .select('id, user_id, users(first_name, last_name, email)')
-      .eq('assigned_coach_id', coachProfile.id);
-
-    if (studentsData) {
-      assignedStudents = studentsData.map((s: any) => ({
-        id: s.id,
-        name: s.users ? `${s.users.first_name} ${s.users.last_name}` : 'Student',
-        email: s.users?.email || '',
-      }));
-    }
-  }
+  const assignedStudents = cohort.map((s) => ({
+    id: s.profileId,
+    name: `${s.firstName} ${s.lastName}`.trim() || 'Academy Student',
+    email: s.email,
+  }));
 
   return (
     <div className="space-y-6">

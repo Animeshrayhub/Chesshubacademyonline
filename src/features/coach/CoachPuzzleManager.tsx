@@ -4,6 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { getPuzzleBankAction } from '@/actions/puzzles';
 import type { DbHomeworkPuzzle } from '@/lib/puzzles/puzzleBankService';
 
+import Link from 'next/link';
+
 interface CoachPuzzleManagerProps {
   students: Array<{ id: string; name: string; email: string }>;
 }
@@ -60,7 +62,7 @@ export default function CoachPuzzleManager({ students }: CoachPuzzleManagerProps
   return (
     <div className="space-y-6">
       {/* Assignment Toolbar */}
-      <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center text-lg">
             ♟️
@@ -70,7 +72,7 @@ export default function CoachPuzzleManager({ students }: CoachPuzzleManagerProps
               Assign Puzzles to Student
             </h3>
             <p className="text-xs text-slate-400">
-              Selected <span className="text-amber-400 font-bold">{selectedPuzzleIds.length}</span> puzzle(s)
+              Selected <span className="text-amber-400 font-bold">{selectedPuzzleIds.length}</span> puzzle(s) ({students.length} Student Profiles Loaded)
             </p>
           </div>
         </div>
@@ -79,9 +81,9 @@ export default function CoachPuzzleManager({ students }: CoachPuzzleManagerProps
           <select
             value={targetStudentId}
             onChange={(e) => setTargetStudentId(e.target.value)}
-            className="w-full sm:w-64 px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
+            className="w-full sm:w-64 px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:border-amber-400 focus:outline-none"
           >
-            <option value="">Select Assigned Student...</option>
+            <option value="">Select Assigned Student ({students.length} available)...</option>
             {students.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name} ({s.email})
@@ -89,11 +91,22 @@ export default function CoachPuzzleManager({ students }: CoachPuzzleManagerProps
             ))}
           </select>
 
+          {targetStudentId && (
+            <Link
+              href={`/dashboard/coach/students/${targetStudentId}`}
+              className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold rounded-xl text-xs flex items-center gap-1 transition-all border border-slate-700 whitespace-nowrap"
+              title="Open Student Profile Route"
+            >
+              <span>👤 Student Route</span>
+              <span>↗</span>
+            </Link>
+          )}
+
           <button
             type="button"
             onClick={handleAssignPuzzles}
             disabled={selectedPuzzleIds.length === 0 || !targetStudentId}
-            className="w-full sm:w-auto px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs shadow-gold transition-all disabled:opacity-50"
+            className="w-full sm:w-auto px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs shadow-gold transition-all disabled:opacity-50 whitespace-nowrap"
           >
             🎯 Assign Selected Set
           </button>
@@ -103,6 +116,29 @@ export default function CoachPuzzleManager({ students }: CoachPuzzleManagerProps
       {assignmentSuccess && (
         <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 rounded-xl text-xs font-semibold">
           {assignmentSuccess}
+        </div>
+      )}
+
+      {/* Quick Student Cohort Routes */}
+      {students.length > 0 && (
+        <div className="bg-slate-900/60 border border-slate-800 p-3.5 rounded-2xl flex flex-col sm:flex-row sm:items-center gap-3 overflow-x-auto shadow-sm">
+          <span className="text-xs font-bold text-slate-400 whitespace-nowrap flex items-center gap-1.5">
+            <span className="text-amber-400">🎓</span>
+            <span>Assigned Student Routes:</span>
+          </span>
+          <div className="flex items-center gap-2 flex-wrap">
+            {students.map((st) => (
+              <Link
+                key={st.id}
+                href={`/dashboard/coach/students/${st.id}`}
+                className="px-2.5 py-1 bg-slate-950 hover:bg-amber-500/10 border border-slate-800 hover:border-amber-500/40 text-xs font-semibold text-slate-200 hover:text-amber-300 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap shadow-sm"
+              >
+                <span>👤 {st.name}</span>
+                <span className="text-[10px] font-mono text-slate-500">ID: {st.id.slice(0, 8)}</span>
+                <span className="text-[10px] text-amber-400">↗</span>
+              </Link>
+            ))}
+          </div>
         </div>
       )}
 

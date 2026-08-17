@@ -100,6 +100,105 @@ function saveCustomPuzzlesToDisk(puzzles: DbHomeworkPuzzle[]) {
 // Fallback in-memory dataset to ensure zero UI crashes (empty for clean slate)
 let inMemoryPuzzles: DbHomeworkPuzzle[] = [];
 
+const DEFAULT_SEED_PUZZLES: DbHomeworkPuzzle[] = [
+  {
+    id: 'seed-puzzle-1',
+    title: 'Back Rank Checkmate Pattern',
+    fen: '6k1/5ppp/8/8/8/8/5PPP/1R4K1 w - - 0 1',
+    solution: ['b1b8'],
+    theme: 'Checkmate / Back Rank',
+    difficulty: 'beginner',
+    rating: 1200,
+    hint_1: 'Look at black\'s weak back rank guarded only by pawns.',
+    explanation: 'Rb8# delivers checkmate on the undefended 8th rank.',
+    is_active: true,
+  },
+  {
+    id: 'seed-puzzle-2',
+    title: 'Smothered Knight Checkmate',
+    fen: '6rk/5Npp/8/8/8/8/5PPP/6K1 w - - 0 1',
+    solution: ['f7h6', 'g8h8', 'f7f7'],
+    theme: 'Checkmate / Smothered',
+    difficulty: 'intermediate',
+    rating: 1550,
+    hint_1: 'The king is trapped by its own rook and pawns.',
+    explanation: 'Nf7# smothers the king with a knight checkmate.',
+    is_active: true,
+  },
+  {
+    id: 'seed-puzzle-3',
+    title: 'Royal Knight Fork',
+    fen: 'r1bqk2r/pppp1ppp/2n5/4p3/2B1n3/5N2/PPPP1PPP/R1BQK2R w KQkq - 0 1',
+    solution: ['c4f7', 'e8f7', 'f3e5'],
+    theme: 'Tactics / Fork',
+    difficulty: 'beginner',
+    rating: 1300,
+    hint_1: 'Target the weak f7 square.',
+    explanation: 'Bxf7+ forces the king out and leads to a tactical knight fork.',
+    is_active: true,
+  },
+  {
+    id: 'seed-puzzle-4',
+    title: 'Absolute Pin on Queen',
+    fen: 'r1b1k2r/pppp1ppp/8/4q3/8/8/PPP2PPP/R1B1KB1R w KQkq - 0 1',
+    solution: ['c1e3'],
+    theme: 'Tactics / Pin',
+    difficulty: 'beginner',
+    rating: 1250,
+    hint_1: 'Develop the bishop to shield check while pinning.',
+    explanation: 'Be3 blocks the check safely.',
+    is_active: true,
+  },
+  {
+    id: 'seed-puzzle-5',
+    title: 'Queen Sacrifice Checkmate',
+    fen: 'r1b2rk1/pp3ppp/2n5/q1p5/2B5/5Q2/PPP2PPP/3RR1K1 w - - 0 1',
+    solution: ['f3f7', 'f8f7', 'e1e8'],
+    theme: 'Checkmate / Sacrifice',
+    difficulty: 'advanced',
+    rating: 1700,
+    hint_1: 'Sacrifice the queen on f7 to deflect the rook.',
+    explanation: 'Qxf7+ Rxf7 Re8# wins by back rank mate.',
+    is_active: true,
+  },
+  {
+    id: 'seed-puzzle-6',
+    title: 'Skewer on King and Rook',
+    fen: '8/8/4k3/8/3Q4/8/4K3/8 w - - 0 1',
+    solution: ['d4e4'],
+    theme: 'Tactics / Skewer',
+    difficulty: 'intermediate',
+    rating: 1400,
+    hint_1: 'Centralize the queen with check.',
+    explanation: 'Qe4+ checks the king and controls key squares.',
+    is_active: true,
+  },
+  {
+    id: 'seed-puzzle-7',
+    title: 'Passed Pawn Promotion Race',
+    fen: '8/8/4k3/p7/P7/4K3/8/8 w - - 0 1',
+    solution: ['e3e4', 'e6d6', 'e4d4'],
+    theme: 'Endgame / Pawns',
+    difficulty: 'expert',
+    rating: 1850,
+    hint_1: 'Take opposition with Ke4.',
+    explanation: 'Ke4 takes direct opposition and forces king infiltration.',
+    is_active: true,
+  },
+  {
+    id: 'seed-puzzle-8',
+    title: 'Discovered Attack on King',
+    fen: 'r1b1kb1r/pppp1ppp/8/4N3/2B1q3/8/PPP2PPP/R1BQK2R w KQkq - 0 1',
+    solution: ['c4f7', 'e8e7'],
+    theme: 'Tactics / Discovered Attack',
+    difficulty: 'intermediate',
+    rating: 1500,
+    hint_1: 'Bxf7+ checks king while threatening the un-defended queen.',
+    explanation: 'Bxf7+ is a strong check gaining momentum.',
+    is_active: true,
+  },
+];
+
 /**
  * Completely clears all custom & disk puzzles from Central Puzzle Bank.
  */
@@ -185,15 +284,19 @@ export async function getPuzzleBank(
       };
     }
 
-    // Merge DB puzzles with disk custom puzzles
+    // Merge DB puzzles with disk custom puzzles and default seed dataset
     const dbList = (data as DbHomeworkPuzzle[]) || [];
-    const combined = [...diskPuzzles, ...dbList];
+    const combined = [...diskPuzzles, ...dbList, ...inMemoryPuzzles];
     const seen = new Set<string>();
-    const deduplicated = combined.filter((p) => {
+    let deduplicated = combined.filter((p) => {
       if (seen.has(p.id)) return false;
       seen.add(p.id);
       return true;
     });
+
+    if (deduplicated.length === 0) {
+      deduplicated = DEFAULT_SEED_PUZZLES;
+    }
 
     return {
       success: true,
@@ -210,6 +313,10 @@ export async function getPuzzleBank(
       seen.add(p.id);
       return true;
     });
+
+    if (list.length === 0) {
+      list = DEFAULT_SEED_PUZZLES;
+    }
 
     return {
       success: true,
