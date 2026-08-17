@@ -928,6 +928,24 @@ export default function ClassroomWorkspace({
         {/* ═══ LEFT COLUMN: Chessboard + Bottom Toolbar ════════════════════ */}
         <div className="flex flex-col flex-1 overflow-hidden bg-[#0a0a1a] min-w-0">
 
+          {/* Completed Session Review Banner */}
+          {(status === 'COMPLETED' || status === 'RECORDING_AVAILABLE') && (
+            <div className="w-full bg-gradient-to-r from-emerald-950/90 via-emerald-900/70 to-slate-900 border-b border-emerald-500/40 px-4 py-2 flex items-center justify-between text-xs text-emerald-200 shadow-md">
+              <div className="flex items-center gap-2 font-bold">
+                <span className="text-base">🏁</span>
+                <span>Class Session Completed! You are in Interactive Replay & Review Mode.</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => router.push(`/classroom/${classId}/review`)}
+                className="px-3 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs rounded-lg shadow transition-all flex items-center gap-1 cursor-pointer"
+              >
+                <span>🎥</span>
+                <span>Watch Recording & Full Summary</span>
+              </button>
+            </div>
+          )}
+
           {/* Active Screen Share Notification Banner */}
           {webRTC.screenStream && (
             <div className="w-full bg-gradient-to-r from-amber-500/20 via-amber-400/20 to-yellow-500/20 border-b border-amber-500/40 px-3 py-2 flex items-center justify-between text-xs text-amber-300 shadow-md">

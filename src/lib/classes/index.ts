@@ -831,21 +831,46 @@ export async function completeClassSession(
 
     const classStatus = input.recordingUrl?.trim() ? 'RECORDING_AVAILABLE' : 'COMPLETED';
 
-    // 1. Update class record
-    const { data: updatedClass, error: classErr } = await admin
-      .from('classes')
-      .update({
-        status: classStatus,
-        session_notes: input.sessionNotes,
-        recording_url: input.recordingUrl?.trim() || null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', input.classId)
-      .select()
-      .single();
+    // 1. Update class record safely (session_notes, status, updated_at)
+    let updatedClass: any = null;
+    let classErr: any = null;
 
+    try {
+      const { data, error } = await admin
+        .from('classes')
+        .update({
+          status: classStatus,
+          session_notes: input.sessionNotes,
+          recording_url: input.recordingUrl?.trim() || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', input.classId)
+        .select()
+        .maybeSingle();
+
+      updatedClass = data;
+      classErr = error;
+    } catch (e: any) {
+      classErr = e;
+    }
+
+    // Fallback if recording_url column is missing on classes table
     if (classErr) {
-      return { success: false, error: new DatabaseError('Failed to complete class session', classErr) };
+      const { data: fbData, error: fbErr } = await admin
+        .from('classes')
+        .update({
+          status: classStatus,
+          session_notes: input.sessionNotes,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', input.classId)
+        .select()
+        .maybeSingle();
+
+      if (fbErr) {
+        return { success: false, error: new DatabaseError('Failed to complete class session', fbErr) };
+      }
+      updatedClass = fbData;
     }
 
     // 2. Insert attendance records into class_attendance if any

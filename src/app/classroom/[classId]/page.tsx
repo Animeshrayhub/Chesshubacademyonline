@@ -130,9 +130,7 @@ export default async function ClassroomPage({ params }: { params: { classId: str
         );
       }
 
-      if (cls.status === 'COMPLETED' || cls.status === 'RECORDING_AVAILABLE') {
-        redirect(`/classroom/${params.classId}/review`);
-      } else if (cls.status === 'CANCELLED') {
+      if (cls.status === 'CANCELLED') {
         redirect('/unauthorized');
       } else {
         isAuthorized = true;

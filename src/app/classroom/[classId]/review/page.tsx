@@ -20,11 +20,20 @@ export default async function ClassReviewPage({ params }: { params: { classId: s
   const summaryRes = await getClassSummary(classId);
   const cls = summaryRes.data;
 
+  // Fetch optional recording URL from class_recordings table
+  const { data: recRow } = await admin
+    .from('class_recordings')
+    .select('recording_url')
+    .eq('class_id', classId)
+    .maybeSingle();
+
+  const recordingUrl = (cls as any)?.recording_url || recRow?.recording_url || '';
+
   // Fetch real enrolled students from database
   const studentsRes = await getClassStudents(classId);
   const realStudents = studentsRes.success && studentsRes.data ? studentsRes.data : [];
 
-  const classTitle = (cls as any)?.title || 'Classroom Study Review';
+  const classTitle = (cls as any)?.title || (cls as any)?.topic || 'Classroom Study Review';
 
   // Build real leaderboard from actual enrolled student records
   const leaderboardList = realStudents.length > 0
@@ -125,6 +134,47 @@ export default async function ClassReviewPage({ params }: { params: { classId: s
           MAIN CONTENT CONTAINER
       ═══════════════════════════════════════════════════════════════════ */}
       <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            CLASS RECORDING VIDEO SECTION
+        ═══════════════════════════════════════════════════════════════════ */}
+        {recordingUrl ? (
+          <section className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl text-white space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🎥</span>
+                <div>
+                  <h2 className="text-base font-extrabold text-white">Live Class Video Recording</h2>
+                  <p className="text-xs text-slate-400">Attached Google Drive recording for student review</p>
+                </div>
+              </div>
+              <a
+                href={recordingUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs rounded-xl shadow transition-all flex items-center gap-1.5"
+              >
+                <span>📂 Open in Google Drive / New Tab</span>
+                <span>↗</span>
+              </a>
+            </div>
+            {recordingUrl.includes('drive.google.com') ? (
+              <div className="w-full aspect-video rounded-xl overflow-hidden bg-black border border-slate-800 shadow-inner">
+                <iframe
+                  src={recordingUrl.includes('/preview') ? recordingUrl : recordingUrl.replace(/\/view(\?.*)?$/, '/preview')}
+                  className="w-full h-full border-0"
+                  allow="autoplay; encrypted-media"
+                  allowFullScreen
+                />
+              </div>
+            ) : (
+              <div className="p-4 bg-slate-800/80 rounded-xl border border-slate-700 flex items-center justify-between">
+                <p className="text-xs text-slate-300">Session video link is ready for review.</p>
+                <a href={recordingUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-amber-400 hover:underline">Play Video Stream ➔</a>
+              </div>
+            )}
+          </section>
+        ) : null}
 
         {/* ═══════════════════════════════════════════════════════════════════
             REAL LEADERBOARD SECTION
