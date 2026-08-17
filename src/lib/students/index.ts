@@ -635,7 +635,6 @@ export async function getStudentClasses(): Promise<Result<any[]>> {
     const enrollmentMap = new Map<string, any>((enrollments || []).map((e: any) => [e.class_id, e]));
     let classIds = (enrollments || []).map((e: any) => e.class_id).filter(Boolean);
 
-    // Also check for classes by assigned coaches in coach_student_assignments
     const studentProfileIds = Array.from(new Set([studentProfileId, user.id])).filter(Boolean);
     const { data: coachAssignments } = await admin
       .from('coach_student_assignments')
@@ -644,20 +643,12 @@ export async function getStudentClasses(): Promise<Result<any[]>> {
 
     const assignedCoachIds = (coachAssignments || []).map((a: any) => a.coach_id).filter(Boolean);
 
-    let query = admin.from('classes').select('*').is('archived_at', null);
-
-    if (classIds.length > 0 && assignedCoachIds.length > 0) {
-      query = query.or(`id.in.(${classIds.join(',')}),coach_id.in.(${assignedCoachIds.join(',')})`);
-    } else if (classIds.length > 0) {
-      query = query.in('id', classIds);
-    } else if (assignedCoachIds.length > 0) {
-      query = query.in('coach_id', assignedCoachIds);
-    } else {
-      // Fallback: Return all non-archived classes so student can view upcoming/live academy classes
-      query = query;
-    }
-
-    const { data: classes, error: cErr } = await query.order('scheduled_start', { ascending: true });
+    // Fetch all non-archived classes to guarantee Coach & Student join the exact same Admin-created classes
+    const { data: classes, error: cErr } = await admin
+      .from('classes')
+      .select('*')
+      .is('archived_at', null)
+      .order('scheduled_start', { ascending: true });
 
     if (cErr || !classes) {
       return { success: false, error: new DatabaseError('Failed to fetch student classes', cErr) };
