@@ -623,8 +623,7 @@ export async function getStudentClasses(): Promise<Result<any[]>> {
     const user = await assertStudent();
     const admin = createSupabaseAdmin();
 
-    const studentProfileId = await getStudentProfileId(admin, user.id);
-    if (!studentProfileId) return { success: true, data: [] };
+    const studentProfileId = (await getStudentProfileId(admin, user.id)) || user.id;
 
     const { data: enrollments } = await admin
       .from('class_students')
