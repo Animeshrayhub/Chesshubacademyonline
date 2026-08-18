@@ -118,24 +118,41 @@ export default async function ClassroomPage({ params }: { params: { classId: str
     }
 
     if (sp) {
-      const studentProfileIds = students.map((s) => s.studentProfileId);
-      if (!studentProfileIds.includes(sp.id)) {
-        await admin.from('class_students').upsert(
-          {
-            class_id: params.classId,
-            student_id: sp.id,
-            joined_at: new Date().toISOString(),
-          },
-          { onConflict: 'class_id,student_id' }
-        );
-      }
+      // Check existing enrollment in class_students
+      const { data: enrollment } = await admin
+        .from('class_students')
+        .select('id')
+        .eq('class_id', params.classId)
+        .eq('student_id', sp.id)
+        .maybeSingle();
 
-      if (cls.status === 'CANCELLED') {
-        redirect('/unauthorized');
-      } else {
+      if (enrollment) {
+        // Already enrolled — allow
         isAuthorized = true;
+      } else {
+        // Check coach_student_assignments — student is assigned to the coach of this class
+        if (cls.coach_id) {
+          const { data: assignment } = await admin
+            .from('coach_student_assignments')
+            .select('id')
+            .or(`student_id.eq.${sp.id},student_id.eq.${user.id}`)
+            .limit(1)
+            .maybeSingle();
+
+          if (assignment) {
+            // Auto-enroll assigned student into this class
+            await admin.from('class_students').upsert(
+              { class_id: params.classId, student_id: sp.id },
+              { onConflict: 'class_id,student_id' }
+            );
+            isAuthorized = true;
+          }
+        }
       }
     }
+
+    // Deny cancelled classes
+    if (cls.status === 'CANCELLED') isAuthorized = false;
   }
 
   if (!isAuthorized) {
@@ -178,9 +195,10 @@ export default async function ClassroomPage({ params }: { params: { classId: str
     }
 
     if (!cls.zoom_join_url) {
-      const safeId = params.classId.replace(/[^a-zA-Z0-9]/g, '');
+      const { getJitsiRoomName } = await import('@/lib/video');
+      const roomName = getJitsiRoomName(params.classId);
       const defaultServer = process.env.NEXT_PUBLIC_JITSI_SERVER || 'https://meet.jit.si';
-      cls.zoom_join_url = `${defaultServer}/ChessHub_Class_${safeId}`;
+      cls.zoom_join_url = `${defaultServer}/${roomName}`;
       cls.zoom_start_url = cls.zoom_join_url;
     }
   }

@@ -186,7 +186,9 @@ export function useWebRTC({ classId, sessionId, userName, userRole, userId }: Us
     if (!activeSessionId) return;
 
     initLocalStream().then(() => {
-      const topic = `live-session:${activeSessionId}`;
+      // Use distinct channel topic for WebRTC signaling so it doesn't
+      // conflict with ClassroomWorkspace's board-sync 'live-session:' channel.
+      const topic = `webrtc-signal:${activeSessionId}`;
 
       const channel = supabase.channel(topic, {
         config: { broadcast: { self: false }, presence: { key: activeSessionId } },

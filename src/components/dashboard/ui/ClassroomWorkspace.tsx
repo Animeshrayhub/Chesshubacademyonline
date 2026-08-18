@@ -6,18 +6,16 @@ import { Chess } from 'chess.js';
 import { supabase } from '@/utils/supabaseClient';
 import ChessWorkspace from './ChessWorkspace';
 import ClassroomLocalRecorder from '@/components/dashboard/ui/ClassroomLocalRecorder';
-import ClassroomVideoGrid from '@/components/dashboard/ui/ClassroomVideoGrid';
+import JitsiClassroomVideo from '@/components/classroom/JitsiClassroomVideo';
 import ClassroomLessonDrawer from '@/features/classroom/ClassroomLessonDrawer';
 import ClassroomDatabasePanel from '@/components/dashboard/ui/ClassroomDatabasePanel';
 import ClearBoardModal, { ClearMode } from './ClearBoardModal';
 import ClassroomBottomToolbar from './ClassroomBottomToolbar';
 import ClassroomMoveNotation from './ClassroomMoveNotation';
 import ClassroomEnginePanel from './ClassroomEnginePanel';
-import { useWebRTC } from '@/hooks/useWebRTC';
 import type { TeachingPosition } from '@/types/curriculum.types';
-import ClassroomVirtualBackgroundModal, { type BackgroundType } from './ClassroomVirtualBackgroundModal';
 import ClassroomPreJoinModal from './ClassroomPreJoinModal';
-import { endClassAction, startClassAction, submitClassEndReportAction, updateParticipantHeartbeatAction } from '@/actions/classes';
+import { startClassAction, submitClassEndReportAction, updateParticipantHeartbeatAction } from '@/actions/classes';
 import { listHomeworkAction, listChaptersAction, assignChapterToClassAction } from '@/actions/homework';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
@@ -98,8 +96,10 @@ export default function ClassroomWorkspace({
   const [error, setError] = useState('');
   const isCoach = role === 'coach' || role === 'admin';
 
-  /* ── Native In-House WebRTC Hook (Zero Login / Zero Redirect) ───────────── */
-  const webRTC = useWebRTC({ classId, sessionId: activeSessionId, userName, userRole: role, userId });
+  /* ── Jitsi Video Mute State (passed to embedded Jitsi iframe) ───────────── */
+  const [jitsiAudioMuted, setJitsiAudioMuted] = useState(false);
+  const [jitsiVideoMuted, setJitsiVideoMuted] = useState(false);
+  const [jitsiJoined, setJitsiJoined] = useState(false);
 
   /* ── Persistent Session Timer ───────────────────────────────────────────── */
   const [startedAtTime, setStartedAtTime] = useState<string | null>(() => {
@@ -217,10 +217,8 @@ export default function ClassroomWorkspace({
 
   /* ── Media & Modal State ────────────────────────────────────────────────── */
   const [showPreJoinModal, setShowPreJoinModal] = useState(true);
-  const [showBgModal, setShowBgModal] = useState(false);
-  const [bgType, setBgType] = useState<BackgroundType>('none');
-  const [customBgUrl, setCustomBgUrl] = useState<string>('');
   const [showMoveDots, setShowMoveDots] = useState(true);
+
 
   /* ── Lesson & Position State ────────────────────────────────────────────── */
   const [showLessonDrawer, setShowLessonDrawer] = useState(false);
@@ -678,27 +676,7 @@ export default function ClassroomWorkspace({
 
   const [homeworkToast, setHomeworkToast] = useState<string | null>(null);
 
-  // Push-to-Talk spacebar listener
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && !e.repeat && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
-        e.preventDefault();
-        webRTC.toggleAudio(true);
-      }
-    };
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
-        e.preventDefault();
-        webRTC.toggleAudio(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-    };
-  }, [webRTC]);
+  // (Push-to-Talk via spacebar not needed — Jitsi handles its own audio controls)
 
   const sendChatMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -946,15 +924,7 @@ export default function ClassroomWorkspace({
             </div>
           )}
 
-          {/* Active Screen Share Notification Banner */}
-          {webRTC.screenStream && (
-            <div className="w-full bg-gradient-to-r from-amber-500/20 via-amber-400/20 to-yellow-500/20 border-b border-amber-500/40 px-3 py-2 flex items-center justify-between text-xs text-amber-300 shadow-md">
-              <div className="flex items-center gap-2 font-bold">
-                <span className="text-base animate-pulse">💻</span>
-                <span>Coach is sharing screen! View high-res big screen in video panel or open zoom controls.</span>
-              </div>
-            </div>
-          )}
+
 
           {/* Stepper bar */}
           {activeLessonPositions.length > 1 && (
@@ -1008,12 +978,12 @@ export default function ClassroomWorkspace({
             showMoveDots={showMoveDots}
             isFullscreen={isFullscreenBoard}
             isRightPanelCollapsed={isRightPanelCollapsed}
-            isAudioMuted={webRTC.isAudioMuted}
-            isVideoMuted={webRTC.isVideoMuted}
+            isAudioMuted={jitsiAudioMuted}
+            isVideoMuted={jitsiVideoMuted}
             isBoardLocked={isBoardLocked}
             allowIllegalMoves={allowIllegalMoves}
-            onToggleAudio={webRTC.toggleAudio}
-            onToggleVideo={webRTC.toggleVideo}
+            onToggleAudio={() => setJitsiAudioMuted((m) => !m)}
+            onToggleVideo={() => setJitsiVideoMuted((m) => !m)}
             onToggleMoveDots={() => setShowMoveDots((d) => !d)}
             onToggleBoardLock={() => setIsBoardLocked((l) => !l)}
             onToggleIllegalMoves={() => {
@@ -1061,42 +1031,14 @@ export default function ClassroomWorkspace({
             className="flex flex-col bg-[#0f0f1f] border-l border-[#222244] flex-shrink-0 overflow-hidden"
             style={{ width: `${rightColWidth}px` }}
           >
-            {/* ── Native In-House WebRTC Video Section (Zero Login / Zero Redirect) ── */}
-            <div className="flex-shrink-0">
-              <ClassroomVideoGrid
-                localStream={webRTC.localStream}
-                screenStream={webRTC.screenStream}
-                remotePeers={webRTC.remotePeers}
-                isAudioMuted={webRTC.isAudioMuted}
-                isVideoMuted={webRTC.isVideoMuted}
-                isScreenSharing={webRTC.isScreenSharing}
-                handRaised={webRTC.handRaised}
-                reactionEmoji={webRTC.reactionEmoji}
-                coachName={coachName}
+            {/* ── Jitsi Embedded Video (Zero Redirect — stays inside ChessHub) ── */}
+            <div className="flex-shrink-0" style={{ height: '240px' }}>
+              <JitsiClassroomVideo
+                classId={classId}
                 userName={userName}
-                isCoach={isCoach}
-                students={students}
-                onlineUserIds={onlineUserIds}
-                spotlightedStudentId={spotlightedStudentId}
-                bgType={bgType}
-                customBgUrl={customBgUrl}
-                boardControllerId={boardControllerId}
-                onGrantBoardControl={handleGrantBoardControl}
-                onTakeBoardControl={handleTakeBoardControl}
-                onOpenBgModal={() => setShowBgModal(true)}
-                onCoachMuteAll={() => {
-                  students.forEach((s) => {
-                    webRTC.coachMuteStudent(`${s.firstName} ${s.lastName}`);
-                  });
-                }}
-                onToggleAudio={webRTC.toggleAudio}
-                onToggleVideo={webRTC.toggleVideo}
-                onToggleScreenShare={webRTC.toggleScreenShare}
-                onToggleRaiseHand={webRTC.toggleRaiseHand}
-                onSendEmojiReaction={webRTC.sendEmojiReaction}
-                onCoachMuteStudent={webRTC.coachMuteStudent}
-                onCoachStopStudentVideo={webRTC.coachStopStudentVideo}
-                onToggleSpotlight={handleToggleSpotlight}
+                role={role}
+                isAudioMuted={jitsiAudioMuted}
+                isVideoMuted={jitsiVideoMuted}
               />
             </div>
 
@@ -1446,29 +1388,16 @@ export default function ClassroomWorkspace({
         onConfirmClear={handleConfirmClearBoard}
       />
 
-      {/* Pre-Join Device Check & Audio/Video Preview Modal */}
+      {/* Pre-Join Device Check — captures initial mute preference for Jitsi iframe */}
       <ClassroomPreJoinModal
         isOpen={showPreJoinModal}
         userName={userName}
         userRole={role}
-        onJoin={({ isAudioMuted, isVideoMuted, bgType: selectedBg, customBgUrl: selectedCustom }) => {
+        onJoin={({ isAudioMuted, isVideoMuted }) => {
           setShowPreJoinModal(false);
-          webRTC.toggleAudio(!isAudioMuted);
-          webRTC.toggleVideo(!isVideoMuted);
-          setBgType(selectedBg);
-          if (selectedCustom) setCustomBgUrl(selectedCustom);
-        }}
-      />
-
-      {/* Virtual Video Background Selector Modal */}
-      <ClassroomVirtualBackgroundModal
-        isOpen={showBgModal}
-        currentBgType={bgType}
-        currentCustomUrl={customBgUrl}
-        onClose={() => setShowBgModal(false)}
-        onApplyBackground={(type, url) => {
-          setBgType(type);
-          if (url) setCustomBgUrl(url);
+          setJitsiAudioMuted(isAudioMuted);
+          setJitsiVideoMuted(isVideoMuted);
+          setJitsiJoined(true);
         }}
       />
     </div>

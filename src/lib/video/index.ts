@@ -11,6 +11,15 @@ export interface MeetingDetails {
 }
 
 /**
+ * Canonical helper for deriving Jitsi room name from classId.
+ * Guarantees every participant (Coach & Students) joins the exact same room.
+ */
+export function getJitsiRoomName(classId: string): string {
+  const safeId = (classId || `room_${Math.random().toString(36).substring(2, 10)}`).replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+  return `chesshub-class-${safeId}`;
+}
+
+/**
  * Generates video meeting details based on selected provider,
  * with instant zero-error fallback to Jitsi Meet.
  */
@@ -58,9 +67,8 @@ export async function createClassMeeting(
     };
   }
 
-  // 3. Jitsi Meet (Default & Universal Fallback - Zero Login & Deterministic Room)
-  const safeId = (classId || `room_${Math.random().toString(36).substring(2, 10)}`).replace(/[^a-zA-Z0-9]/g, '');
-  const roomName = `ChessHub_Class_${safeId}`;
+  // 3. Jitsi Meet (Default & Universal Fallback — Zero Login & Deterministic Room)
+  const roomName = getJitsiRoomName(classId || '');
   const jitsiServer = process.env.NEXT_PUBLIC_JITSI_SERVER || 'https://meet.jit.si';
   const jitsiUrl = `${jitsiServer}/${roomName}`;
 
@@ -74,3 +82,4 @@ export async function createClassMeeting(
     },
   };
 }
+
