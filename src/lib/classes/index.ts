@@ -1,5 +1,5 @@
 import { createSupabaseAdmin } from '../supabase/admin';
-import { assertAdmin } from '../permissions';
+import { assertAdmin, assertAdminOrCoach } from '../permissions';
 import { createZoomMeeting, syncClassRecordingToDrive } from '../zoom';
 import { createClassMeeting, type VideoProvider } from '../video';
 import {
@@ -325,7 +325,7 @@ export async function createClass(data: CreateClassInput): Promise<Result<DbClas
  */
 export async function updateClass(id: string, data: UpdateClassInput): Promise<Result<DbClass>> {
   try {
-    await assertAdmin();
+    await assertAdminOrCoach();
     const admin = createSupabaseAdmin();
 
     const updates: Record<string, unknown> = {
