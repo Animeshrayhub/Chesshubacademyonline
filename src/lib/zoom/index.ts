@@ -103,7 +103,40 @@ export async function endZoomMeeting(meetingId: string): Promise<Result<boolean>
     return { success: true, data: true };
   } catch (error: any) {
     console.warn('endZoomMeeting error:', error);
-    return { success: true, data: true }; // non-fatal fallback
+    return { success: true, data: true };
+  }
+}
+
+/**
+ * Server-side operation to control Zoom Cloud Recording (start/stop) for a live meeting.
+ */
+export async function toggleZoomCloudRecording(meetingId: string, action: 'start' | 'stop'): Promise<Result<boolean>> {
+  try {
+    const cleanId = (meetingId || '').replace(/\s+/g, '');
+    if (!cleanId) {
+      return { success: false, error: new DatabaseError('Missing meeting ID for recording control') };
+    }
+    const accessToken = await getZoomAccessToken();
+    const recRes = await fetch(`https://api.zoom.us/v2/meetings/${cleanId}/recordings/status`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ action }),
+    });
+
+    if (!recRes.ok) {
+      const errText = await recRes.text();
+      throw new Error(`Failed to ${action} Zoom Cloud recording: ${recRes.statusText} - ${errText}`);
+    }
+
+    return { success: true, data: true };
+  } catch (error: any) {
+    return {
+      success: false,
+      error: new DatabaseError(error?.message || `Zoom Cloud Recording ${action} failed`),
+    };
   }
 }
 

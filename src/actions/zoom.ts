@@ -203,3 +203,50 @@ export async function endZoomMeetingAction(classId: string, meetingNumber?: stri
   }
 }
 
+/**
+ * Server action to control Zoom Cloud Recording (start/stop) for a live classroom.
+ */
+export async function toggleZoomCloudRecordingAction(classId: string, action: 'start' | 'stop') {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return { success: false, error: { message: 'Unauthorized.' } };
+    }
+
+    const admin = createSupabaseAdmin();
+    const { data: dbUser } = await admin
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    const userRole = (dbUser?.role || '').toLowerCase();
+    if (userRole !== 'admin' && userRole !== 'coach') {
+      return { success: false, error: { message: 'Only coaches or admins can control recording.' } };
+    }
+
+    const { data: cls } = await admin
+      .from('classes')
+      .select('zoom_meeting_id, zoom_join_url')
+      .eq('id', classId)
+      .maybeSingle();
+
+    const meetingIdToUse = cls?.zoom_meeting_id || (cls?.zoom_join_url || '').match(/\/j\/(\d+)/)?.[1] || '';
+    if (!meetingIdToUse) {
+      return { success: false, error: { message: 'Meeting ID not found for recording control.' } };
+    }
+
+    const recRes = await zoomService.toggleZoomCloudRecording(meetingIdToUse, action);
+    if (!recRes.success) {
+      return { success: false, error: { message: recRes.error?.message || `Failed to ${action} Zoom Cloud recording.` } };
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: { message: err.message || `Unable to ${action} recording.` },
+    };
+  }
+}
+
