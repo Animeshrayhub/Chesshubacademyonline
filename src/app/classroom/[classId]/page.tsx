@@ -193,11 +193,9 @@ export default async function ClassroomPage({ params }: { params: { classId: str
     }
 
     if (!cls.zoom_join_url || !cls.zoom_meeting_id) {
-      const cleanId = (params.classId || '1234567890').replace(/[^0-9]/g, '');
-      const fallbackId = (cleanId.padEnd(10, '8')).slice(0, 11);
-      cls.zoom_meeting_id = fallbackId;
-      cls.zoom_join_url = `https://zoom.us/j/${fallbackId}`;
-      cls.zoom_start_url = cls.zoom_join_url;
+      cls.zoom_meeting_id = cls.zoom_meeting_id || '';
+      cls.zoom_join_url = cls.zoom_join_url || '';
+      cls.zoom_start_url = cls.zoom_start_url || '';
     }
   }
 

@@ -57,9 +57,24 @@ export async function getZoomSignatureAction(classId: string) {
 
     // Determine meeting number
     const meetingNumberFromUrl = (cls.zoom_join_url || '').match(/\/j\/(\d+)/)?.[1] || '';
-    const cleanClassIdDigits = (classId || '1234567890').replace(/[^0-9]/g, '');
-    const fallbackMeetingId = (cleanClassIdDigits.padEnd(10, '8')).slice(0, 11);
-    const meetingNumber = cls.zoom_meeting_id || meetingNumberFromUrl || fallbackMeetingId;
+    const meetingNumber = (cls.zoom_meeting_id || meetingNumberFromUrl || '').trim();
+
+    if (!meetingNumber) {
+      return {
+        success: false,
+        error: { message: 'Zoom meeting ID is missing or unprovisioned for this class session. Please create/provision a Zoom meeting.' },
+      };
+    }
+
+    const sdkKey = process.env.ZOOM_CLIENT_ID || '';
+    const sdkSecret = process.env.ZOOM_CLIENT_SECRET || '';
+
+    if (!sdkKey || !sdkSecret || sdkKey === 'dummy_sdk_key') {
+      return {
+        success: false,
+        error: { message: 'Zoom Server API credentials (ZOOM_CLIENT_ID / ZOOM_CLIENT_SECRET) are missing or unconfigured in server environment.' },
+      };
+    }
 
     // 2. Fetch authenticated user role
     const { data: dbUser } = await admin
@@ -89,8 +104,6 @@ export async function getZoomSignatureAction(classId: string) {
 
     // 3. Generate HMAC SHA256 Meeting SDK JWT Signature
     const crypto = await import('crypto');
-    const sdkKey = process.env.ZOOM_CLIENT_ID || 'dummy_sdk_key';
-    const sdkSecret = process.env.ZOOM_CLIENT_SECRET || 'dummy_sdk_secret';
 
     const iat = Math.round(new Date().getTime() / 1000) - 30;
     const exp = iat + 60 * 60 * 2; // 2 hours expiry

@@ -539,7 +539,7 @@ export default function ClassroomWorkspace({
 
     const channel = supabase
       .channel(channelTopic, {
-        config: { broadcast: { self: false }, presence: { key: activeSessionId } },
+        config: { broadcast: { self: false }, presence: { key: userId || userName } },
       })
       .on('broadcast', { event: 'board-position' }, ({ payload }: any) => {
         if (payload?.fen) {
