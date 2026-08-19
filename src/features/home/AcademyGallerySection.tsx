@@ -36,10 +36,10 @@ export default function AcademyGallerySection() {
 
       <Container className="relative z-10">
         <SectionTitle
-          eyebrow="Academy Highlights"
-          title="Live Moments &"
-          titleHighlight="Photo Gallery"
-          subtitle="Real moments from our live masterclasses, competitive tournaments, and student achievements."
+          eyebrow="Academy Gallery"
+          title="Life at"
+          titleHighlight="ChessHub Academy"
+          subtitle="Real photos from our tournaments, live masterclasses, and student moments."
           light
         />
 
