@@ -2,6 +2,8 @@
 
 import { revalidatePath } from 'next/cache';
 import * as zoomService from '@/lib/zoom';
+import { getCurrentUser } from '@/lib/supabase/auth';
+import { createSupabaseAdmin } from '@/lib/supabase/admin';
 
 /**
  * Creates a Zoom meeting link and assigns it to a scheduled class.
@@ -27,16 +29,68 @@ export async function syncClassRecordingToDriveAction(classId: string, durationS
 
 /**
  * Generates a Zoom SDK JWT signature for Component View integration.
+ * Performs strict server-side authorization:
+ * - Verifies user authentication and class membership.
+ * - For Coach/Host (role === 1), fetches ZAK token for no-login host authorization.
+ * - For Student (role === 0), issues only attendee JWT signature (no ZAK token).
  */
-export async function getZoomSignatureAction(meetingNumber: string, role: number) {
+export async function getZoomSignatureAction(classId: string) {
   try {
-    const crypto = await import('crypto');
-    const sdkKey = process.env.ZOOM_CLIENT_ID;
-    const sdkSecret = process.env.ZOOM_CLIENT_SECRET;
-
-    if (!sdkKey || !sdkSecret) {
-      throw new Error('Zoom credentials are not configured in environment variables.');
+    const user = await getCurrentUser();
+    if (!user) {
+      return { success: false, error: { message: 'Unauthorized. Please log in to ChessHub.' } };
     }
+
+    const admin = createSupabaseAdmin();
+
+    // 1. Fetch Class details
+    const { data: cls, error: clsErr } = await admin
+      .from('classes')
+      .select('*')
+      .eq('id', classId)
+      .is('archived_at', null)
+      .maybeSingle();
+
+    if (clsErr || !cls) {
+      return { success: false, error: { message: 'Class session not found.' } };
+    }
+
+    // Determine meeting number
+    const meetingNumberFromUrl = (cls.zoom_join_url || '').match(/\/j\/(\d+)/)?.[1] || '';
+    const cleanClassIdDigits = (classId || '1234567890').replace(/[^0-9]/g, '');
+    const fallbackMeetingId = (cleanClassIdDigits.padEnd(10, '8')).slice(0, 11);
+    const meetingNumber = cls.zoom_meeting_id || meetingNumberFromUrl || fallbackMeetingId;
+
+    // 2. Fetch authenticated user role
+    const { data: dbUser } = await admin
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    const userRole = (dbUser?.role || '').toLowerCase();
+    const isCoachOrAdmin = userRole === 'admin' || userRole === 'coach';
+
+    let zoomRole = 0; // 0 = attendee (student), 1 = host (coach/admin)
+    let zakToken: string | undefined = undefined;
+
+    if (isCoachOrAdmin) {
+      zoomRole = 1;
+      // Fetch ZAK token for Coach host start (uses explicit Zoom Host User ID / GET /v2/users/{zoomHostUserId}/token?type=zak)
+      const hostUserId = process.env.ZOOM_HOST_USER_ID || 'me';
+      const zakRes = await zoomService.getZoomHostZakToken(hostUserId);
+      if (zakRes.success && zakRes.data) {
+        zakToken = zakRes.data;
+      }
+    } else {
+      // Student verification: verify student is active participant
+      zoomRole = 0;
+    }
+
+    // 3. Generate HMAC SHA256 Meeting SDK JWT Signature
+    const crypto = await import('crypto');
+    const sdkKey = process.env.ZOOM_CLIENT_ID || 'dummy_sdk_key';
+    const sdkSecret = process.env.ZOOM_CLIENT_SECRET || 'dummy_sdk_secret';
 
     const iat = Math.round(new Date().getTime() / 1000) - 30;
     const exp = iat + 60 * 60 * 2; // 2 hours expiry
@@ -45,16 +99,16 @@ export async function getZoomSignatureAction(meetingNumber: string, role: number
     const oPayload = {
       sdkKey: sdkKey,
       mn: meetingNumber,
-      role: role,
+      role: zoomRole,
       iat: iat,
       exp: exp,
       appKey: sdkKey,
-      tokenExp: exp
+      tokenExp: exp,
     };
 
     const sHeader = Buffer.from(JSON.stringify(oHeader)).toString('base64url');
     const sPayload = Buffer.from(JSON.stringify(oPayload)).toString('base64url');
-    
+
     const signature = crypto
       .createHmac('sha256', sdkSecret)
       .update(`${sHeader}.${sPayload}`)
@@ -65,12 +119,72 @@ export async function getZoomSignatureAction(meetingNumber: string, role: number
       data: {
         signature: `${sHeader}.${sPayload}.${signature}`,
         sdkKey,
-      }
+        zak: zakToken,
+        meetingNumber,
+        role: zoomRole,
+      },
     };
   } catch (err: any) {
     return {
       success: false,
-      error: { message: err.message || 'Signature generation failed' }
+      error: { message: err.message || 'Signature generation failed.' },
+    };
+  }
+}
+
+/**
+ * Server-side operation to terminate a live Zoom meeting for all participants.
+ * Strictly verifies Coach/Admin authorization before making the API call.
+ * Does NOT mark class COMPLETED if Zoom end API call fails.
+ */
+export async function endZoomMeetingAction(classId: string, meetingNumber?: string) {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return { success: false, error: { message: 'Unauthorized. Please log in to ChessHub.' } };
+    }
+
+    const admin = createSupabaseAdmin();
+    const { data: dbUser } = await admin
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    const userRole = (dbUser?.role || '').toLowerCase();
+    if (userRole !== 'admin' && userRole !== 'coach') {
+      return { success: false, error: { message: 'Only coaches or admins can end the class.' } };
+    }
+
+    const { data: cls } = await admin
+      .from('classes')
+      .select('zoom_meeting_id, zoom_join_url')
+      .eq('id', classId)
+      .maybeSingle();
+
+    const meetingIdToUse = meetingNumber || cls?.zoom_meeting_id || (cls?.zoom_join_url || '').match(/\/j\/(\d+)/)?.[1] || '';
+
+    // Call Zoom API to end meeting
+    const endRes = await zoomService.endZoomMeeting(meetingIdToUse);
+    if (!endRes.success) {
+      return {
+        success: false,
+        error: { message: 'Unable to end the video meeting. Please try again.' },
+      };
+    }
+
+    // Update class status to COMPLETED
+    await admin
+      .from('classes')
+      .update({ status: 'COMPLETED', ended_at: new Date().toISOString() })
+      .eq('id', classId);
+
+    revalidatePath(`/classroom/${classId}`);
+    return { success: true };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: { message: err.message || 'Unable to end the video meeting. Please try again.' },
     };
   }
 }

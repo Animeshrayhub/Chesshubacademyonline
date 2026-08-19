@@ -26,7 +26,7 @@ export async function middleware(request: NextRequest) {
       redirectResponse.headers.set('X-XSS-Protection', '1; mode=block');
       redirectResponse.headers.set(
         'Content-Security-Policy',
-        "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; frame-src 'self' https://meet.jit.si https://8x8.vc https://jitsi.riot.im https://meet.element.io https://meet.ffmuc.net https://drive.google.com https://zoom.us; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; connect-src 'self' https:;"
+        "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://source.zoom.us https://*.zoom.us https://*.zoomgov.com https:; frame-src 'self' https://*.zoom.us https://zoom.us https://drive.google.com; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; connect-src 'self' https://*.zoom.us wss://*.zoom.us https://*.zoomgov.com wss://*.zoomgov.com https:; media-src 'self' blob: https://*.zoom.us; worker-src 'self' blob:;"
       );
       return redirectResponse;
     };
@@ -91,7 +91,7 @@ export async function middleware(request: NextRequest) {
   response.headers.set('X-XSS-Protection', '1; mode=block');
   response.headers.set(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; frame-src 'self' https://meet.jit.si https://8x8.vc https://jitsi.riot.im https://meet.element.io https://meet.ffmuc.net https://drive.google.com https://zoom.us; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; connect-src 'self' https:;"
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://source.zoom.us https://*.zoom.us https://*.zoomgov.com https:; frame-src 'self' https://*.zoom.us https://zoom.us https://drive.google.com; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; connect-src 'self' https://*.zoom.us wss://*.zoom.us https://*.zoomgov.com wss://*.zoomgov.com https:; media-src 'self' blob: https://*.zoom.us; worker-src 'self' blob:;"
   );
 
   return response;

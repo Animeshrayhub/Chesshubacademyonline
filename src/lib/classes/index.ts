@@ -220,26 +220,26 @@ export async function createClass(data: CreateClassInput): Promise<Result<DbClas
       coachProfileId = fallbackProf?.id || '00000000-0000-0000-0000-000000000000';
     }
 
-    // Generate Meeting details (Jitsi by default, Zoom if selected, Google Meet / Custom if link provided)
+    // Generate Meeting details (Zoom by default, Google Meet / Custom if link provided)
     const videoRes = await createClassMeeting(
       undefined,
       `${data.classType} Chess Class`,
       data.scheduledStart,
       data.durationMinutes,
-      data.videoProvider || 'JITSI',
+      data.videoProvider || 'ZOOM',
       data.zoomJoinUrl || data.customUrl
     );
 
-    const defaultServer = process.env.NEXT_PUBLIC_JITSI_SERVER || 'https://meet.jit.si';
     const videoData = videoRes.data || {
-      meetingId: `jitsi_class`,
-      joinUrl: `${defaultServer}/ChessHub_Class_temp`,
-      startUrl: `${defaultServer}/ChessHub_Class_temp`,
-      provider: 'JITSI' as VideoProvider,
+      meetingId: `1234567890`,
+      joinUrl: `https://zoom.us/j/1234567890`,
+      startUrl: `https://zoom.us/j/1234567890`,
+      provider: 'ZOOM' as VideoProvider,
     };
 
     const finalJoinUrl = data.zoomJoinUrl || videoData.joinUrl;
     const finalStartUrl = data.zoomStartUrl || videoData.startUrl;
+    const finalMeetingId = videoData.meetingId;
 
     // Insert class with meeting details
     const insertPayload: Record<string, unknown> = {

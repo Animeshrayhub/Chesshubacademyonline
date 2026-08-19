@@ -6,7 +6,7 @@ import { Chess } from 'chess.js';
 import { supabase } from '@/utils/supabaseClient';
 import ChessWorkspace from './ChessWorkspace';
 import ClassroomLocalRecorder from '@/components/dashboard/ui/ClassroomLocalRecorder';
-import JitsiClassroomVideo from '@/components/classroom/JitsiClassroomVideo';
+import ZoomClassroomVideo from '@/components/classroom/ZoomClassroomVideo';
 import ClassroomLessonDrawer from '@/features/classroom/ClassroomLessonDrawer';
 import ClassroomDatabasePanel from '@/components/dashboard/ui/ClassroomDatabasePanel';
 import ClearBoardModal, { ClearMode } from './ClearBoardModal';
@@ -17,6 +17,7 @@ import type { TeachingPosition } from '@/types/curriculum.types';
 import ClassroomPreJoinModal from './ClassroomPreJoinModal';
 import { startClassAction, submitClassEndReportAction, updateParticipantHeartbeatAction } from '@/actions/classes';
 import { listHomeworkAction, listChaptersAction, assignChapterToClassAction } from '@/actions/homework';
+import { endZoomMeetingAction } from '@/actions/zoom';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 interface StudentInfo {
@@ -40,6 +41,8 @@ interface ClassroomWorkspaceProps {
   students: StudentInfo[];
   zoomStartUrl: string;
   zoomJoinUrl: string;
+  zoomMeetingId?: string;
+  zoomPasscode?: string;
   userId: string;
   startedAt?: string | null;
   endedAt?: string | null;
@@ -84,6 +87,8 @@ export default function ClassroomWorkspace({
   students,
   zoomStartUrl,
   zoomJoinUrl,
+  zoomMeetingId,
+  zoomPasscode = 'chesshub',
   userId,
   startedAt,
   endedAt,
@@ -96,7 +101,13 @@ export default function ClassroomWorkspace({
   const [error, setError] = useState('');
   const isCoach = role === 'coach' || role === 'admin';
 
-  /* ── Jitsi Video Mute State (passed to embedded Jitsi iframe) ───────────── */
+  /* ── Effective Zoom Meeting Number ─────────────────────────────────────── */
+  const meetingIdFromUrl = (zoomJoinUrl || '').match(/\/j\/(\d+)/)?.[1] || '';
+  const cleanClassIdDigits = (classId || '1234567890').replace(/[^0-9]/g, '');
+  const fallbackMeetingId = (cleanClassIdDigits.padEnd(10, '8')).slice(0, 11);
+  const effectiveMeetingNumber = zoomMeetingId || meetingIdFromUrl || fallbackMeetingId;
+
+  /* ── Embedded Video Mute State ─────────────────────────────────────────── */
   const [jitsiAudioMuted, setJitsiAudioMuted] = useState(false);
   const [jitsiVideoMuted, setJitsiVideoMuted] = useState(false);
   const [jitsiJoined, setJitsiJoined] = useState(false);
@@ -759,6 +770,12 @@ export default function ClassroomWorkspace({
       ? `${endClassRemarks}\n\n${durationNote}\n\n--- CLASSROOM GAME PGN ---\n${savedPgn}`
       : `${endClassRemarks}\n\n${durationNote}`;
     try {
+      const endRes = await endZoomMeetingAction(classId, effectiveMeetingNumber);
+      if (!endRes.success) {
+        setError(endRes.error?.message || 'Unable to end the video meeting. Please try again.');
+        setIsSubmittingEndReport(false);
+        return;
+      }
       mainChannelRef.current?.send({
         type: 'broadcast',
         event: 'status-change',
@@ -770,9 +787,7 @@ export default function ClassroomWorkspace({
       const targetRoute = role === 'admin' ? '/dashboard/admin/classes' : isCoach ? '/dashboard/coach/classes' : '/dashboard/student/classes';
       router.push(targetRoute);
     } catch (err: any) {
-      setStatus('COMPLETED');
-      setShowEndClassModal(false);
-      router.push('/dashboard');
+      setError(err?.message || 'Unable to end the video meeting. Please try again.');
     } finally {
       setIsSubmittingEndReport(false);
     }
@@ -1031,10 +1046,12 @@ export default function ClassroomWorkspace({
             className="flex flex-col bg-[#0f0f1f] border-l border-[#222244] flex-shrink-0 overflow-hidden"
             style={{ width: `${rightColWidth}px` }}
           >
-            {/* ── Jitsi Embedded Video (Zero Redirect — stays inside ChessHub) ── */}
+            {/* ── Zoom Meeting SDK Embedded Video (Zero Redirect — stays inside ChessHub) ── */}
             <div className="flex-shrink-0" style={{ height: '240px' }}>
-              <JitsiClassroomVideo
+              <ZoomClassroomVideo
                 classId={classId}
+                meetingNumber={effectiveMeetingNumber}
+                passcode={zoomPasscode}
                 userName={userName}
                 role={role}
                 isAudioMuted={jitsiAudioMuted}
