@@ -174,7 +174,8 @@ export async function createZoomMeeting(
     const accessToken = await getZoomAccessToken();
 
     // 2. Call Zoom API to Create Meeting
-    const meetingUrl = 'https://api.zoom.us/v2/users/me/meetings';
+    const hostUser = process.env.ZOOM_HOST_USER_ID || 'me';
+    const meetingUrl = `https://api.zoom.us/v2/users/${encodeURIComponent(hostUser)}/meetings`;
     const meetingBody = {
       topic,
       type: 2, // Scheduled meeting

@@ -56,14 +56,31 @@ export async function getZoomSignatureAction(classId: string) {
     }
 
     // 1. Determine and sanitize meeting number
-    const meetingNumberFromUrl = (cls.zoom_join_url || '').match(/\/j\/(\d+)/)?.[1] || '';
-    const rawMeetingNumber = (cls.zoom_meeting_id || meetingNumberFromUrl || '').trim();
-    const cleanMn = rawMeetingNumber.replace(/[^0-9]/g, '');
+    let meetingNumberFromUrl = (cls.zoom_join_url || '').match(/\/j\/(\d+)/)?.[1] || '';
+    let rawMeetingNumber = (cls.zoom_meeting_id || meetingNumberFromUrl || '').trim();
+    let cleanMn = rawMeetingNumber.replace(/[^0-9]/g, '');
 
-    if (!cleanMn) {
+    // Auto-heal / Auto-provision: If meeting number is missing, placeholder (1234567890), or invalid (< 9 digits), auto-create a real Zoom meeting
+    if (!cleanMn || cleanMn.length < 9 || cleanMn === '1234567890') {
+      try {
+        const createRes = await zoomService.createZoomMeeting(
+          classId,
+          cls.title || 'Chess Classroom Session',
+          cls.scheduled_start,
+          cls.duration_minutes
+        );
+        if (createRes.success && createRes.data) {
+          cleanMn = createRes.data.meetingId.replace(/[^0-9]/g, '');
+        }
+      } catch (autoErr) {
+        console.warn('Auto-provisioning Zoom meeting notice:', autoErr);
+      }
+    }
+
+    if (!cleanMn || cleanMn.length < 9) {
       return {
         success: false,
-        error: { message: 'Zoom meeting ID is missing or invalid for this class session. Please create a valid Zoom meeting.' },
+        error: { message: 'The meeting number was not found or unprovisioned. Please recreate the class or contact administrator.' },
       };
     }
 
