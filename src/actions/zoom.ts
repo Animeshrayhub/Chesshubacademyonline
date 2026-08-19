@@ -73,7 +73,7 @@ export async function getZoomSignatureAction(classId: string) {
     if (!sdkKey || !sdkSecret || sdkKey === 'dummy_sdk_key') {
       return {
         success: false,
-        error: { message: 'Zoom API credentials (ZOOM_CLIENT_ID / ZOOM_CLIENT_SECRET) are missing or unconfigured in .env.local environment.' },
+        error: { message: 'Zoom API credentials (ZOOM_CLIENT_ID / ZOOM_CLIENT_SECRET) are missing or unconfigured in server environment (Vercel Production / .env.local).' },
       };
     }
 
