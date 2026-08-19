@@ -55,24 +55,25 @@ export async function getZoomSignatureAction(classId: string) {
       return { success: false, error: { message: 'Class session not found.' } };
     }
 
-    // Determine meeting number
+    // 1. Determine and sanitize meeting number
     const meetingNumberFromUrl = (cls.zoom_join_url || '').match(/\/j\/(\d+)/)?.[1] || '';
-    const meetingNumber = (cls.zoom_meeting_id || meetingNumberFromUrl || '').trim();
+    const rawMeetingNumber = (cls.zoom_meeting_id || meetingNumberFromUrl || '').trim();
+    const cleanMn = rawMeetingNumber.replace(/[^0-9]/g, '');
 
-    if (!meetingNumber) {
+    if (!cleanMn) {
       return {
         success: false,
-        error: { message: 'Zoom meeting ID is missing or unprovisioned for this class session. Please create/provision a Zoom meeting.' },
+        error: { message: 'Zoom meeting ID is missing or invalid for this class session. Please create a valid Zoom meeting.' },
       };
     }
 
-    const sdkKey = process.env.ZOOM_CLIENT_ID || '';
-    const sdkSecret = process.env.ZOOM_CLIENT_SECRET || '';
+    const sdkKey = (process.env.ZOOM_CLIENT_ID || process.env.NEXT_PUBLIC_ZOOM_CLIENT_ID || '').trim();
+    const sdkSecret = (process.env.ZOOM_CLIENT_SECRET || '').trim();
 
     if (!sdkKey || !sdkSecret || sdkKey === 'dummy_sdk_key') {
       return {
         success: false,
-        error: { message: 'Zoom Server API credentials (ZOOM_CLIENT_ID / ZOOM_CLIENT_SECRET) are missing or unconfigured in server environment.' },
+        error: { message: 'Zoom API credentials (ZOOM_CLIENT_ID / ZOOM_CLIENT_SECRET) are missing or unconfigured in .env.local environment.' },
       };
     }
 
@@ -105,13 +106,13 @@ export async function getZoomSignatureAction(classId: string) {
     // 3. Generate HMAC SHA256 Meeting SDK JWT Signature
     const crypto = await import('crypto');
 
-    const iat = Math.round(new Date().getTime() / 1000) - 30;
+    const iat = Math.floor(Date.now() / 1000) - 60; // 60s clock-skew buffer
     const exp = iat + 60 * 60 * 2; // 2 hours expiry
     const oHeader = { alg: 'HS256', typ: 'JWT' };
 
     const oPayload = {
       sdkKey: sdkKey,
-      mn: meetingNumber,
+      mn: cleanMn,
       role: zoomRole,
       iat: iat,
       exp: exp,
@@ -133,7 +134,7 @@ export async function getZoomSignatureAction(classId: string) {
         signature: `${sHeader}.${sPayload}.${signature}`,
         sdkKey,
         zak: zakToken,
-        meetingNumber,
+        meetingNumber: cleanMn,
         role: zoomRole,
       },
     };
