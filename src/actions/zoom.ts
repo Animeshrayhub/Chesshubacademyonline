@@ -55,55 +55,39 @@ export async function getZoomSignatureAction(classId: string) {
       return { success: false, error: { message: 'Class session not found.' } };
     }
 
-    // 1. Determine and sanitize meeting number
-    let meetingNumberFromUrl = (cls.zoom_join_url || '').match(/\/j\/(\d+)/)?.[1] || '';
-    let rawMeetingNumber = (cls.zoom_meeting_id || meetingNumberFromUrl || '').trim();
-    let cleanMn = rawMeetingNumber.replace(/[^0-9]/g, '');
-
-    // Auto-heal / Auto-provision: If meeting number is missing, placeholder (1234567890), or invalid (< 9 digits), auto-create a real Zoom meeting
-    if (!cleanMn || cleanMn.length < 9 || cleanMn === '1234567890') {
-      try {
-        const createRes = await zoomService.createZoomMeeting(
-          classId,
-          cls.title || 'Chess Classroom Session',
-          cls.scheduled_start,
-          cls.duration_minutes
-        );
-        if (createRes.success && createRes.data) {
-          cleanMn = createRes.data.meetingId.replace(/[^0-9]/g, '');
-        }
-      } catch (autoErr) {
-        console.warn('Auto-provisioning Zoom meeting notice:', autoErr);
-      }
-    }
+    // 2. Determine and sanitize meeting number
+    const meetingNumberFromUrl = (cls.zoom_join_url || '').match(/\/j\/(\d+)/)?.[1] || '';
+    const rawMeetingNumber = (cls.zoom_meeting_id || meetingNumberFromUrl || '').trim();
+    const cleanMn = rawMeetingNumber.replace(/[^0-9]/g, '');
 
     if (!cleanMn || cleanMn.length < 9) {
       return {
         success: false,
-        error: { message: 'The meeting number was not found or unprovisioned. Please recreate the class or contact administrator.' },
+        error: { message: 'The meeting number was not found or unprovisioned for this class session. Please schedule a Zoom meeting for this class.' },
       };
     }
 
-    const sdkKey = (
-      process.env.ZOOM_MEETING_SDK_CLIENT_ID ||
-      process.env.ZOOM_CLIENT_ID ||
-      process.env.NEXT_PUBLIC_ZOOM_CLIENT_ID ||
-      ''
-    ).trim();
-    const sdkSecret = (
-      process.env.ZOOM_MEETING_SDK_CLIENT_SECRET ||
-      process.env.ZOOM_CLIENT_SECRET ||
-      ''
-    ).trim();
+    // 3. Verify that the Zoom meeting exists on Zoom Cloud via Server-to-Server OAuth API
+    const verifyRes = await zoomService.verifyZoomMeeting(cleanMn);
+    if (!verifyRes.success) {
+      return {
+        success: false,
+        error: { message: verifyRes.error?.message || `Zoom meeting #${cleanMn} does not exist on Zoom Cloud or was deleted.` },
+      };
+    }
+
+    // 4. Require explicit Meeting SDK credentials (NO fallback to S2S OAuth secret)
+    const sdkKey = (process.env.ZOOM_MEETING_SDK_CLIENT_ID || '').trim();
+    const sdkSecret = (process.env.ZOOM_MEETING_SDK_CLIENT_SECRET || '').trim();
 
     if (!sdkKey || !sdkSecret || sdkKey === 'dummy_sdk_key') {
       return {
         success: false,
-        error: { message: 'Zoom API / Meeting SDK credentials (ZOOM_MEETING_SDK_CLIENT_ID / ZOOM_CLIENT_ID) are missing or unconfigured in server environment.' },
+        error: { message: 'Zoom Meeting SDK credentials (ZOOM_MEETING_SDK_CLIENT_ID / ZOOM_MEETING_SDK_CLIENT_SECRET) are missing or unconfigured in server environment.' },
       };
     }
 
-    // 2. Fetch authenticated user role
+    // 5. Fetch authenticated user role and resolve Zoom role / ZAK
     const { data: dbUser } = await admin
       .from('users')
       .select('role')
@@ -118,21 +102,25 @@ export async function getZoomSignatureAction(classId: string) {
 
     if (isCoachOrAdmin) {
       zoomRole = 1;
-      // Fetch ZAK token for Coach host start (uses explicit Zoom Host User ID / GET /v2/users/{zoomHostUserId}/token?type=zak)
-      const hostUserId = process.env.ZOOM_HOST_USER_ID || 'me';
+      // Fetch ZAK token for Coach host start (uses explicit Zoom Host User ID)
+      const hostUserId = (process.env.ZOOM_HOST_USER_ID || 'me').trim();
       const zakRes = await zoomService.getZoomHostZakToken(hostUserId);
-      if (zakRes.success && zakRes.data) {
-        zakToken = zakRes.data;
+      if (!zakRes.success || !zakRes.data) {
+        return {
+          success: false,
+          error: { message: zakRes.error?.message || `ZOOM_HOST_USER_ID does not belong to the configured Zoom account or ZAK generation failed.` },
+        };
       }
+      zakToken = zakRes.data;
     } else {
-      // Student verification: verify student is active participant
+      // Student attendee: no ZAK token
       zoomRole = 0;
     }
 
-    // 3. Generate HMAC SHA256 Meeting SDK JWT Signature
+    // 6. Generate HMAC SHA256 Meeting SDK JWT Signature
     const crypto = await import('crypto');
 
-    const iat = Math.floor(Date.now() / 1000) - 60; // 60s clock-skew buffer
+    const iat = Math.floor(Date.now() / 1000) - 30; // 30s clock-skew buffer
     const exp = iat + 60 * 60 * 2; // 2 hours expiry
     const oHeader = { alg: 'HS256', typ: 'JWT' };
 

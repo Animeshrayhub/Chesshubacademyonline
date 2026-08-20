@@ -1,4 +1,4 @@
-﻿import { createSupabaseAdmin } from '../supabase/admin';
+import { createSupabaseAdmin } from '../supabase/admin';
 import { TESTIMONIALS } from '@/constants/TESTIMONIALS';
 
 export interface ReviewItem {
@@ -74,7 +74,7 @@ export async function getApprovedReviews(): Promise<ReviewItem[]> {
     const { data } = await admin
       .from('announcements')
       .select('*')
-      .contains('target_roles', ['REVIEW'])
+      .filter('target_roles', 'cs', '{"REVIEW"}')
       .eq('is_published', true)
       .order('created_at', { ascending: false });
 

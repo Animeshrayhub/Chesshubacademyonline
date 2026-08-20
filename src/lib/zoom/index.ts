@@ -63,6 +63,9 @@ export async function getZoomHostZakToken(zoomHostUserId?: string): Promise<Resu
 
     if (!zakRes.ok) {
       const errText = await zakRes.text();
+      if (zakRes.status === 404 || errText.includes('1001')) {
+        throw new Error(`ZOOM_HOST_USER_ID does not belong to the configured Zoom account.`);
+      }
       throw new Error(`Failed to generate ZAK token for host ${hostId}: ${zakRes.statusText} - ${errText}`);
     }
 
@@ -72,6 +75,40 @@ export async function getZoomHostZakToken(zoomHostUserId?: string): Promise<Resu
     return {
       success: false,
       error: new DatabaseError(error?.message || 'ZAK token generation failed'),
+    };
+  }
+}
+
+/**
+ * Verifies that a scheduled Zoom meeting exists on Zoom Cloud via Server-to-Server OAuth.
+ */
+export async function verifyZoomMeeting(meetingId: string): Promise<Result<boolean>> {
+  try {
+    const cleanId = (meetingId || '').replace(/[^0-9]/g, '');
+    if (!cleanId || cleanId.length < 9) {
+      return { success: false, error: new DatabaseError('Invalid numeric meeting ID.') };
+    }
+    const accessToken = await getZoomAccessToken();
+    const res = await fetch(`https://api.zoom.us/v2/meetings/${cleanId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!res.ok) {
+      if (res.status === 404) {
+        return { success: false, error: new DatabaseError(`Zoom meeting #${cleanId} does not exist on Zoom Cloud.`) };
+      }
+      const errText = await res.text();
+      return { success: false, error: new DatabaseError(`Zoom API meeting check failed (${res.status}): ${errText}`) };
+    }
+
+    return { success: true, data: true };
+  } catch (error: any) {
+    return {
+      success: false,
+      error: new DatabaseError(error?.message || 'Zoom meeting verification failed.'),
     };
   }
 }
@@ -97,13 +134,12 @@ export async function endZoomMeeting(meetingId: string): Promise<Result<boolean>
 
     if (!endRes.ok && endRes.status !== 404) {
       const errText = await endRes.text();
-      console.warn(`Zoom end meeting warning (${endRes.status}):`, errText);
+      return { success: false, error: new DatabaseError(`Failed to end Zoom meeting (${endRes.status}): ${errText}`) };
     }
 
     return { success: true, data: true };
   } catch (error: any) {
-    console.warn('endZoomMeeting error:', error);
-    return { success: true, data: true };
+    return { success: false, error: new DatabaseError(error?.message || 'Failed to end Zoom meeting') };
   }
 }
 

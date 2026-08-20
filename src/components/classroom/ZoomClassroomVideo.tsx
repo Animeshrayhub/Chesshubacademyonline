@@ -37,6 +37,13 @@ export default function ZoomClassroomVideo({
   const [mediaPermissionDenied, setMediaPermissionDenied] = useState<boolean>(false);
   const [showDiagnostics, setShowDiagnostics] = useState<boolean>(false);
 
+  // Video Stage & Controls State
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [viewType, setViewTypeState] = useState<'gallery' | 'speaker'>('gallery');
+  const [localMuted, setLocalMuted] = useState<boolean>(isAudioMuted);
+  const [participantCount, setParticipantCount] = useState<number>(1);
+  const [activeSpeakerName, setActiveSpeakerName] = useState<string | null>(null);
+
   const [diagInfo, setDiagInfo] = useState<{
     step: string;
     meetingNumber: string;
@@ -56,6 +63,19 @@ export default function ZoomClassroomVideo({
 
   const isCoach = role === 'coach' || role === 'admin';
   const cleanMeetingId = (meetingNumber || '').replace(/\s+/g, '');
+
+  const updateAttendeesCount = useCallback((clientInstance: any) => {
+    try {
+      if (clientInstance && typeof clientInstance.getAttendeeslist === 'function') {
+        const list = clientInstance.getAttendeeslist();
+        if (Array.isArray(list) && list.length > 0) {
+          setParticipantCount(list.length);
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, []);
 
   const startConnection = useCallback(async () => {
     if (!containerRef.current || !cleanMeetingId) {
@@ -116,11 +136,20 @@ export default function ZoomClassroomVideo({
       const clientInstance = ZoomMtgEmbedded.createClient();
       zoomClientRef.current = clientInstance;
 
-      // 4. Initialize embedded SDK client into target container
+      // 4. Initialize embedded SDK client into target container with responsive layout options
       setDiagInfo((prev) => ({ ...prev, step: 'INIT_SDK' }));
       await clientInstance.init({
         zoomAppRoot: containerRef.current!,
         language: 'en-US',
+        patchJsMedia: true,
+        leaveOnPageUnload: true,
+        customize: {
+          video: {
+            isResizable: true,
+            defaultViewType: 'gallery' as any,
+          },
+          meetingInfo: ['topic', 'mn', 'participant'],
+        },
       });
 
       // Register Zoom SDK event listeners
@@ -129,10 +158,29 @@ export default function ZoomClassroomVideo({
         if (stateStr.includes('connected') && !stateStr.includes('reconnecting')) {
           setConnectionState('connected');
           setDiagInfo((prev) => ({ ...prev, step: 'JOINED' }));
+          updateAttendeesCount(clientInstance);
         } else if (stateStr.includes('reconnect')) {
           setConnectionState('reconnecting');
         } else if (stateStr.includes('closed') || stateStr.includes('ended')) {
           setConnectionState('disconnected');
+        }
+      });
+
+      clientInstance.on('user-added', () => {
+        updateAttendeesCount(clientInstance);
+      });
+
+      clientInstance.on('user-removed', () => {
+        updateAttendeesCount(clientInstance);
+      });
+
+      clientInstance.on('user-updated', () => {
+        updateAttendeesCount(clientInstance);
+      });
+
+      clientInstance.on('active-speaker', (payload: any) => {
+        if (payload?.displayName || payload?.userName) {
+          setActiveSpeakerName(payload.displayName || payload.userName);
         }
       });
 
@@ -154,7 +202,6 @@ export default function ZoomClassroomVideo({
       // 5. Join Zoom meeting
       setDiagInfo((prev) => ({ ...prev, step: 'JOINING' }));
       const joinPayload: any = {
-        sdkKey,
         signature,
         meetingNumber: effectiveMeetingId,
         password: passcode,
@@ -170,6 +217,7 @@ export default function ZoomClassroomVideo({
 
       setConnectionState('connected');
       setDiagInfo((prev) => ({ ...prev, step: 'JOINED' }));
+      updateAttendeesCount(clientInstance);
     } catch (err: any) {
       console.error('Zoom Meeting SDK join failed:', err);
       const rawErrMsg = err?.message || err?.reason || err?.type || (typeof err === 'string' ? err : 'Unable to connect to Zoom meeting.');
@@ -177,7 +225,7 @@ export default function ZoomClassroomVideo({
       setErrorMessage(rawErrMsg);
       setDiagInfo((prev) => ({ ...prev, step: 'FAILED', errorText: rawErrMsg }));
     }
-  }, [classId, cleanMeetingId, isCoach, passcode, userEmail, userName]);
+  }, [classId, cleanMeetingId, isCoach, passcode, updateAttendeesCount, userEmail, userName]);
 
   useEffect(() => {
     if (initStartedRef.current) return;
@@ -211,28 +259,78 @@ export default function ZoomClassroomVideo({
     startConnection();
   };
 
-  return (
-    <div className="relative w-full h-full flex flex-col bg-[#0a0a1a] rounded-lg overflow-hidden border border-[#222244]">
-      {/* ── Network Quality Badge & Diagnostics Toggle ── */}
-      <div className="absolute top-2 left-2 z-30 flex items-center gap-2 pointer-events-auto">
-        {connectionState === 'connected' && (
-          <div className="px-2 py-1 bg-black/75 backdrop-blur rounded-md border border-white/10 flex items-center gap-1.5 text-[10px] font-semibold text-white group">
-            {networkQuality === 'good' && <span className="text-emerald-400">🟢 Good</span>}
-            {networkQuality === 'weak' && <span className="text-amber-400">🟡 Weak</span>}
-            {networkQuality === 'poor' && <span className="text-red-400 font-bold">🔴 Poor</span>}
-          </div>
-        )}
+  const handleToggleMute = () => {
+    if (zoomClientRef.current && typeof zoomClientRef.current.mute === 'function') {
+      try {
+        const nextState = !localMuted;
+        zoomClientRef.current.mute(nextState);
+        setLocalMuted(nextState);
+      } catch (e) {
+        console.warn('Toggle mute error:', e);
+      }
+    }
+  };
 
-        {/* Developer Diagnostics Toggle for Coach */}
-        {isCoach && (
+  const handleToggleView = (targetView: 'gallery' | 'speaker') => {
+    setViewTypeState(targetView);
+    if (zoomClientRef.current && typeof zoomClientRef.current.setViewType === 'function') {
+      try {
+        zoomClientRef.current.setViewType(targetView);
+      } catch (e) {
+        console.warn('Set viewType error:', e);
+      }
+    }
+  };
+
+  return (
+    <div
+      className={`relative flex flex-col bg-[#0a0a1a] border border-[#222244] overflow-hidden transition-all duration-300 ${
+        isFullscreen
+          ? 'fixed inset-3 z-50 rounded-2xl shadow-2xl border-indigo-500/50 ring-4 ring-indigo-500/20'
+          : 'w-full h-full rounded-lg'
+      }`}
+    >
+      {/* ── Top Bar: Network Quality, Speakers & Fullscreen Controls ── */}
+      <div className="absolute top-2 left-2 right-2 z-30 flex items-center justify-between pointer-events-auto">
+        <div className="flex items-center gap-1.5">
+          {connectionState === 'connected' && (
+            <div className="px-2 py-0.5 bg-black/80 backdrop-blur rounded-md border border-white/10 flex items-center gap-1.5 text-[10px] font-semibold text-white">
+              {networkQuality === 'good' && <span className="text-emerald-400">🟢 Good</span>}
+              {networkQuality === 'weak' && <span className="text-amber-400">🟡 Weak</span>}
+              {networkQuality === 'poor' && <span className="text-red-400 font-bold">🔴 Poor</span>}
+            </div>
+          )}
+
+          {activeSpeakerName && (
+            <div className="px-2 py-0.5 bg-indigo-950/80 backdrop-blur rounded-md border border-indigo-500/30 text-[10px] font-bold text-indigo-200 truncate max-w-[140px]">
+              🗣️ {activeSpeakerName}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1">
+          {/* Developer Diagnostics Toggle for Coach */}
+          {isCoach && (
+            <button
+              type="button"
+              onClick={() => setShowDiagnostics(!showDiagnostics)}
+              className="px-2 py-0.5 bg-slate-900/90 hover:bg-slate-800 text-[10px] text-slate-300 font-mono rounded border border-slate-700 transition-colors shadow"
+            >
+              {showDiagnostics ? 'Hide Diag' : '🛠️ Diag'}
+            </button>
+          )}
+
+          {/* Fullscreen Toggle Button */}
           <button
             type="button"
-            onClick={() => setShowDiagnostics(!showDiagnostics)}
-            className="px-2 py-1 bg-slate-900/90 hover:bg-slate-800 text-[10px] text-slate-300 font-mono rounded border border-slate-700 transition-colors"
+            onClick={() => setIsFullscreen(!isFullscreen)}
+            className="px-2 py-0.5 bg-indigo-600/90 hover:bg-indigo-500 text-[10px] font-bold text-white rounded border border-indigo-400/40 transition-colors shadow flex items-center gap-1"
+            title={isFullscreen ? 'Exit Fullscreen' : 'Expand Video Stage'}
           >
-            {showDiagnostics ? 'Hide Diag' : '🛠️ Diag'}
+            <span>{isFullscreen ? '🗗' : '⛶'}</span>
+            <span>{isFullscreen ? 'Exit' : 'Full Video'}</span>
           </button>
-        )}
+        </div>
       </div>
 
       {/* ── Diagnostic Panel Overlay (Coach/Admin Only) ── */}
@@ -243,10 +341,19 @@ export default function ZoomClassroomVideo({
             <span className="px-1.5 py-0.5 bg-indigo-950 text-indigo-300 rounded border border-indigo-700">{diagInfo.step}</span>
           </div>
           <div>Meeting ID: <span className="text-amber-300">{diagInfo.meetingNumber || 'MISSING'}</span></div>
-          <div>Role: <span className="text-emerald-300">{diagInfo.role === 1 ? '1 (Host/Coach)' : '0 (Attendee/Student)'}</span></div>
-          <div>SDK Key Present: <span className={diagInfo.sdkKeyPresent ? 'text-emerald-400' : 'text-red-400'}>{diagInfo.sdkKeyPresent ? 'YES' : 'NO (Check .env)'}</span></div>
+          <div>Role: <span className="text-emerald-300">{diagInfo.role === 1 ? '1 (Host/Coach)' : '0 (Student)'}</span></div>
+          <div>Meeting SDK credentials: <span className={diagInfo.sdkKeyPresent ? 'text-emerald-400' : 'text-red-400'}>{diagInfo.sdkKeyPresent ? 'YES' : 'NO (Check .env)'}</span></div>
           <div>JWT Signature: <span className={diagInfo.sigPresent ? 'text-emerald-400' : 'text-red-400'}>{diagInfo.sigPresent ? 'YES' : 'NO'}</span></div>
-          <div>ZAK Token Present: <span className={diagInfo.zakPresent ? 'text-emerald-400' : 'text-amber-400'}>{diagInfo.zakPresent ? 'YES' : 'NO (Student/Unset)'}</span></div>
+          <div>ZAK Token: <span className={diagInfo.role === 0 ? 'text-slate-400' : diagInfo.zakPresent ? 'text-emerald-400' : 'text-red-400'}>
+            {diagInfo.role === 0 ? 'NOT REQUIRED' : diagInfo.zakPresent ? 'YES' : 'NO (Error/Unset)'}
+          </span></div>
+          <div>SDK initialization: <span className={diagInfo.step !== 'FAILED' && diagInfo.step !== 'IDLE' && diagInfo.step !== 'FETCH_SIG' && diagInfo.step !== 'SIG_RECEIVED' && diagInfo.step !== 'IMPORT_SDK' ? 'text-emerald-400' : 'text-amber-400'}>
+            {diagInfo.step === 'JOINED' || diagInfo.step === 'JOINING' || diagInfo.step === 'INIT_SDK' ? 'PASS' : 'PENDING'}
+          </span></div>
+          <div>Meeting join: <span className={diagInfo.step === 'JOINED' ? 'text-emerald-400 font-bold' : diagInfo.step === 'FAILED' ? 'text-red-400 font-bold' : 'text-amber-400'}>
+            {diagInfo.step === 'JOINED' ? 'PASS' : diagInfo.step === 'FAILED' ? 'FAIL' : 'JOINING...'}
+          </span></div>
+          <div>Participants Count: <span className="text-indigo-300 font-bold">{participantCount}</span></div>
           {diagInfo.errorText && (
             <div className="mt-1.5 p-1.5 bg-red-950/80 border border-red-500/40 text-red-200 rounded break-words">
               <strong>Error:</strong> {diagInfo.errorText}
@@ -257,7 +364,7 @@ export default function ZoomClassroomVideo({
 
       {/* ── Poor Network Warning Overlay ── */}
       {connectionState === 'connected' && networkQuality === 'poor' && (
-        <div className="absolute top-2 right-2 z-30 px-2.5 py-1 bg-red-950/90 border border-red-500/50 rounded-md text-[10px] font-bold text-red-200 flex items-center gap-1.5 animate-pulse">
+        <div className="absolute top-10 right-2 z-30 px-2.5 py-1 bg-red-950/90 border border-red-500/50 rounded-md text-[10px] font-bold text-red-200 flex items-center gap-1.5 animate-pulse">
           <span>⚠️</span>
           <span>Poor internet connection</span>
         </div>
@@ -267,7 +374,7 @@ export default function ZoomClassroomVideo({
       {connectionState === 'reconnecting' && (
         <div className="absolute inset-0 z-40 bg-black/80 backdrop-blur flex flex-col items-center justify-center gap-2 p-4 text-center">
           <div className="w-6 h-6 border-2 border-amber-400/40 border-t-amber-400 rounded-full animate-spin" />
-          <p className="text-xs font-bold text-amber-300">Reconnecting...</p>
+          <p className="text-xs font-bold text-amber-300">Reconnecting Video...</p>
           <p className="text-[10px] text-slate-400">Attempting to restore video connection without leaving classroom.</p>
         </div>
       )}
@@ -276,7 +383,7 @@ export default function ZoomClassroomVideo({
       {mediaPermissionDenied && (
         <div className="absolute top-10 left-2 right-2 z-30 px-3 py-1.5 bg-amber-950/90 border border-amber-500/40 rounded-md text-[10px] text-amber-200 font-medium flex items-center gap-1.5 shadow-lg">
           <span>📷</span>
-          <span>Please allow camera and microphone access in your browser.</span>
+          <span>Camera permission is blocked. Please allow camera access in your browser settings.</span>
         </div>
       )}
 
@@ -284,7 +391,7 @@ export default function ZoomClassroomVideo({
       {connectionState === 'connecting' && (
         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#0a0a1a] gap-2 p-4">
           <div className="w-7 h-7 border-2 border-indigo-400/40 border-t-indigo-400 rounded-full animate-spin" />
-          <p className="text-xs font-semibold text-slate-300">Connecting to Embedded Zoom Video...</p>
+          <p className="text-xs font-semibold text-slate-300">Connecting to Embedded Zoom Video Stage...</p>
           <p className="text-[10px] text-slate-500 font-mono">Meeting #{cleanMeetingId}</p>
         </div>
       )}
@@ -309,11 +416,50 @@ export default function ZoomClassroomVideo({
       <div
         ref={containerRef}
         id="zoom-embedded-video-container"
-        className="w-full h-full min-h-[200px]"
+        className="w-full flex-1 min-h-[220px]"
         style={{
           visibility: connectionState === 'connected' ? 'visible' : 'hidden',
         }}
       />
+
+      {/* ── Integrated Bottom Controls Bar ── */}
+      {connectionState === 'connected' && (
+        <div className="px-3 py-1.5 bg-[#070714] border-t border-[#1e1e3a] flex items-center justify-between gap-2 z-30 pointer-events-auto">
+          <div className="flex items-center gap-1.5">
+            {/* Audio Mute/Unmute */}
+            <button
+              type="button"
+              onClick={handleToggleMute}
+              className={`px-2.5 py-1 text-[10px] font-bold rounded-lg border transition-all flex items-center gap-1 ${
+                localMuted
+                  ? 'bg-red-950/80 border-red-500/50 text-red-300 hover:bg-red-900'
+                  : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
+              }`}
+            >
+              <span>{localMuted ? '🔇' : '🎙️'}</span>
+              <span>{localMuted ? 'Unmute' : 'Mute'}</span>
+            </button>
+
+            {/* View Layout Selector */}
+            <button
+              type="button"
+              onClick={() => handleToggleView(viewType === 'gallery' ? 'speaker' : 'gallery')}
+              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[10px] font-bold text-slate-200 rounded-lg transition-colors flex items-center gap-1"
+              title="Switch Grid Layout"
+            >
+              <span>{viewType === 'gallery' ? '🔲' : '👤'}</span>
+              <span>{viewType === 'gallery' ? 'Gallery View' : 'Speaker View'}</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-extrabold text-indigo-300 bg-indigo-950 px-2 py-0.5 rounded border border-indigo-800/60">
+              👥 {participantCount} {participantCount === 1 ? 'Participant' : 'Participants'}
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

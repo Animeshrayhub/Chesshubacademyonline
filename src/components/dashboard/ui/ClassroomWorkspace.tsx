@@ -776,11 +776,13 @@ export default function ClassroomWorkspace({
         setIsSubmittingEndReport(false);
         return;
       }
+      // Broadcast COMPLETED status to all participants
       mainChannelRef.current?.send({
         type: 'broadcast',
         event: 'status-change',
         payload: { status: 'COMPLETED', endedAt: nowISO, startedAt: startedAtTime },
       });
+      // Save session notes & attendance report
       await submitClassEndReportAction({ classId, sessionNotes: finalNotes, attendance: attendanceList });
       setStatus('COMPLETED');
       setShowEndClassModal(false);
@@ -1046,8 +1048,8 @@ export default function ClassroomWorkspace({
             className="flex flex-col bg-[#0f0f1f] border-l border-[#222244] flex-shrink-0 overflow-hidden"
             style={{ width: `${rightColWidth}px` }}
           >
-            {/* ── Zoom Meeting SDK Embedded Video (Zero Redirect — stays inside ChessHub) ── */}
-            <div className="flex-shrink-0" style={{ height: '240px' }}>
+            {/* ── Zoom Meeting SDK Embedded Video Stage (Zero Redirect — stays inside ChessHub) ── */}
+            <div className="flex-shrink-0 min-h-[280px] h-[320px] max-h-[45vh] relative">
               <ZoomClassroomVideo
                 classId={classId}
                 meetingNumber={effectiveMeetingNumber}
