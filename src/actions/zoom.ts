@@ -84,13 +84,22 @@ export async function getZoomSignatureAction(classId: string) {
       };
     }
 
-    const sdkKey = (process.env.ZOOM_CLIENT_ID || process.env.NEXT_PUBLIC_ZOOM_CLIENT_ID || '').trim();
-    const sdkSecret = (process.env.ZOOM_CLIENT_SECRET || '').trim();
+    const sdkKey = (
+      process.env.ZOOM_MEETING_SDK_CLIENT_ID ||
+      process.env.ZOOM_CLIENT_ID ||
+      process.env.NEXT_PUBLIC_ZOOM_CLIENT_ID ||
+      ''
+    ).trim();
+    const sdkSecret = (
+      process.env.ZOOM_MEETING_SDK_CLIENT_SECRET ||
+      process.env.ZOOM_CLIENT_SECRET ||
+      ''
+    ).trim();
 
     if (!sdkKey || !sdkSecret || sdkKey === 'dummy_sdk_key') {
       return {
         success: false,
-        error: { message: 'Zoom API credentials (ZOOM_CLIENT_ID / ZOOM_CLIENT_SECRET) are missing or unconfigured in server environment (Vercel Production / .env.local).' },
+        error: { message: 'Zoom API / Meeting SDK credentials (ZOOM_MEETING_SDK_CLIENT_ID / ZOOM_CLIENT_ID) are missing or unconfigured in server environment.' },
       };
     }
 
