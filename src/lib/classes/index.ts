@@ -125,33 +125,42 @@ export async function listClasses(): Promise<Result<AdminClassRow[]>> {
       coachUserMap = new Map((coachUsers ?? []).map((u: any) => [u.id, u]));
     }
 
-    // Map class students to student profiles -> student users
+    // Map class students to student profiles -> student users (supports both profile.id and user.id)
     const classStudents = classStudentsRes.data ?? [];
-    const studentProfileIds = [...new Set(classStudents.map((cs: any) => cs.student_id))];
+    const rawStudentIds = [...new Set(classStudents.map((cs: any) => cs.student_id))];
 
     let studentProfileToUser = new Map<string, { id: string; first_name: string; last_name: string; email: string }>();
-    if (studentProfileIds.length > 0) {
-      const { data: studentProfiles } = await admin
-        .from('student_profiles')
-        .select('id, user_id')
-        .in('id', studentProfileIds);
+    if (rawStudentIds.length > 0) {
+      const [profilesRes, usersRes] = await Promise.all([
+        admin.from('student_profiles').select('id, user_id').in('id', rawStudentIds),
+        admin.from('users').select('id, first_name, last_name, email').in('id', rawStudentIds),
+      ]);
 
-      const studentUserIds = (studentProfiles ?? []).map((sp: any) => sp.user_id);
-      const studentProfileToUserIdMap = new Map<string, string>((studentProfiles ?? []).map((sp: any) => [sp.id, sp.user_id]));
+      const profiles = profilesRes.data ?? [];
+      const directUsers = usersRes.data ?? [];
 
-      if (studentUserIds.length > 0) {
-        const { data: studentUsers } = await admin
+      const userIdsFromProfiles = [...new Set(profiles.map((p: any) => p.user_id))];
+      let profileUsers: any[] = [];
+      if (userIdsFromProfiles.length > 0) {
+        const { data: pUsers } = await admin
           .from('users')
           .select('id, first_name, last_name, email')
-          .in('id', studentUserIds);
+          .in('id', userIdsFromProfiles);
+        profileUsers = pUsers ?? [];
+      }
 
-        const studentUserMap = new Map<string, any>((studentUsers ?? []).map((u: any) => [u.id, u]));
-        for (const spId of studentProfileIds as string[]) {
-          const uId = studentProfileToUserIdMap.get(spId);
-          const userObj = uId ? studentUserMap.get(uId) : null;
-          if (userObj) {
-            studentProfileToUser.set(spId, userObj);
-          }
+      const allUsersMap = new Map<string, any>([
+        ...directUsers.map((u: any) => [u.id, u]),
+        ...profileUsers.map((u: any) => [u.id, u]),
+      ]);
+
+      const profileToUserIdMap = new Map<string, string>(profiles.map((p: any) => [p.id, p.user_id]));
+
+      for (const id of rawStudentIds as string[]) {
+        const uId = profileToUserIdMap.get(id) || id;
+        const userObj = allUsersMap.get(uId);
+        if (userObj) {
+          studentProfileToUser.set(id, userObj);
         }
       }
     }
@@ -312,10 +321,14 @@ export async function createClass(data: CreateClassInput): Promise<Result<DbClas
         }
 
         if (spId) {
-          await admin.from('class_students').upsert(
-            { class_id: inserted.id, student_id: spId },
-            { onConflict: 'class_id,student_id' }
-          );
+          await admin.from('class_students').delete().eq('class_id', inserted.id).eq('student_id', spId);
+          const { error: insErr } = await admin.from('class_students').insert({
+            class_id: inserted.id,
+            student_id: spId,
+          });
+          if (insErr) {
+            console.error('[createClass] Failed to insert student into class_students:', insErr.message);
+          }
         }
       }
     }
