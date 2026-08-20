@@ -472,29 +472,52 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
 
             {/* Students Multi-Selector */}
             <div>
-              <label className="block text-xs font-semibold text-text-primary mb-1.5">
-                Assign Students
+              <label className="block text-xs font-semibold text-text-primary mb-1.5 flex items-center justify-between">
+                <span>Assign Students</span>
+                <span className="text-[10px] text-text-muted font-normal">
+                  {formData.studentUserIds.length} selected
+                </span>
               </label>
-              <div className="border border-border rounded-xl p-3 max-h-32 overflow-y-auto space-y-1.5 bg-white">
-                {students.map((s) => (
-                  <label key={s.id} className="flex items-center gap-2 text-xs text-text-primary cursor-pointer hover:bg-surface-light p-1 rounded-lg">
-                    <input
-                      type="checkbox"
-                      checked={formData.studentUserIds.includes(s.id)}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        setFormData((prev) => {
-                          const list = checked
-                            ? [...prev.studentUserIds, s.id]
-                            : prev.studentUserIds.filter((id) => id !== s.id);
-                          return { ...prev, studentUserIds: list };
-                        });
-                      }}
-                      className="rounded text-primary focus:ring-primary border-border"
-                    />
-                    <span>{s.first_name} {s.last_name}</span>
-                  </label>
-                ))}
+              <div className="border border-border rounded-xl p-2.5 max-h-36 overflow-y-auto space-y-1 bg-white">
+                {students.length === 0 ? (
+                  <p className="text-xs text-text-muted italic p-2 text-center">No registered students found</p>
+                ) : (
+                  students.map((s) => {
+                    const isSelected =
+                      formData.studentUserIds.includes(s.id) ||
+                      (s.profile?.id ? formData.studentUserIds.includes(s.profile.id) : false);
+
+                    return (
+                      <label
+                        key={s.id}
+                        className={`flex items-center justify-between gap-2 text-xs p-1.5 rounded-lg cursor-pointer transition-all ${
+                          isSelected
+                            ? 'bg-primary/10 text-primary font-semibold border border-primary/20'
+                            : 'text-text-primary hover:bg-surface-light'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setFormData((prev) => {
+                                const list = checked
+                                  ? [...prev.studentUserIds, s.id]
+                                  : prev.studentUserIds.filter((id) => id !== s.id && id !== s.profile?.id);
+                                return { ...prev, studentUserIds: list };
+                              });
+                            }}
+                            className="rounded text-primary focus:ring-primary border-border"
+                          />
+                          <span>{s.first_name} {s.last_name}</span>
+                        </div>
+                        {s.email && <span className="text-[10px] text-text-muted truncate max-w-[120px]">{s.email}</span>}
+                      </label>
+                    );
+                  })
+                )}
               </div>
             </div>
 

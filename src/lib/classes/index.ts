@@ -293,12 +293,22 @@ export async function createClass(data: CreateClassInput): Promise<Result<DbClas
         if (existingSp?.id) {
           spId = existingSp.id;
         } else {
-          const { data: newSp } = await admin
+          const { data: directSp } = await admin
             .from('student_profiles')
-            .insert({ user_id: sUserId, level: 'BEGINNER', age: 16 })
             .select('id')
-            .single();
-          if (newSp?.id) spId = newSp.id;
+            .eq('id', sUserId)
+            .maybeSingle();
+
+          if (directSp?.id) {
+            spId = directSp.id;
+          } else {
+            const { data: newSp } = await admin
+              .from('student_profiles')
+              .insert({ user_id: sUserId, level: 'BEGINNER', age: 16 })
+              .select('id')
+              .single();
+            if (newSp?.id) spId = newSp.id;
+          }
         }
 
         if (spId) {
@@ -401,14 +411,32 @@ export async function updateClass(id: string, data: UpdateClassInput): Promise<R
       await admin.from('class_students').delete().eq('class_id', id);
 
       if (data.studentUserIds.length > 0) {
-        const { data: studentProfiles } = await admin
-          .from('student_profiles')
-          .select('id')
-          .in('user_id', data.studentUserIds);
+        const studentProfileIds: string[] = [];
+        for (const uid of data.studentUserIds) {
+          const { data: sp } = await admin
+            .from('student_profiles')
+            .select('id')
+            .eq('user_id', uid)
+            .maybeSingle();
 
-        const enrollments = (studentProfiles ?? []).map((sp: any) => ({
+          if (sp?.id) {
+            studentProfileIds.push(sp.id);
+          } else {
+            const { data: directSp } = await admin
+              .from('student_profiles')
+              .select('id')
+              .eq('id', uid)
+              .maybeSingle();
+
+            if (directSp?.id) {
+              studentProfileIds.push(directSp.id);
+            }
+          }
+        }
+
+        const enrollments = studentProfileIds.map((spId) => ({
           class_id: id,
-          student_id: sp.id,
+          student_id: spId,
         }));
 
         if (enrollments.length > 0) {
