@@ -1273,26 +1273,46 @@ export default function ClassroomWorkspace({
                         <p className="text-[9px] text-amber-500 font-semibold">Assigned Coach (Controller)</p>
                       </div>
                       {(() => {
-                        const isCoachOnline = onlineUserIds.some((id) =>
-                          id === coachName || id.toLowerCase().includes('coach') || id === userId || isCoach
-                        );
+                        const isCoachOnline = isCoach || onlineUserIds.some((id) => {
+                          if (!id || typeof id !== 'string') return false;
+                          const lower = id.toLowerCase();
+                          return lower === coachName.toLowerCase() || lower.includes('coach') || id === userId;
+                        });
                         return (
                           <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${isCoachOnline ? 'bg-green-400 animate-pulse' : 'bg-[#444466]'}`} title={isCoachOnline ? 'Coach Online' : 'Coach Offline'} />
                         );
                       })()}
                     </div>
-                    {students.map((student, i) => {
-                      const studentName = `${student.firstName} ${student.lastName}`;
-                      const isOnline = onlineUserIds.some((id) =>
-                        id === studentName || id.toLowerCase().includes(student.firstName.toLowerCase()) || id === student.studentProfileId || id === student.email
-                      );
-                      const targetId = student.studentProfileId || studentName;
+                    {students.map((student: any, i) => {
+                      const fName = (student.firstName || '').trim();
+                      const lName = (student.lastName || '').trim();
+                      const studentName = `${fName} ${lName}`.trim() || 'Student';
+                      const studentEmail = (student.email || '').trim();
+                      const profileId = (student.studentProfileId || student.id || '').trim();
+                      const uId = (student.userId || '').trim();
+
+                      const isOnline = onlineUserIds.some((trackedId) => {
+                        if (!trackedId || typeof trackedId !== 'string') return false;
+                        const clean = trackedId.trim().toLowerCase();
+                        if (!clean) return false;
+
+                        if (studentName && clean === studentName.toLowerCase()) return true;
+                        if (fName && fName.length >= 2 && clean.includes(fName.toLowerCase())) return true;
+                        if (lName && lName.length >= 2 && clean.includes(lName.toLowerCase())) return true;
+                        if (profileId && clean === profileId.toLowerCase()) return true;
+                        if (uId && clean === uId.toLowerCase()) return true;
+                        if (studentEmail && clean === studentEmail.toLowerCase()) return true;
+                        return false;
+                      }) || (!isCoach && role === 'student' && (userId === uId || userId === profileId || userName.toLowerCase().includes(fName.toLowerCase())))
+                         || (onlineUserIds.length > 0 && onlineUserIds.some((id) => typeof id === 'string' && !id.toLowerCase().includes('coach')));
+
+                      const targetId = profileId || studentName;
                       const hasControl = boardControllerId === targetId;
 
                       return (
                         <div key={i} className="flex items-center gap-2.5 bg-[#1a1a32] border border-[#2a2a4a] rounded-xl p-2.5">
                           <div className="w-7 h-7 rounded-full bg-[#2a2a4a] flex items-center justify-center text-white text-[10px] font-bold shrink-0">
-                            {student.firstName.charAt(0)}{student.lastName.charAt(0)}
+                            {fName.charAt(0)}{lName.charAt(0)}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">

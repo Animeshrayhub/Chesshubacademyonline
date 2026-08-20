@@ -200,9 +200,11 @@ export default async function ClassroomPage({ params }: { params: { classId: str
   }
 
   const mappedStudents = students.map((s) => ({
-    firstName: s.firstName,
-    lastName: s.lastName,
-    email: s.email,
+    studentProfileId: s.studentProfileId || s.id || '',
+    userId: s.userId || s.user_id || '',
+    firstName: s.firstName || '',
+    lastName: s.lastName || '',
+    email: s.email || '',
   }));
 
   const className = cls.title || cls.topic || cls.name || 'Chess Classroom Session';
