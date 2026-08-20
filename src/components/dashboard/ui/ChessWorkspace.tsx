@@ -791,7 +791,13 @@ export default function ChessWorkspace({
       });
     };
 
-    const boardChannelTopic = `live-session:${classId}`;
+    if (classId) {
+      // In Classroom mode, ClassroomWorkspace is the single canonical manager of live-session:${classId}.
+      // Bypass secondary channel creation to prevent "cannot add callbacks after subscribe" errors.
+      return;
+    }
+
+    const boardChannelTopic = `standalone-board:${Math.random().toString(36).slice(2, 9)}`;
 
     const channel = supabase.channel(boardChannelTopic, {
       config: {

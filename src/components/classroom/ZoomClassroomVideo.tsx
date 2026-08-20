@@ -225,8 +225,13 @@ export default function ZoomClassroomVideo({
 
       // ── 4. Init embedded client ────────────────────────────────────────
       setDiagStep('INIT_SDK');
+      const appRoot = containerRef.current;
+      if (!appRoot) {
+        throw new Error('Zoom container DOM element is not mounted.');
+      }
+
       await clientInstance.init({
-        zoomAppRoot: containerRef.current!,
+        zoomAppRoot: appRoot,
         language: 'en-US',
         patchJsMedia: true,
         leaveOnPageUnload: true,
