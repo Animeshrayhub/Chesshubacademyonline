@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import CoachClassCompletionModal from './CoachClassCompletionModal';
 
 export interface ClassData {
@@ -17,6 +18,8 @@ export interface ClassData {
   country?: string;
   attendanceCount?: number;
   totalStudents?: number;
+  updated_at?: string | null;
+  completed_at?: string | null;
 }
 
 interface CoachClassesListProps {
@@ -26,28 +29,28 @@ interface CoachClassesListProps {
 type TabType = 'ACTIVE' | 'UPCOMING' | 'COMPLETED';
 
 export default function CoachClassesList({ classes: initialClasses }: CoachClassesListProps) {
-  // Use real-time database records directly
-  const rawClasses = initialClasses || [];
+  const router = useRouter();
+  const [classList, setClassList] = useState<ClassData[]>(initialClasses || []);
 
-  const [activeTab, setActiveTab] = useState<TabType>('ACTIVE');
+  useEffect(() => {
+    setClassList(initialClasses || []);
+  }, [initialClasses]);
+
+  const [activeTab, setActiveTab] = useState<TabType>('UPCOMING');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedStudent, setSelectedStudent] = useState('ALL');
   const [studentSearchInput, setStudentSearchInput] = useState('');
-  const [sortBy, setSortBy] = useState<'date-asc' | 'date-desc' | 'name' | 'duration'>('date-asc');
+  const [sortBy, setSortBy] = useState<'default' | 'date-asc' | 'date-desc' | 'name' | 'duration'>('default');
 
   // Modals & Drawers
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(3);
   const [hoveredRosterId, setHoveredRosterId] = useState<string | null>(null);
   const [selectedRosterClass, setSelectedRosterClass] = useState<ClassData | null>(null);
-  const [rescheduleClass, setRescheduleClass] = useState<ClassData | null>(null);
-  const [rescheduleDate, setRescheduleDate] = useState('');
   const [completionClass, setCompletionClass] = useState<ClassData | null>(null);
 
   // Extract student names list
   const allStudentNames = Array.from(
-    new Set(rawClasses.flatMap((c) => c.studentNames))
+    new Set(classList.flatMap((c) => c.studentNames))
   ).sort();
 
   // Quick Date Filter presets
@@ -79,21 +82,20 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
     }
   };
 
+  // Helper function for checking tab membership
+  const matchesTab = (c: ClassData, tab: TabType) => {
+    if (tab === 'ACTIVE') return c.status === 'LIVE' || c.status === 'IN_PROGRESS';
+    if (tab === 'UPCOMING') return c.status === 'SCHEDULED';
+    if (tab === 'COMPLETED') return c.status === 'COMPLETED' || c.status === 'RECORDING_AVAILABLE';
+    return false;
+  };
+
   // Filter logic
-  const filteredClasses = rawClasses.filter((c) => {
+  const filteredClasses = classList.filter((c) => {
     const classTime = new Date(c.schedule);
 
-    // Tab Filtering:
-    // ACTIVE = LIVE, IN_PROGRESS, or SCHEDULED
-    // UPCOMING = SCHEDULED
-    // COMPLETED = COMPLETED or RECORDING_AVAILABLE
-    if (activeTab === 'ACTIVE' && c.status !== 'LIVE' && c.status !== 'IN_PROGRESS' && c.status !== 'SCHEDULED') {
-      return false;
-    }
-    if (activeTab === 'UPCOMING' && c.status !== 'SCHEDULED') {
-      return false;
-    }
-    if (activeTab === 'COMPLETED' && c.status !== 'COMPLETED' && c.status !== 'RECORDING_AVAILABLE') {
+    // Tab Filtering
+    if (!matchesTab(c, activeTab)) {
       return false;
     }
 
@@ -125,20 +127,37 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
 
   // Sort logic
   const sortedClasses = [...filteredClasses].sort((a, b) => {
-    const aLive = a.status === 'LIVE' || a.status === 'IN_PROGRESS';
-    const bLive = b.status === 'LIVE' || b.status === 'IN_PROGRESS';
-    if (aLive && !bLive) return -1;
-    if (!aLive && bLive) return 1;
-
     if (sortBy === 'date-asc') return new Date(a.schedule).getTime() - new Date(b.schedule).getTime();
     if (sortBy === 'date-desc') return new Date(b.schedule).getTime() - new Date(a.schedule).getTime();
     if (sortBy === 'name') return (a.studentNames[0] || '').localeCompare(b.studentNames[0] || '');
     if (sortBy === 'duration') return b.duration_minutes - a.duration_minutes;
+
+    // Default sorting logic per tab:
+    if (activeTab === 'COMPLETED') {
+      // NEWEST COMPLETED FIRST (by completed_at / updated_at DESC)
+      const timeA = new Date(a.completed_at || a.updated_at || a.schedule).getTime();
+      const timeB = new Date(b.completed_at || b.updated_at || b.schedule).getTime();
+      return timeB - timeA;
+    }
+
+    if (activeTab === 'UPCOMING') {
+      // SOONEST UPCOMING FIRST (by schedule ASC)
+      return new Date(a.schedule).getTime() - new Date(b.schedule).getTime();
+    }
+
+    if (activeTab === 'ACTIVE') {
+      const aLive = a.status === 'LIVE' || a.status === 'IN_PROGRESS';
+      const bLive = b.status === 'LIVE' || b.status === 'IN_PROGRESS';
+      if (aLive && !bLive) return -1;
+      if (!aLive && bLive) return 1;
+      return new Date(a.schedule).getTime() - new Date(b.schedule).getTime();
+    }
+
     return 0;
   });
 
   // Real dynamic calculation for COMPLETED tab metrics
-  const completedClassesList = rawClasses.filter(
+  const completedClassesList = classList.filter(
     (c) => c.status === 'COMPLETED' || c.status === 'RECORDING_AVAILABLE'
   );
 
@@ -203,16 +222,38 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
   return (
     <div className="space-y-4 font-sans text-slate-800">
       {/* ═══════════════════════════════════════════════════════════════════
-          TOP BAR — Tabs & Filter Controls (Reference Screenshot Layout)
+          TOP BAR — Tabs & Filter Controls
       ═══════════════════════════════════════════════════════════════════ */}
       <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm flex flex-col lg:flex-row items-center justify-between gap-3">
         {/* Tabs: ACTIVE | UPCOMING | COMPLETED */}
         <div className="flex items-center gap-6 border-b lg:border-b-0 border-slate-200 w-full lg:w-auto pb-2 lg:pb-0">
           {(['ACTIVE', 'UPCOMING', 'COMPLETED'] as TabType[]).map((tab) => {
-            const count = rawClasses.filter((c) => {
-              if (tab === 'ACTIVE') return c.status === 'LIVE' || c.status === 'IN_PROGRESS';
-              if (tab === 'UPCOMING') return c.status === 'SCHEDULED';
-              return c.status === 'COMPLETED' || c.status === 'RECORDING_AVAILABLE';
+            const count = classList.filter((c) => {
+              // Apply active filters to counters as well
+              if (!matchesTab(c, tab)) return false;
+
+              if (startDate) {
+                const start = new Date(`${startDate}T00:00:00`);
+                if (new Date(c.schedule) < start) return false;
+              }
+              if (endDate) {
+                const end = new Date(`${endDate}T23:59:59`);
+                if (new Date(c.schedule) > end) return false;
+              }
+
+              if (selectedStudent !== 'ALL') {
+                if (!c.studentNames.some((n) => n.toLowerCase().includes(selectedStudent.toLowerCase()))) {
+                  return false;
+                }
+              }
+              if (studentSearchInput.trim()) {
+                const q = studentSearchInput.toLowerCase();
+                if (!c.studentNames.some((n) => n.toLowerCase().includes(q))) {
+                  return false;
+                }
+              }
+
+              return true;
             }).length;
 
             return (
@@ -296,63 +337,17 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
             onChange={(e) => setSortBy(e.target.value as any)}
             className="border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 bg-white focus:outline-none focus:border-purple-600 shadow-sm"
           >
-            <option value="date-asc">Asc ▾</option>
-            <option value="date-desc">Desc ▴</option>
+            <option value="default">Default Sort</option>
+            <option value="date-asc">Date (Asc ▾)</option>
+            <option value="date-desc">Date (Desc ▴)</option>
             <option value="name">Name (A-Z)</option>
             <option value="duration">Duration</option>
           </select>
-
-          {/* Pink Notification Bell */}
-          <button
-            type="button"
-            onClick={() => setShowNotifications((v) => !v)}
-            className="w-8 h-8 rounded-full bg-pink-600 hover:bg-pink-500 text-white flex items-center justify-center shadow-md transition-transform hover:scale-105 ml-1 relative"
-            title="Classroom Notifications"
-          >
-            🔔
-            {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 text-white text-[9px] font-black rounded-full flex items-center justify-center border border-white">
-                {unreadCount}
-              </span>
-            )}
-          </button>
         </div>
       </div>
 
-      {/* Notification Drawer Popover */}
-      {showNotifications && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xl space-y-3 relative z-30 animate-in fade-in slide-in-from-top-2">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-            <h4 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Class Notifications ({unreadCount})</h4>
-            <button
-              type="button"
-              onClick={() => { setUnreadCount(0); setShowNotifications(false); }}
-              className="text-[10px] font-bold text-purple-700 hover:underline"
-            >
-              Mark all as read
-            </button>
-          </div>
-          <div className="space-y-2 max-h-48 overflow-y-auto">
-            <div className="p-2.5 bg-purple-50 rounded-xl border border-purple-100 flex items-center justify-between text-xs">
-              <div>
-                <p className="font-bold text-purple-900">🎓 Yashvi joined live classroom</p>
-                <p className="text-[10px] text-purple-600">Australia • 5 minutes ago</p>
-              </div>
-              <span className="text-xs">🟢</span>
-            </div>
-            <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between text-xs">
-              <div>
-                <p className="font-bold text-slate-800">📝 New Candidate Move Response: Aryan Aher</p>
-                <p className="text-[10px] text-slate-500">Submitted: Nf3</p>
-              </div>
-              <span className="text-xs">⚡</span>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ═══════════════════════════════════════════════════════════════════
-          COMPLETED TAB SUMMARY METRIC CARDS — Real Dynamic Calculations
+          COMPLETED TAB SUMMARY METRIC CARDS
       ═══════════════════════════════════════════════════════════════════ */}
       {activeTab === 'COMPLETED' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -379,7 +374,7 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
       )}
 
       {/* ═══════════════════════════════════════════════════════════════════
-          ROSTER CARDS LIST — Matches Reference Screenshot
+          ROSTER CARDS LIST
       ═══════════════════════════════════════════════════════════════════ */}
       <div className="space-y-3">
         {sortedClasses.length === 0 ? (
@@ -581,7 +576,16 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
             email: `${name.toLowerCase().replace(/\s+/g, '.')}@student.com`,
           }))}
           onCompleted={() => {
-            completionClass.status = 'COMPLETED';
+            const completedId = completionClass.id;
+            const nowIso = new Date().toISOString();
+            setClassList((prev) =>
+              prev.map((c) =>
+                c.id === completedId
+                  ? { ...c, status: 'COMPLETED', updated_at: nowIso, completed_at: nowIso }
+                  : c
+              )
+            );
+            router.refresh();
           }}
         />
       )}

@@ -198,7 +198,7 @@ export async function listClasses(): Promise<Result<AdminClassRow[]>> {
  */
 export async function createClass(data: CreateClassInput): Promise<Result<DbClass>> {
   try {
-    await assertAdmin();
+    await assertAdminOrCoach();
     const admin = createSupabaseAdmin();
 
     // Resolve coach_profiles.id (auto-create profile row if missing)

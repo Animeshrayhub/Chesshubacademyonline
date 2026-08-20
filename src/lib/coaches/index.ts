@@ -660,7 +660,7 @@ export async function getCoachClasses(): Promise<Result<any[]>> {
           scheduled_start: '2026-07-07T17:00:00Z',
           duration_minutes: 45,
           class_type: 'PRIVATE',
-          status: 'LIVE',
+          status: 'SCHEDULED',
           coach_login_time: '07 Jul 2026 05:04 PM',
           country: 'Australia',
         },
@@ -671,7 +671,7 @@ export async function getCoachClasses(): Promise<Result<any[]>> {
           scheduled_start: '2026-07-10T18:30:00Z',
           duration_minutes: 45,
           class_type: 'PRIVATE',
-          status: 'LIVE',
+          status: 'SCHEDULED',
           coach_login_time: '10 Jul 2026 06:30 PM',
           country: 'India',
         },
@@ -682,7 +682,7 @@ export async function getCoachClasses(): Promise<Result<any[]>> {
           scheduled_start: '2026-07-17T17:30:00Z',
           duration_minutes: 45,
           class_type: 'PRIVATE',
-          status: 'LIVE',
+          status: 'SCHEDULED',
           coach_login_time: '05 Aug 2026 12:06 PM',
           country: 'Malaysia',
         },
@@ -693,7 +693,7 @@ export async function getCoachClasses(): Promise<Result<any[]>> {
           scheduled_start: '2026-07-19T11:30:00Z',
           duration_minutes: 45,
           class_type: 'PRIVATE',
-          status: 'LIVE',
+          status: 'SCHEDULED',
           coach_login_time: '19 Jul 2026 12:33 PM',
           country: 'Singapore',
         },
@@ -704,7 +704,7 @@ export async function getCoachClasses(): Promise<Result<any[]>> {
           scheduled_start: '2026-07-30T17:00:00Z',
           duration_minutes: 45,
           class_type: 'PRIVATE',
-          status: 'LIVE',
+          status: 'SCHEDULED',
           coach_login_time: '30 Jul 2026 05:11 PM',
           country: 'South Africa',
         },
@@ -768,7 +768,6 @@ export async function getCoachClasses(): Promise<Result<any[]>> {
         return u ? `${u.first_name} ${u.last_name}` : 'Student';
       });
 
-      // Extract student name from class title if mapping empty
       const titleMatch = c.title?.match(/^([^(]+)/);
       const extractedName = titleMatch ? titleMatch[1].trim() : 'Student';
       const finalStudentNames = studentNames.length > 0 ? studentNames : [extractedName];
@@ -779,6 +778,8 @@ export async function getCoachClasses(): Promise<Result<any[]>> {
       return {
         ...c,
         schedule: c.scheduled_start,
+        updated_at: c.updated_at || null,
+        completed_at: c.completed_at || c.updated_at || null,
         studentNames: finalStudentNames,
         coachLoginTime: c.coach_login_time || null,
         country: c.country || null,

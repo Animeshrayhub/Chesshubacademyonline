@@ -15,6 +15,29 @@ interface ZoomClassroomVideoProps {
   onClassEndedByCoach?: () => void;
 }
 
+// Mirrors the SDK Participant shape we care about
+interface ParticipantInfo {
+  userId: number;
+  userName: string;
+  audio: string;       // '' | 'computer' | 'phone'
+  muted: boolean;
+  bVideoOn: boolean;
+  audioConnectionStatus?: number; // 0=NotConnect 1=Connecting 2=ConnectSuccess 3=ConnectFail
+}
+
+interface AudioDiagState {
+  meetingJoined: boolean;
+  audioConnected: boolean;       // audio === 'computer'
+  audioConnectionStatus: number; // 0-3
+  micPermission: 'granted' | 'denied' | 'prompt' | 'unknown';
+  micDetected: boolean;
+  isMuted: boolean;              // from SDK getCurrentUser().muted
+  isTalking: boolean;            // from active-speaker event
+  autoplayBlocked: boolean;
+  participants: ParticipantInfo[];
+  sdkMuteError: string | null;
+}
+
 export default function ZoomClassroomVideo({
   classId,
   meetingNumber,
@@ -23,29 +46,47 @@ export default function ZoomClassroomVideo({
   userEmail,
   role,
   isAudioMuted = false,
-  isVideoMuted = false,
   onClassEndedByCoach,
 }: ZoomClassroomVideoProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const zoomClientRef = useRef<any>(null);
   const initStartedRef = useRef<boolean>(false);
 
-  const [connectionState, setConnectionState] = useState<'connecting' | 'connected' | 'reconnecting' | 'error' | 'disconnected'>('connecting');
+  const [connectionState, setConnectionState] = useState<
+    'connecting' | 'connected' | 'reconnecting' | 'error' | 'disconnected'
+  >('connecting');
   const [networkQuality, setNetworkQuality] = useState<'good' | 'weak' | 'poor' | 'unknown'>('good');
-  const [networkStats, setNetworkStats] = useState<{ uplink?: number; downlink?: number; level?: number } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [mediaPermissionDenied, setMediaPermissionDenied] = useState<boolean>(false);
   const [showDiagnostics, setShowDiagnostics] = useState<boolean>(false);
 
-  // Video Stage & Controls State
+  // Video Stage & Layout State
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [viewType, setViewTypeState] = useState<'gallery' | 'speaker'>('gallery');
-  const [localMuted, setLocalMuted] = useState<boolean>(isAudioMuted);
   const [participantCount, setParticipantCount] = useState<number>(1);
   const [activeSpeakerName, setActiveSpeakerName] = useState<string | null>(null);
 
+  // ── AUDIO DIAGNOSTICS STATE ──────────────────────────────────────────────
+  const [audioDiag, setAudioDiag] = useState<AudioDiagState>({
+    meetingJoined: false,
+    audioConnected: false,
+    audioConnectionStatus: 0,
+    micPermission: 'unknown',
+    micDetected: false,
+    isMuted: isAudioMuted,
+    isTalking: false,
+    autoplayBlocked: false,
+    participants: [],
+    sdkMuteError: null,
+  });
+
+  // Local muted state — kept in sync with SDK via user-updated events
+  const [localMuted, setLocalMuted] = useState<boolean>(isAudioMuted);
+  const [muteLoading, setMuteLoading] = useState<boolean>(false);
+
+  // SDK init step diagnostics
+  const [diagStep, setDiagStep] = useState<string>('IDLE');
   const [diagInfo, setDiagInfo] = useState<{
-    step: string;
     meetingNumber: string;
     role: number;
     sdkKeyPresent: boolean;
@@ -53,7 +94,6 @@ export default function ZoomClassroomVideo({
     zakPresent: boolean;
     errorText?: string;
   }>({
-    step: 'IDLE',
     meetingNumber: meetingNumber || '',
     role: role === 'coach' || role === 'admin' ? 1 : 0,
     sdkKeyPresent: false,
@@ -64,25 +104,58 @@ export default function ZoomClassroomVideo({
   const isCoach = role === 'coach' || role === 'admin';
   const cleanMeetingId = (meetingNumber || '').replace(/\s+/g, '');
 
-  const updateAttendeesCount = useCallback((clientInstance: any) => {
+  // ── Helpers ──────────────────────────────────────────────────────────────
+
+  /** Reads full participant list from SDK and refreshes audioDiag.participants */
+  const refreshParticipants = useCallback((clientInstance: any) => {
     try {
-      if (clientInstance && typeof clientInstance.getAttendeeslist === 'function') {
-        const list = clientInstance.getAttendeeslist();
-        if (Array.isArray(list) && list.length > 0) {
-          setParticipantCount(list.length);
-        }
-      }
-    } catch (e) {
+      if (!clientInstance || typeof clientInstance.getAttendeeslist !== 'function') return;
+      const list: any[] = clientInstance.getAttendeeslist() || [];
+      setParticipantCount(list.length);
+      const mapped: ParticipantInfo[] = list.map((p: any) => ({
+        userId: p.userId,
+        userName: p.userName || p.displayName || 'Unknown',
+        audio: p.audio ?? '',
+        muted: p.muted ?? true,
+        bVideoOn: p.video ?? p.bVideoOn ?? false,
+        audioConnectionStatus: p.audioConnectionStatus ?? p.audioStatus ?? 0,
+      }));
+      setAudioDiag((prev) => ({ ...prev, participants: mapped }));
+    } catch {
       // ignore
     }
   }, []);
+
+  /** Reads current user audio state from SDK and updates audioDiag */
+  const syncCurrentUserAudio = useCallback((clientInstance: any) => {
+    try {
+      if (!clientInstance || typeof clientInstance.getCurrentUser !== 'function') return;
+      const me: any = clientInstance.getCurrentUser();
+      if (!me) return;
+      const audioConnected = me.audio === 'computer' || me.audio === 'phone';
+      const audioConnStatus: number = me.audioConnectionStatus ?? me.audioStatus ?? (audioConnected ? 2 : 0);
+      setAudioDiag((prev) => ({
+        ...prev,
+        audioConnected,
+        audioConnectionStatus: audioConnStatus,
+        isMuted: me.muted ?? prev.isMuted,
+        meetingJoined: true,
+      }));
+      setLocalMuted(me.muted ?? false);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // ── Main Connection Flow ─────────────────────────────────────────────────
 
   const startConnection = useCallback(async () => {
     if (!containerRef.current || !cleanMeetingId) {
       if (!cleanMeetingId) {
         setErrorMessage('Meeting ID is missing for this class session.');
         setConnectionState('error');
-        setDiagInfo((prev) => ({ ...prev, step: 'FAILED', errorText: 'Missing meeting number' }));
+        setDiagStep('FAILED');
+        setDiagInfo((prev) => ({ ...prev, errorText: 'Missing meeting number' }));
       }
       return;
     }
@@ -90,39 +163,53 @@ export default function ZoomClassroomVideo({
     setConnectionState('connecting');
     setErrorMessage(null);
     setMediaPermissionDenied(false);
-
-    setDiagInfo((prev) => ({ ...prev, step: 'MEDIA_PERM_CHECK', meetingNumber: cleanMeetingId, errorText: undefined }));
+    setDiagStep('MEDIA_PERM_CHECK');
 
     try {
-      // 1. Request browser media permissions cleanly beforehand
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      // ── 1. Browser media permissions ───────────────────────────────────
+      let micPermission: AudioDiagState['micPermission'] = 'unknown';
+      let micDetected = false;
+
+      if (navigator.permissions) {
+        try {
+          const perm = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+          micPermission = perm.state as AudioDiagState['micPermission'];
+        } catch {
+          // Firefox doesn't support microphone query
+        }
+      }
+
+      if (navigator.mediaDevices?.getUserMedia) {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-          stream.getTracks().forEach((track) => track.stop());
+          micDetected = stream.getAudioTracks().length > 0;
+          micPermission = 'granted';
+          stream.getTracks().forEach((t) => t.stop());
         } catch (permErr: any) {
-          console.warn('Browser media permission check warning:', permErr);
+          console.warn('[zoom] Media permission check:', permErr?.name, permErr?.message);
           if (permErr?.name === 'NotAllowedError' || permErr?.name === 'PermissionDeniedError') {
+            micPermission = 'denied';
             setMediaPermissionDenied(true);
           }
         }
       }
 
-      setDiagInfo((prev) => ({ ...prev, step: 'FETCH_SIG' }));
+      setAudioDiag((prev) => ({ ...prev, micPermission, micDetected }));
 
-      // 2. Fetch signature & host ZAK authorization from server action
+      // ── 2. Fetch server signature + ZAK ───────────────────────────────
+      setDiagStep('FETCH_SIG');
       const sigResult = await getZoomSignatureAction(classId);
 
       if (!sigResult.success || !sigResult.data) {
-        const errDetail = sigResult.error?.message || 'Failed to generate Zoom meeting signature.';
-        throw new Error(errDetail);
+        throw new Error(sigResult.error?.message || 'Failed to generate Zoom meeting signature.');
       }
 
       const { signature, sdkKey, zak, meetingNumber: serverMeetingId, role: serverRole } = sigResult.data;
       const effectiveMeetingId = serverMeetingId || cleanMeetingId;
 
+      setDiagStep('SIG_RECEIVED');
       setDiagInfo((prev) => ({
         ...prev,
-        step: 'SIG_RECEIVED',
         meetingNumber: effectiveMeetingId,
         role: serverRole,
         sdkKeyPresent: Boolean(sdkKey && sdkKey !== 'dummy_sdk_key'),
@@ -130,14 +217,14 @@ export default function ZoomClassroomVideo({
         zakPresent: Boolean(zak),
       }));
 
-      // 3. Dynamically import Zoom Meeting SDK embedded module (client-side only)
-      setDiagInfo((prev) => ({ ...prev, step: 'IMPORT_SDK' }));
+      // ── 3. Import & create embedded SDK client ─────────────────────────
+      setDiagStep('IMPORT_SDK');
       const ZoomMtgEmbedded = (await import('@zoom/meetingsdk/embedded')).default;
       const clientInstance = ZoomMtgEmbedded.createClient();
       zoomClientRef.current = clientInstance;
 
-      // 4. Initialize embedded SDK client into target container with responsive layout options
-      setDiagInfo((prev) => ({ ...prev, step: 'INIT_SDK' }));
+      // ── 4. Init embedded client ────────────────────────────────────────
+      setDiagStep('INIT_SDK');
       await clientInstance.init({
         zoomAppRoot: containerRef.current!,
         language: 'en-US',
@@ -152,13 +239,15 @@ export default function ZoomClassroomVideo({
         },
       });
 
-      // Register Zoom SDK event listeners
+      // ── 5. Register SDK event listeners ───────────────────────────────
+
+      // Connection state
       clientInstance.on('connection-change', (payload: any) => {
         const stateStr = String(payload?.state || '').toLowerCase();
         if (stateStr.includes('connected') && !stateStr.includes('reconnecting')) {
           setConnectionState('connected');
-          setDiagInfo((prev) => ({ ...prev, step: 'JOINED' }));
-          updateAttendeesCount(clientInstance);
+          setDiagStep('JOINED');
+          refreshParticipants(clientInstance);
         } else if (stateStr.includes('reconnect')) {
           setConnectionState('reconnecting');
         } else if (stateStr.includes('closed') || stateStr.includes('ended')) {
@@ -166,41 +255,62 @@ export default function ZoomClassroomVideo({
         }
       });
 
+      // Participant join/leave
       clientInstance.on('user-added', () => {
-        updateAttendeesCount(clientInstance);
+        refreshParticipants(clientInstance);
       });
-
       clientInstance.on('user-removed', () => {
-        updateAttendeesCount(clientInstance);
+        refreshParticipants(clientInstance);
       });
 
-      clientInstance.on('user-updated', () => {
-        updateAttendeesCount(clientInstance);
+      // ── CRITICAL: user-updated fires when audio connects/disconnects/mutes ──
+      clientInstance.on('user-updated', (payload: any) => {
+        refreshParticipants(clientInstance);
+        // If this update is about the local user, sync our audio state
+        syncCurrentUserAudio(clientInstance);
+
+        // Detect autoplay blocked: remote participant has audio='computer' but we can't hear them
+        // This is best-effort; the SDK doesn't expose a direct autoplay API
+        if (!isCoach && payload?.audio === 'computer') {
+          // Remote participant connected audio — check if audio context is suspended
+          try {
+            const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+            if (AudioContext) {
+              const testCtx = new AudioContext();
+              if (testCtx.state === 'suspended') {
+                setAudioDiag((prev) => ({ ...prev, autoplayBlocked: true }));
+              }
+              testCtx.close();
+            }
+          } catch {
+            // ignore
+          }
+        }
       });
 
+      // Active speaker (isTalking)
       clientInstance.on('active-speaker', (payload: any) => {
-        if (payload?.displayName || payload?.userName) {
-          setActiveSpeakerName(payload.displayName || payload.userName);
+        const speakers: any[] = Array.isArray(payload) ? payload : [payload];
+        const me = clientInstance.getCurrentUser?.();
+        const iAmTalking = me ? speakers.some((s: any) => s.userId === me.userId) : false;
+        setAudioDiag((prev) => ({ ...prev, isTalking: iAmTalking }));
+
+        const first = speakers[0];
+        if (first?.displayName || first?.userName) {
+          setActiveSpeakerName(first.displayName || first.userName);
         }
       });
 
-      (clientInstance as any).on('network-quality', (payload: any) => {
+      // Network quality — CORRECT event name is 'network-quality-change' in SDK v6.x
+      clientInstance.on('network-quality-change', (payload: any) => {
         const level = payload?.level ?? payload?.quality ?? 3;
-        const uplink = payload?.uplink;
-        const downlink = payload?.downlink;
-        setNetworkStats({ level, uplink, downlink });
-
-        if (level <= 1) {
-          setNetworkQuality('poor');
-        } else if (level === 2) {
-          setNetworkQuality('weak');
-        } else if (level >= 3) {
-          setNetworkQuality('good');
-        }
+        if (level <= 1) setNetworkQuality('poor');
+        else if (level === 2) setNetworkQuality('weak');
+        else setNetworkQuality('good');
       });
 
-      // 5. Join Zoom meeting
-      setDiagInfo((prev) => ({ ...prev, step: 'JOINING' }));
+      // ── 6. Join meeting ────────────────────────────────────────────────
+      setDiagStep('JOINING');
       const joinPayload: any = {
         signature,
         meetingNumber: effectiveMeetingId,
@@ -216,29 +326,48 @@ export default function ZoomClassroomVideo({
       await (clientInstance as any).join(joinPayload);
 
       setConnectionState('connected');
-      setDiagInfo((prev) => ({ ...prev, step: 'JOINED' }));
-      updateAttendeesCount(clientInstance);
+      setDiagStep('JOINED');
+      setAudioDiag((prev) => ({ ...prev, meetingJoined: true }));
+
+      // ── 7. Post-join: verify actual audio connection state ────────────
+      // The SDK auto-connects audio after join; we verify immediately and after a delay
+      syncCurrentUserAudio(clientInstance);
+      refreshParticipants(clientInstance);
+
+      // Re-check after 2s and 5s — audio connection may take a moment to register
+      setTimeout(() => {
+        syncCurrentUserAudio(clientInstance);
+        refreshParticipants(clientInstance);
+      }, 2000);
+      setTimeout(() => {
+        syncCurrentUserAudio(clientInstance);
+        refreshParticipants(clientInstance);
+      }, 5000);
+
     } catch (err: any) {
-      console.error('Zoom Meeting SDK join failed:', err);
-      const rawErrMsg = err?.message || err?.reason || err?.type || (typeof err === 'string' ? err : 'Unable to connect to Zoom meeting.');
+      const rawMsg =
+        err?.message || err?.reason || err?.type || (typeof err === 'string' ? err : 'Unable to connect to Zoom meeting.');
+      console.error('[zoom] SDK join failed:', rawMsg, err);
       setConnectionState('error');
-      setErrorMessage(rawErrMsg);
-      setDiagInfo((prev) => ({ ...prev, step: 'FAILED', errorText: rawErrMsg }));
+      setErrorMessage(rawMsg);
+      setDiagStep('FAILED');
+      setDiagInfo((prev) => ({ ...prev, errorText: rawMsg }));
     }
-  }, [classId, cleanMeetingId, isCoach, passcode, updateAttendeesCount, userEmail, userName]);
+  }, [classId, cleanMeetingId, isCoach, passcode, refreshParticipants, syncCurrentUserAudio, userEmail, userName]);
+
+  // ── Mount / Unmount ──────────────────────────────────────────────────────
 
   useEffect(() => {
     if (initStartedRef.current) return;
     initStartedRef.current = true;
-
     startConnection();
 
     return () => {
       if (zoomClientRef.current) {
         try {
           zoomClientRef.current.leave();
-        } catch (e) {
-          console.warn('Error closing Zoom SDK client:', e);
+        } catch {
+          // ignore
         }
         zoomClientRef.current = null;
       }
@@ -246,28 +375,65 @@ export default function ZoomClassroomVideo({
     };
   }, [startConnection]);
 
+  // ── Controls ─────────────────────────────────────────────────────────────
+
   const handleRetry = () => {
     initStartedRef.current = false;
     if (zoomClientRef.current) {
-      try {
-        zoomClientRef.current.leave();
-      } catch (e) {
-        // ignore
-      }
+      try { zoomClientRef.current.leave(); } catch { /* ignore */ }
       zoomClientRef.current = null;
     }
+    setAudioDiag({
+      meetingJoined: false,
+      audioConnected: false,
+      audioConnectionStatus: 0,
+      micPermission: 'unknown',
+      micDetected: false,
+      isMuted: false,
+      isTalking: false,
+      autoplayBlocked: false,
+      participants: [],
+      sdkMuteError: null,
+    });
     startConnection();
   };
 
-  const handleToggleMute = () => {
-    if (zoomClientRef.current && typeof zoomClientRef.current.mute === 'function') {
-      try {
-        const nextState = !localMuted;
-        zoomClientRef.current.mute(nextState);
-        setLocalMuted(nextState);
-      } catch (e) {
-        console.warn('Toggle mute error:', e);
+  /**
+   * Mute/unmute via the SDK.
+   * MUST be awaited — SDK returns ExecutedResult = Promise<string | ExecutedFailure>.
+   * Only updates local state AFTER SDK confirms the operation.
+   */
+  const handleToggleMute = async () => {
+    const client = zoomClientRef.current;
+    if (!client || typeof client.mute !== 'function') return;
+    if (muteLoading) return;
+
+    const targetMuted = !localMuted;
+    setMuteLoading(true);
+    setAudioDiag((prev) => ({ ...prev, sdkMuteError: null }));
+
+    try {
+      const result = await client.mute(targetMuted);
+
+      // SDK returns '' on success, or an ExecutedFailure object on failure
+      if (result && typeof result === 'object' && 'type' in result) {
+        const failure = result as { type: string; reason: string };
+        const errMsg = `Mute failed: ${failure.type} — ${failure.reason}`;
+        console.error('[zoom] mute ExecutedFailure:', failure);
+        setAudioDiag((prev) => ({ ...prev, sdkMuteError: errMsg }));
+        // Do NOT update localMuted — SDK rejected the operation
+      } else {
+        // Success — update React state and sync from SDK to confirm
+        setLocalMuted(targetMuted);
+        // Re-sync from SDK to get authoritative state
+        setTimeout(() => syncCurrentUserAudio(client), 300);
       }
+    } catch (e: any) {
+      const errMsg = e?.message || 'Mute toggle failed';
+      console.error('[zoom] mute exception:', e);
+      setAudioDiag((prev) => ({ ...prev, sdkMuteError: errMsg }));
+    } finally {
+      setMuteLoading(false);
     }
   };
 
@@ -276,11 +442,52 @@ export default function ZoomClassroomVideo({
     if (zoomClientRef.current && typeof zoomClientRef.current.setViewType === 'function') {
       try {
         zoomClientRef.current.setViewType(targetView);
-      } catch (e) {
-        console.warn('Set viewType error:', e);
+      } catch {
+        // ignore
       }
     }
   };
+
+  /**
+   * Autoplay unlock — triggered by a deliberate user click.
+   * Resumes suspended AudioContext instances so the browser allows remote audio playback.
+   */
+  const handleUnlockAudio = async () => {
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContext) {
+        const ctx = new AudioContext();
+        await ctx.resume();
+        await ctx.close();
+      }
+      setAudioDiag((prev) => ({ ...prev, autoplayBlocked: false }));
+      // Refresh participant audio after unlock
+      setTimeout(() => refreshParticipants(zoomClientRef.current), 500);
+    } catch {
+      // ignore
+    }
+  };
+
+  // ── Derived display values ────────────────────────────────────────────────
+
+  const audioStatusLabel = audioDiag.audioConnected
+    ? (audioDiag.isMuted ? '🔇 MUTED' : '🎙️ LIVE')
+    : audioDiag.meetingJoined
+    ? '⚠️ NO AUDIO'
+    : '…';
+
+  const audioStatusColor = audioDiag.audioConnected
+    ? audioDiag.isMuted ? 'text-amber-300' : 'text-emerald-400'
+    : 'text-red-400';
+
+  const audioConnStatusLabel = ['Not Connected', 'Connecting…', 'Connected ✓', 'Failed ✗'][audioDiag.audioConnectionStatus] ?? 'Unknown';
+
+  // Coach participants excluding self
+  const remoteParticipants = audioDiag.participants.filter(
+    (p) => p.userName !== userName && p.userName !== (isCoach ? 'Coach' : 'Student')
+  );
+
+  // ── RENDER ────────────────────────────────────────────────────────────────
 
   return (
     <div
@@ -290,14 +497,22 @@ export default function ZoomClassroomVideo({
           : 'w-full h-full rounded-lg'
       }`}
     >
-      {/* ── Top Bar: Network Quality, Speakers & Fullscreen Controls ── */}
+      {/* ── Top Bar ── */}
       <div className="absolute top-2 left-2 right-2 z-30 flex items-center justify-between pointer-events-auto">
         <div className="flex items-center gap-1.5">
+          {/* Network quality badge */}
           {connectionState === 'connected' && (
             <div className="px-2 py-0.5 bg-black/80 backdrop-blur rounded-md border border-white/10 flex items-center gap-1.5 text-[10px] font-semibold text-white">
               {networkQuality === 'good' && <span className="text-emerald-400">🟢 Good</span>}
               {networkQuality === 'weak' && <span className="text-amber-400">🟡 Weak</span>}
               {networkQuality === 'poor' && <span className="text-red-400 font-bold">🔴 Poor</span>}
+            </div>
+          )}
+
+          {/* Always-visible audio status indicator */}
+          {connectionState === 'connected' && audioDiag.meetingJoined && (
+            <div className={`px-2 py-0.5 bg-black/80 backdrop-blur rounded-md border border-white/10 text-[10px] font-bold ${audioStatusColor}`}>
+              {audioStatusLabel}
             </div>
           )}
 
@@ -309,81 +524,130 @@ export default function ZoomClassroomVideo({
         </div>
 
         <div className="flex items-center gap-1">
-          {/* Developer Diagnostics Toggle for Coach */}
-          {isCoach && (
-            <button
-              type="button"
-              onClick={() => setShowDiagnostics(!showDiagnostics)}
-              className="px-2 py-0.5 bg-slate-900/90 hover:bg-slate-800 text-[10px] text-slate-300 font-mono rounded border border-slate-700 transition-colors shadow"
-            >
-              {showDiagnostics ? 'Hide Diag' : '🛠️ Diag'}
-            </button>
-          )}
+          {/* Diagnostics toggle — all roles in this build for debugging */}
+          <button
+            type="button"
+            onClick={() => setShowDiagnostics(!showDiagnostics)}
+            className="px-2 py-0.5 bg-slate-900/90 hover:bg-slate-800 text-[10px] text-slate-300 font-mono rounded border border-slate-700 transition-colors shadow"
+          >
+            {showDiagnostics ? 'Hide Diag' : '🛠️ Diag'}
+          </button>
 
-          {/* Fullscreen Toggle Button */}
+          {/* Fullscreen toggle */}
           <button
             type="button"
             onClick={() => setIsFullscreen(!isFullscreen)}
             className="px-2 py-0.5 bg-indigo-600/90 hover:bg-indigo-500 text-[10px] font-bold text-white rounded border border-indigo-400/40 transition-colors shadow flex items-center gap-1"
-            title={isFullscreen ? 'Exit Fullscreen' : 'Expand Video Stage'}
           >
             <span>{isFullscreen ? '🗗' : '⛶'}</span>
-            <span>{isFullscreen ? 'Exit' : 'Full Video'}</span>
+            <span>{isFullscreen ? 'Exit' : 'Full'}</span>
           </button>
         </div>
       </div>
 
-      {/* ── Diagnostic Panel Overlay (Coach/Admin Only) ── */}
-      {isCoach && showDiagnostics && (
-        <div className="absolute top-10 left-2 right-2 z-40 p-3 bg-[#0d0d21]/95 border border-indigo-500/40 rounded-lg text-[10px] font-mono text-slate-200 shadow-2xl space-y-1">
-          <div className="flex justify-between items-center border-b border-slate-700 pb-1 mb-1 text-indigo-300 font-bold">
-            <span>ZOOM SDK DIAGNOSTICS</span>
-            <span className="px-1.5 py-0.5 bg-indigo-950 text-indigo-300 rounded border border-indigo-700">{diagInfo.step}</span>
+      {/* ── Autoplay Blocked Banner (Student) ── */}
+      {audioDiag.autoplayBlocked && (
+        <div className="absolute top-10 left-2 right-2 z-40 px-3 py-2 bg-amber-950/95 border border-amber-500/60 rounded-xl text-[11px] text-amber-200 font-bold flex items-center justify-between gap-2 shadow-lg">
+          <div className="flex items-center gap-1.5">
+            <span>🔇</span>
+            <span>Browser blocked audio. Click to enable coach audio.</span>
           </div>
-          <div>Meeting ID: <span className="text-amber-300">{diagInfo.meetingNumber || 'MISSING'}</span></div>
-          <div>Role: <span className="text-emerald-300">{diagInfo.role === 1 ? '1 (Host/Coach)' : '0 (Student)'}</span></div>
-          <div>Meeting SDK credentials: <span className={diagInfo.sdkKeyPresent ? 'text-emerald-400' : 'text-red-400'}>{diagInfo.sdkKeyPresent ? 'YES' : 'NO (Check .env)'}</span></div>
-          <div>JWT Signature: <span className={diagInfo.sigPresent ? 'text-emerald-400' : 'text-red-400'}>{diagInfo.sigPresent ? 'YES' : 'NO'}</span></div>
-          <div>ZAK Token: <span className={diagInfo.role === 0 ? 'text-slate-400' : diagInfo.zakPresent ? 'text-emerald-400' : 'text-red-400'}>
-            {diagInfo.role === 0 ? 'NOT REQUIRED' : diagInfo.zakPresent ? 'YES' : 'NO (Error/Unset)'}
-          </span></div>
-          <div>SDK initialization: <span className={diagInfo.step !== 'FAILED' && diagInfo.step !== 'IDLE' && diagInfo.step !== 'FETCH_SIG' && diagInfo.step !== 'SIG_RECEIVED' && diagInfo.step !== 'IMPORT_SDK' ? 'text-emerald-400' : 'text-amber-400'}>
-            {diagInfo.step === 'JOINED' || diagInfo.step === 'JOINING' || diagInfo.step === 'INIT_SDK' ? 'PASS' : 'PENDING'}
-          </span></div>
-          <div>Meeting join: <span className={diagInfo.step === 'JOINED' ? 'text-emerald-400 font-bold' : diagInfo.step === 'FAILED' ? 'text-red-400 font-bold' : 'text-amber-400'}>
-            {diagInfo.step === 'JOINED' ? 'PASS' : diagInfo.step === 'FAILED' ? 'FAIL' : 'JOINING...'}
-          </span></div>
-          <div>Participants Count: <span className="text-indigo-300 font-bold">{participantCount}</span></div>
+          <button
+            type="button"
+            onClick={handleUnlockAudio}
+            className="shrink-0 px-3 py-1 bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-[10px] rounded-lg transition-colors"
+          >
+            🔊 Enable Audio
+          </button>
+        </div>
+      )}
+
+      {/* ── Diagnostic Panel ── */}
+      {showDiagnostics && (
+        <div className="absolute top-10 left-2 right-2 z-40 p-3 bg-[#0d0d21]/97 border border-indigo-500/40 rounded-lg text-[10px] font-mono text-slate-200 shadow-2xl space-y-1.5 max-h-[70vh] overflow-y-auto">
+          <div className="flex justify-between items-center border-b border-slate-700 pb-1 mb-1 text-indigo-300 font-bold text-[11px]">
+            <span>ZOOM SDK DIAGNOSTICS</span>
+            <span className="px-1.5 py-0.5 bg-indigo-950 text-indigo-300 rounded border border-indigo-700">{diagStep}</span>
+          </div>
+
+          {/* Init info */}
+          <div className="space-y-0.5">
+            <div>Meeting ID: <span className="text-amber-300">{diagInfo.meetingNumber || 'MISSING'}</span></div>
+            <div>Role: <span className="text-emerald-300">{diagInfo.role === 1 ? '1 (Host/Coach)' : '0 (Student)'}</span></div>
+            <div>SDK Key: <span className={diagInfo.sdkKeyPresent ? 'text-emerald-400' : 'text-red-400'}>{diagInfo.sdkKeyPresent ? 'YES' : 'NO'}</span></div>
+            <div>JWT Signature: <span className={diagInfo.sigPresent ? 'text-emerald-400' : 'text-red-400'}>{diagInfo.sigPresent ? 'YES' : 'NO'}</span></div>
+            <div>ZAK Token: <span className={diagInfo.role === 0 ? 'text-slate-400' : diagInfo.zakPresent ? 'text-emerald-400' : 'text-red-400'}>{diagInfo.role === 0 ? 'N/A' : diagInfo.zakPresent ? 'YES' : 'NO'}</span></div>
+            <div>Meeting Join: <span className={audioDiag.meetingJoined ? 'text-emerald-400 font-bold' : diagStep === 'FAILED' ? 'text-red-400 font-bold' : 'text-amber-400'}>{audioDiag.meetingJoined ? 'YES' : diagStep === 'FAILED' ? 'FAILED' : 'JOINING…'}</span></div>
+          </div>
+
+          {/* Audio diagnostics */}
+          <div className="border-t border-slate-700 pt-1 space-y-0.5">
+            <div className="text-indigo-300 font-bold uppercase tracking-wider text-[9px] mb-0.5">AUDIO STATE</div>
+            <div>Audio Connected: <span className={audioDiag.audioConnected ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>{audioDiag.audioConnected ? 'YES (computer)' : 'NO'}</span></div>
+            <div>Audio Conn Status: <span className={audioDiag.audioConnectionStatus === 2 ? 'text-emerald-400' : audioDiag.audioConnectionStatus === 3 ? 'text-red-400' : 'text-amber-400'}>{audioDiag.audioConnectionStatus} — {audioConnStatusLabel}</span></div>
+            <div>Mic Permission: <span className={audioDiag.micPermission === 'granted' ? 'text-emerald-400' : audioDiag.micPermission === 'denied' ? 'text-red-400' : 'text-amber-400'}>{audioDiag.micPermission.toUpperCase()}</span></div>
+            <div>Mic Detected: <span className={audioDiag.micDetected ? 'text-emerald-400' : 'text-amber-400'}>{audioDiag.micDetected ? 'YES' : 'NO'}</span></div>
+            <div>Muted (SDK): <span className={audioDiag.isMuted ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'}>{audioDiag.isMuted ? 'YES (MUTED)' : 'NO (LIVE)'}</span></div>
+            <div>Talking: <span className={audioDiag.isTalking ? 'text-emerald-400 font-bold animate-pulse' : 'text-slate-400'}>{audioDiag.isTalking ? 'YES' : 'NO'}</span></div>
+            <div>Autoplay Blocked: <span className={audioDiag.autoplayBlocked ? 'text-red-400 font-bold' : 'text-emerald-400'}>{audioDiag.autoplayBlocked ? 'YES ⚠️' : 'NO'}</span></div>
+            {audioDiag.sdkMuteError && (
+              <div className="mt-1 p-1 bg-red-950/80 border border-red-500/40 text-red-300 rounded break-words">
+                SDK Mute Error: {audioDiag.sdkMuteError}
+              </div>
+            )}
+          </div>
+
+          {/* Participant list */}
+          <div className="border-t border-slate-700 pt-1">
+            <div className="text-indigo-300 font-bold uppercase tracking-wider text-[9px] mb-0.5">PARTICIPANTS ({audioDiag.participants.length})</div>
+            {audioDiag.participants.length === 0 ? (
+              <div className="text-slate-500 italic">None yet</div>
+            ) : (
+              audioDiag.participants.map((p) => (
+                <div key={p.userId} className="flex items-center gap-2 py-0.5 border-b border-slate-800 last:border-0">
+                  <span className="text-slate-300 truncate max-w-[80px]">{p.userName}</span>
+                  <span className={`${p.audio === 'computer' ? 'text-emerald-400' : 'text-red-400'}`}>
+                    audio:{p.audio || 'none'}
+                  </span>
+                  <span className={`${p.muted ? 'text-amber-400' : 'text-emerald-400'}`}>
+                    {p.muted ? '🔇' : '🎙️'}
+                  </span>
+                  <span className={`${p.bVideoOn ? 'text-emerald-400' : 'text-slate-500'}`}>
+                    {p.bVideoOn ? '📷' : '📷✗'}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+
           {diagInfo.errorText && (
-            <div className="mt-1.5 p-1.5 bg-red-950/80 border border-red-500/40 text-red-200 rounded break-words">
+            <div className="mt-1 p-1.5 bg-red-950/80 border border-red-500/40 text-red-200 rounded break-words">
               <strong>Error:</strong> {diagInfo.errorText}
             </div>
           )}
         </div>
       )}
 
-      {/* ── Poor Network Warning Overlay ── */}
+      {/* ── Poor Network Warning ── */}
       {connectionState === 'connected' && networkQuality === 'poor' && (
         <div className="absolute top-10 right-2 z-30 px-2.5 py-1 bg-red-950/90 border border-red-500/50 rounded-md text-[10px] font-bold text-red-200 flex items-center gap-1.5 animate-pulse">
-          <span>⚠️</span>
-          <span>Poor internet connection</span>
+          <span>⚠️</span><span>Poor connection</span>
         </div>
       )}
 
-      {/* ── Reconnecting Status Banner ── */}
+      {/* ── Media Permission Warning ── */}
+      {mediaPermissionDenied && (
+        <div className="absolute top-10 left-2 right-2 z-30 px-3 py-1.5 bg-amber-950/90 border border-amber-500/40 rounded-md text-[10px] text-amber-200 font-medium flex items-center gap-1.5 shadow-lg">
+          <span>🎙️</span>
+          <span>Microphone access is blocked. Enable it in browser settings, then retry.</span>
+        </div>
+      )}
+
+      {/* ── Reconnecting Banner ── */}
       {connectionState === 'reconnecting' && (
         <div className="absolute inset-0 z-40 bg-black/80 backdrop-blur flex flex-col items-center justify-center gap-2 p-4 text-center">
           <div className="w-6 h-6 border-2 border-amber-400/40 border-t-amber-400 rounded-full animate-spin" />
-          <p className="text-xs font-bold text-amber-300">Reconnecting Video...</p>
-          <p className="text-[10px] text-slate-400">Attempting to restore video connection without leaving classroom.</p>
-        </div>
-      )}
-
-      {/* ── Media Permission Denied Warning ── */}
-      {mediaPermissionDenied && (
-        <div className="absolute top-10 left-2 right-2 z-30 px-3 py-1.5 bg-amber-950/90 border border-amber-500/40 rounded-md text-[10px] text-amber-200 font-medium flex items-center gap-1.5 shadow-lg">
-          <span>📷</span>
-          <span>Camera permission is blocked. Please allow camera access in your browser settings.</span>
+          <p className="text-xs font-bold text-amber-300">Reconnecting Video…</p>
         </div>
       )}
 
@@ -391,8 +655,8 @@ export default function ZoomClassroomVideo({
       {connectionState === 'connecting' && (
         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#0a0a1a] gap-2 p-4">
           <div className="w-7 h-7 border-2 border-indigo-400/40 border-t-indigo-400 rounded-full animate-spin" />
-          <p className="text-xs font-semibold text-slate-300">Connecting to Embedded Zoom Video Stage...</p>
-          <p className="text-[10px] text-slate-500 font-mono">Meeting #{cleanMeetingId}</p>
+          <p className="text-xs font-semibold text-slate-300">Connecting to Zoom Video Stage…</p>
+          <p className="text-[10px] text-slate-500 font-mono">Meeting #{cleanMeetingId} · Step: {diagStep}</p>
         </div>
       )}
 
@@ -412,32 +676,32 @@ export default function ZoomClassroomVideo({
         </div>
       )}
 
-      {/* ── Zoom Meeting SDK Container Element ── */}
+      {/* ── Zoom Embedded Container ── */}
       <div
         ref={containerRef}
         id="zoom-embedded-video-container"
         className="w-full flex-1 min-h-[220px]"
-        style={{
-          visibility: connectionState === 'connected' ? 'visible' : 'hidden',
-        }}
+        style={{ visibility: connectionState === 'connected' ? 'visible' : 'hidden' }}
       />
 
-      {/* ── Integrated Bottom Controls Bar ── */}
+      {/* ── Bottom Controls Bar ── */}
       {connectionState === 'connected' && (
         <div className="px-3 py-1.5 bg-[#070714] border-t border-[#1e1e3a] flex items-center justify-between gap-2 z-30 pointer-events-auto">
           <div className="flex items-center gap-1.5">
-            {/* Audio Mute/Unmute */}
+            {/* Mute/Unmute — calls SDK mute() asynchronously */}
             <button
               type="button"
               onClick={handleToggleMute}
-              className={`px-2.5 py-1 text-[10px] font-bold rounded-lg border transition-all flex items-center gap-1 ${
+              disabled={muteLoading}
+              title={!audioDiag.audioConnected ? 'Audio not connected yet — use Zoom toolbar' : ''}
+              className={`px-2.5 py-1 text-[10px] font-bold rounded-lg border transition-all flex items-center gap-1 disabled:opacity-60 ${
                 localMuted
                   ? 'bg-red-950/80 border-red-500/50 text-red-300 hover:bg-red-900'
                   : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
-              }`}
+              } ${!audioDiag.audioConnected ? 'border-dashed opacity-70' : ''}`}
             >
-              <span>{localMuted ? '🔇' : '🎙️'}</span>
-              <span>{localMuted ? 'Unmute' : 'Mute'}</span>
+              <span>{muteLoading ? '⏳' : localMuted ? '🔇' : '🎙️'}</span>
+              <span>{muteLoading ? '…' : localMuted ? 'Unmute' : 'Mute'}</span>
             </button>
 
             {/* View Layout Selector */}
@@ -445,14 +709,36 @@ export default function ZoomClassroomVideo({
               type="button"
               onClick={() => handleToggleView(viewType === 'gallery' ? 'speaker' : 'gallery')}
               className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[10px] font-bold text-slate-200 rounded-lg transition-colors flex items-center gap-1"
-              title="Switch Grid Layout"
             >
               <span>{viewType === 'gallery' ? '🔲' : '👤'}</span>
-              <span>{viewType === 'gallery' ? 'Gallery View' : 'Speaker View'}</span>
+              <span>{viewType === 'gallery' ? 'Gallery' : 'Speaker'}</span>
             </button>
+
+            {/* Autoplay unlock — compact version always in controls when needed */}
+            {audioDiag.autoplayBlocked && (
+              <button
+                type="button"
+                onClick={handleUnlockAudio}
+                className="px-2.5 py-1 bg-amber-700 hover:bg-amber-600 border border-amber-500/60 text-[10px] font-bold text-amber-100 rounded-lg transition-colors flex items-center gap-1 animate-pulse"
+              >
+                <span>🔊</span>
+                <span>Enable Audio</span>
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Audio connection status chip */}
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+              audioDiag.audioConnected
+                ? audioDiag.isMuted
+                  ? 'bg-amber-950 text-amber-300 border-amber-800/60'
+                  : 'bg-emerald-950 text-emerald-400 border-emerald-800/60'
+                : 'bg-red-950/60 text-red-400 border-red-800/60'
+            }`}>
+              {audioDiag.audioConnected ? (audioDiag.isMuted ? '🔇 Muted' : '🎙️ Live') : '⚠️ No Audio'}
+            </span>
+
             <span className="text-[10px] font-extrabold text-indigo-300 bg-indigo-950 px-2 py-0.5 rounded border border-indigo-800/60">
               👥 {participantCount} {participantCount === 1 ? 'Participant' : 'Participants'}
             </span>
@@ -462,4 +748,3 @@ export default function ZoomClassroomVideo({
     </div>
   );
 }
-

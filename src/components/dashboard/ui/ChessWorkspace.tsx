@@ -668,6 +668,39 @@ export default function ChessWorkspace({
           }
         }
       })
+      .on('broadcast', { event: 'board-move' }, ({ payload }: any) => {
+        if (payload?.classId && payload.classId !== classId) return;
+        if (payload?.sourceUserId && payload.sourceUserId === userId) return;
+        if (payload?.fen) {
+          try {
+            const g = new Chess(payload.fen);
+            gameRef.current = g;
+            setFen(payload.fen);
+            if (Array.isArray(payload.moves)) setMoveHistory(payload.moves);
+            setReviewIndex(null);
+          } catch (e) {
+            setFen(payload.fen);
+          }
+        }
+      })
+      .on('broadcast', { event: 'board-load' }, ({ payload }: any) => {
+        if (payload?.classId && payload.classId !== classId) return;
+        if (payload?.fen) {
+          try {
+            const g = new Chess(payload.fen);
+            gameRef.current = g;
+            setFen(payload.fen);
+            setMoveHistory(payload.moves || []);
+            setArrows([]);
+            setHighlights({});
+            setReviewIndex(null);
+            if (payload.orientation) setBoardOrientation(payload.orientation);
+            if (payload.title) setLoadedPositionTitle(payload.title);
+          } catch (e) {
+            setFen(payload.fen);
+          }
+        }
+      })
       .on('broadcast', { event: 'position-update' }, ({ payload }: any) => {
         if (payload?.fen) {
           try {
@@ -758,7 +791,7 @@ export default function ChessWorkspace({
       });
     };
 
-    const boardChannelTopic = `classroom:${classId}`;
+    const boardChannelTopic = `live-session:${classId}`;
 
     const channel = supabase.channel(boardChannelTopic, {
       config: {

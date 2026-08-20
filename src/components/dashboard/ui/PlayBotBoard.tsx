@@ -176,7 +176,7 @@ export default function PlayBotBoard({ initialFen, classId, onCloseCustom }: Pla
             setHistory(game.history());
 
             if (classId) {
-              const channel = supabase.channel(`classroom-board:${classId}`);
+              const channel = supabase.channel(`live-session:${classId}`);
               channel.send({
                 type: 'broadcast',
                 event: 'move',
@@ -280,7 +280,7 @@ export default function PlayBotBoard({ initialFen, classId, onCloseCustom }: Pla
           setHistory(game.history());
 
           if (classId) {
-            const channel = supabase.channel(`classroom-board:${classId}`);
+            const channel = supabase.channel(`live-session:${classId}`);
             channel.send({
               type: 'broadcast',
               event: 'move',
@@ -377,7 +377,7 @@ export default function PlayBotBoard({ initialFen, classId, onCloseCustom }: Pla
         setHistory(game.history());
 
         if (classId) {
-          const channel = supabase.channel(`classroom-board:${classId}`);
+          const channel = supabase.channel(`live-session:${classId}`);
           channel.send({
             type: 'broadcast',
             event: 'move',

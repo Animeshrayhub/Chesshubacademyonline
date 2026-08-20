@@ -100,6 +100,7 @@ export default function ClassroomWorkspace({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState('');
   const isCoach = role === 'coach' || role === 'admin';
+  const [showClassroomDiag, setShowClassroomDiag] = useState(false);
 
   /* ── Effective Zoom Meeting Number ─────────────────────────────────────── */
   const meetingIdFromUrl = (zoomJoinUrl || '').match(/\/j\/(\d+)/)?.[1] || '';
@@ -248,6 +249,22 @@ export default function ClassroomWorkspace({
       setGameMoves([]);
       setCurrentMoveIndex(-1);
       persistAndBroadcastBoardState(pos.fen, [], -1);
+
+      mainChannelRef.current?.send({
+        type: 'broadcast',
+        event: 'board-load',
+        payload: {
+          classId,
+          fen: pos.fen,
+          pgn: (pos as any).pgn || '',
+          moves: [],
+          puzzleId: pos.id || null,
+          title: pos.title || 'Teaching Position',
+          orientation: pos.boardOrientation || 'white',
+          sourceUserId: userId || userName,
+          timestamp: new Date().toISOString(),
+        },
+      });
     }
   };
 
@@ -266,7 +283,7 @@ export default function ClassroomWorkspace({
     const nextName = nextId ? studentName : null;
     setSpotlightedStudentId(nextId);
     setSpotlightedStudentName(nextName);
-    supabase.channel(`classroom-board:${classId}`).send({
+    mainChannelRef.current?.send({
       type: 'broadcast',
       event: 'spotlight-student',
       payload: { studentId: nextId, studentName: nextName },
@@ -340,11 +357,14 @@ export default function ClassroomWorkspace({
       currentMoveIndex: newMoveIdx,
       version,
       controllerId: controller,
+      sourceUserId: userId || userName,
+      sourceRole: role,
       updatedBy: userId || userName,
+      timestamp: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
-    // 1. Persist to DB (live_session_board_state table & classroom_chat table fallback)
+    // 1. Persist to DB (live_session_board_state keyed by activeSessionId / sessionId for shared state)
     try {
       await supabase.from('live_session_board_state').upsert(
         {
@@ -358,27 +378,24 @@ export default function ClassroomWorkspace({
         },
         { onConflict: 'session_id' }
       );
-      await supabase.from('classroom_chat').insert({
-        class_id: classId,
-        user_id: userId || null,
-        sender_name: '__BOARD_STATE__',
-        sender_role: 'admin',
-        message: JSON.stringify(payload),
-      });
     } catch (err) {
       console.warn('[classroom] Board state DB persistence warning:', err);
     }
 
-    // 2. Broadcast on Canonical Realtime Channel
+    // 2. Broadcast on Canonical Realtime Channel (live-session:${classId})
+    mainChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'board-move',
+      payload,
+    });
     mainChannelRef.current?.send({
       type: 'broadcast',
       event: 'board-position',
       payload,
     });
-  }, [classId, activeSessionId, userId, userName, boardControllerId]);
+  }, [classId, activeSessionId, userId, userName, role, boardControllerId]);
 
   // Callback passed to ChessWorkspace to capture live board moves
-  // ChessWorkspace encodes clean SAN history after '__HISTORY__:' marker in pgn param
   const handleBoardMove = useCallback((fen: string, pgn: string) => {
     let rawMoves: string[] = [];
     const marker = '\n\n__HISTORY__:';
@@ -445,6 +462,7 @@ export default function ClassroomWorkspace({
         .from('classroom_chat')
         .select('*')
         .eq('class_id', classId)
+        .neq('sender_name', '__BOARD_STATE__')
         .order('created_at', { ascending: true });
       if (!error && data) setMessages(data);
     };
@@ -456,7 +474,7 @@ export default function ClassroomWorkspace({
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, rightTab]);
 
-  // Board Control Management Handlers (Phase 14 & 16)
+  // Board Control Management Handlers
   const handleGrantBoardControl = (studentUserId: string) => {
     if (!isCoach) return;
     setBoardControllerId(studentUserId);
@@ -471,6 +489,7 @@ export default function ClassroomWorkspace({
   };
 
   // Initial Board State Hydration from DB on Mount
+  // Uses activeSessionId (which is live_sessions.id)
   useEffect(() => {
     if (!activeSessionId) return;
     const fetchInitialBoardState = async () => {
@@ -494,68 +513,73 @@ export default function ClassroomWorkspace({
             setAllowIllegalMoves(boardData.allow_illegal_moves);
           }
           setBoardKey((k) => k + 1);
-        } else {
-          // Fallback to classroom_chat history
-          const { data } = await supabase
-            .from('classroom_chat')
-            .select('*')
-            .eq('class_id', classId)
-            .eq('sender_name', '__BOARD_STATE__')
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          if (data?.message) {
-            const parsed = JSON.parse(data.message);
-            if (parsed.fen) {
-              setCurrentFen(parsed.fen);
-              if (Array.isArray(parsed.moves)) {
-                setGameMoves(parsed.moves);
-                setCurrentMoveIndex(parsed.currentMoveIndex ?? parsed.moves.length - 1);
-              }
-              if (parsed.controllerId) {
-                setBoardControllerId(parsed.controllerId);
-              }
-              setBoardKey((k) => k + 1);
-            }
-          }
         }
       } catch (err) {
         console.warn('[classroom] Initial board sync warning:', err);
       }
     };
     fetchInitialBoardState();
-  }, [activeSessionId, classId]);
+  }, [activeSessionId]);
 
-  /* ── Canonical Realtime Channel Setup (live-session:${activeSessionId}) ── */
+  /* ── Canonical Realtime Channel Setup (live-session:${classId}) ── */
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
   const mainChannelRef = useRef<any>(null);
+  const [lastRealtimeLog, setLastRealtimeLog] = useState<string>('Connected');
 
   useEffect(() => {
-    const channelTopic = `live-session:${activeSessionId}`;
+    const channelTopic = `live-session:${classId}`;
     if (process.env.NODE_ENV !== 'production') {
-      console.log(`[classroom] JOIN SUCCESS role: ${role}, class_id: ${classId}, session_id: ${activeSessionId}, channel: ${channelTopic}`);
+      console.log(`[CLASSROOM REALTIME] classId=${classId} channel=${channelTopic} role=${role}`);
     }
 
     const channel = supabase
       .channel(channelTopic, {
         config: { broadcast: { self: false }, presence: { key: userId || userName } },
       })
-      .on('broadcast', { event: 'board-position' }, ({ payload }: any) => {
+      .on('broadcast', { event: 'board-move' }, ({ payload }: any) => {
+        if (payload?.classId && payload.classId !== classId) return;
+        if (payload?.sourceUserId && payload.sourceUserId === userId) return;
         if (payload?.fen) {
-          if (payload.version && payload.version <= boardVersionRef.current) {
-            return;
-          }
+          if (payload.version && payload.version <= boardVersionRef.current) return;
           if (payload.version) boardVersionRef.current = payload.version;
           setCurrentFen(payload.fen);
           if (Array.isArray(payload.moves)) {
             setGameMoves(payload.moves);
             setCurrentMoveIndex(payload.currentMoveIndex ?? payload.moves.length - 1);
           }
-          if (payload.controllerId) {
-            setBoardControllerId(payload.controllerId);
-          }
+          if (payload.controllerId) setBoardControllerId(payload.controllerId);
           setBoardKey((k) => k + 1);
+          setLastRealtimeLog(`board-move: ${payload.fen.slice(0, 20)}…`);
+        }
+      })
+      .on('broadcast', { event: 'board-load' }, ({ payload }: any) => {
+        if (payload?.classId && payload.classId !== classId) return;
+        if (payload?.fen) {
+          setCurrentFen(payload.fen);
+          setGameMoves(payload.moves || []);
+          setCurrentMoveIndex(-1);
+          setBoardKey((k) => k + 1);
+          setLastRealtimeLog(`board-load: ${payload.title || 'Position'}`);
+        }
+      })
+      .on('broadcast', { event: 'board-position' }, ({ payload }: any) => {
+        if (payload?.classId && payload.classId !== classId) return;
+        if (payload?.sourceUserId && payload.sourceUserId === userId) return;
+        if (payload?.fen) {
+          if (payload.version && payload.version <= boardVersionRef.current) return;
+          if (payload.version) boardVersionRef.current = payload.version;
+          setCurrentFen(payload.fen);
+          if (Array.isArray(payload.moves)) {
+            setGameMoves(payload.moves);
+            setCurrentMoveIndex(payload.currentMoveIndex ?? payload.moves.length - 1);
+          }
+          if (payload.controllerId) setBoardControllerId(payload.controllerId);
+          setBoardKey((k) => k + 1);
+        }
+      })
+      .on('broadcast', { event: 'board-lock' }, ({ payload }: any) => {
+        if (!isCoach && payload?.isBoardLocked !== undefined) {
+          setIsBoardLocked(payload.isBoardLocked);
         }
       })
       .on('broadcast', { event: 'board-control' }, ({ payload }: any) => {
@@ -565,32 +589,21 @@ export default function ClassroomWorkspace({
           setBoardControllerId(payload.controllerId);
         }
       })
-      .on('broadcast', { event: 'position-update' }, ({ payload }: any) => {
-        if (payload?.fen) {
-          setCurrentFen(payload.fen);
-          setBoardKey((k) => k + 1);
-          setGameMoves([]);
-          setCurrentMoveIndex(-1);
-        }
-      })
-      .on('broadcast', { event: 'load-position' }, ({ payload }: any) => {
-        if (payload?.fen) {
-          setCurrentFen(payload.fen);
-          setBoardKey((k) => k + 1);
-          setGameMoves([]);
-          setCurrentMoveIndex(-1);
-        }
-      })
-      .on('broadcast', { event: 'homework-assigned' }, ({ payload }: any) => {
-        setHomeworkToast(`📝 Homework Assigned by ${payload.assignedBy}! Target position saved.`);
-        setTimeout(() => setHomeworkToast(null), 4000);
-      })
       .on('broadcast', { event: 'chat-message' }, ({ payload }: any) => {
+        if (payload?.classId && payload.classId !== classId) return;
+        const formattedMsg: ChatMessage = {
+          id: payload.id || Math.random().toString(),
+          sender_name: payload.senderName || payload.sender_name || 'Anonymous',
+          sender_role: payload.senderRole || payload.sender_role || 'user',
+          message: payload.message,
+          created_at: payload.timestamp || payload.created_at || new Date().toISOString(),
+        };
         setMessages((prev) => {
-          if (prev.some((m) => m.id === payload.id)) return prev;
-          return [...prev, payload];
+          if (prev.some((m) => m.id === formattedMsg.id)) return prev;
+          return [...prev, formattedMsg];
         });
         if (rightTab !== 'at') setChatUnread((u) => u + 1);
+        setLastRealtimeLog(`chat: ${formattedMsg.sender_name}: ${formattedMsg.message.slice(0, 15)}`);
       })
       .on('broadcast', { event: 'free-moves' }, ({ payload }: any) => {
         if (!isCoach && payload?.allowIllegalMoves !== undefined) {
@@ -608,17 +621,23 @@ export default function ClassroomWorkspace({
       })
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState();
-        const onlineIds = Object.values(state).flat().map((p: any) => p.displayName || p.userId || p.profileId);
+        const onlineIds = Object.values(state).flat().flatMap((p: any) => [
+          p.displayName, p.userId, p.authUserId, p.profileId
+        ].filter(Boolean));
         setOnlineUserIds(onlineIds);
       })
-      .on('presence', { event: 'join' }, ({ key, newPresences }: any) => {
+      .on('presence', { event: 'join' }, () => {
         const state = channel.presenceState();
-        const onlineIds = Object.values(state).flat().map((p: any) => p.displayName || p.userId || p.profileId);
+        const onlineIds = Object.values(state).flat().flatMap((p: any) => [
+          p.displayName, p.userId, p.authUserId, p.profileId
+        ].filter(Boolean));
         setOnlineUserIds(onlineIds);
       })
-      .on('presence', { event: 'leave' }, ({ key, leftPresences }: any) => {
+      .on('presence', { event: 'leave' }, () => {
         const state = channel.presenceState();
-        const onlineIds = Object.values(state).flat().map((p: any) => p.displayName || p.userId || p.profileId);
+        const onlineIds = Object.values(state).flat().flatMap((p: any) => [
+          p.displayName, p.userId, p.authUserId, p.profileId
+        ].filter(Boolean));
         setOnlineUserIds(onlineIds);
       })
       .subscribe(async (subStatus: string) => {
@@ -628,6 +647,7 @@ export default function ClassroomWorkspace({
             role: isCoach ? 'COACH' : 'STUDENT',
             displayName: userName,
             profileId: userId || userName,
+            authUserId: userId,
             joinedAt: new Date().toISOString(),
             online: true,
           });
@@ -636,7 +656,6 @@ export default function ClassroomWorkspace({
 
     mainChannelRef.current = channel;
 
-    // 15-second heartbeat loop for DB presence tracking
     const heartbeatInterval = setInterval(() => {
       if (userId && activeSessionId) {
         updateParticipantHeartbeatAction(activeSessionId, userId, role, true).catch(() => {});
@@ -692,17 +711,40 @@ export default function ClassroomWorkspace({
   const sendChatMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim()) return;
+    const msgId = Math.random().toString();
+    const timestamp = new Date().toISOString();
     const newMsg: ChatMessage = {
-      id: Math.random().toString(),
+      id: msgId,
       sender_name: userName,
       sender_role: role,
       message: chatInput.trim(),
-      created_at: new Date().toISOString(),
+      created_at: timestamp,
     };
     setMessages((prev) => [...prev, newMsg]);
     setChatInput('');
-    mainChannelRef.current?.send({ type: 'broadcast', event: 'chat-message', payload: newMsg });
-    supabase.from('classroom_chat').insert({ class_id: classId, sender_name: userName, sender_role: role, message: newMsg.message });
+    mainChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'chat-message',
+      payload: {
+        id: msgId,
+        classId,
+        userId: userId || null,
+        senderName: userName,
+        senderRole: role,
+        sender_name: userName,
+        sender_role: role,
+        message: newMsg.message,
+        timestamp,
+      },
+    });
+    // Include sender_id to satisfy DB column & RLS policies
+    supabase.from('classroom_chat').insert({
+      class_id: classId,
+      sender_id: userId || null,
+      sender_name: userName,
+      sender_role: role,
+      message: newMsg.message,
+    });
   };
 
   /* ── Start / End Class ─────────────────────────────────────────────────── */
@@ -770,26 +812,23 @@ export default function ClassroomWorkspace({
       ? `${endClassRemarks}\n\n${durationNote}\n\n--- CLASSROOM GAME PGN ---\n${savedPgn}`
       : `${endClassRemarks}\n\n${durationNote}`;
     try {
-      const endRes = await endZoomMeetingAction(classId, effectiveMeetingNumber);
-      if (!endRes.success) {
-        setError(endRes.error?.message || 'Unable to end the video meeting. Please try again.');
-        setIsSubmittingEndReport(false);
-        return;
+      try {
+        await endZoomMeetingAction(classId, effectiveMeetingNumber);
+      } catch (zoomErr) {
+        console.warn('[classroom] Zoom end meeting warning (non-blocking):', zoomErr);
       }
-      // Broadcast COMPLETED status to all participants
       mainChannelRef.current?.send({
         type: 'broadcast',
         event: 'status-change',
         payload: { status: 'COMPLETED', endedAt: nowISO, startedAt: startedAtTime },
       });
-      // Save session notes & attendance report
       await submitClassEndReportAction({ classId, sessionNotes: finalNotes, attendance: attendanceList });
       setStatus('COMPLETED');
       setShowEndClassModal(false);
       const targetRoute = role === 'admin' ? '/dashboard/admin/classes' : isCoach ? '/dashboard/coach/classes' : '/dashboard/student/classes';
       router.push(targetRoute);
     } catch (err: any) {
-      setError(err?.message || 'Unable to end the video meeting. Please try again.');
+      setError(err?.message || 'Failed to end class. Please try again.');
     } finally {
       setIsSubmittingEndReport(false);
     }
@@ -821,15 +860,6 @@ export default function ClassroomWorkspace({
     setResponseSubmitted(true);
     setStudentResponses((prev) => ({ ...prev, [userName]: myResponse }));
   };
-
-  useEffect(() => {
-    const channel = supabase.channel(`classroom-responses:${classId}`)
-      .on('broadcast', { event: 'student-response' }, ({ payload }: any) => {
-        if (isCoach) setStudentResponses((prev) => ({ ...prev, [payload.user]: payload.response }));
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [classId, isCoach]);
 
   const displayTitle = activeClassName || `${classType || 'Group'} (${duration}min)`;
 
@@ -887,6 +917,15 @@ export default function ClassroomWorkspace({
 
         {/* Right: Prominent END CLASS & Exit */}
         <div className="flex items-center gap-2">
+          {/* Dev / Coach Diagnostics Toggle */}
+          <button
+            type="button"
+            onClick={() => setShowClassroomDiag(!showClassroomDiag)}
+            className="px-2.5 h-7 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-[10px] font-mono rounded transition-colors shadow"
+          >
+            {showClassroomDiag ? 'Hide Diag' : '🛠️ Diag'}
+          </button>
+
           {/* Prominent Red End Class Button for Coach & Admin at all times */}
           {isCoach && (
             <button
@@ -914,6 +953,31 @@ export default function ClassroomWorkspace({
           </button>
         </div>
       </header>
+
+      {/* ── REALTIME DIAGNOSTIC OVERLAY PANEL ── */}
+      {showClassroomDiag && (
+        <div className="absolute top-14 left-4 z-50 p-3 bg-[#0d0d21]/97 border border-indigo-500/50 rounded-xl text-[10px] font-mono text-slate-200 shadow-2xl space-y-1 w-80">
+          <div className="flex justify-between items-center border-b border-slate-700 pb-1 mb-1 text-indigo-300 font-bold">
+            <span>REALTIME DIAGNOSTICS</span>
+            <span className="px-1.5 py-0.5 bg-indigo-950 text-indigo-300 rounded border border-indigo-700">
+              {mainChannelRef.current ? 'SUBSCRIBED' : 'CONNECTING'}
+            </span>
+          </div>
+          <div>CLASS ID: <span className="text-amber-300">{classId}</span></div>
+          <div>CHANNEL: <span className="text-emerald-300">live-session:{classId}</span></div>
+          <div>SESSION ID: <span className="text-slate-300">{activeSessionId}</span></div>
+          <div>ROLE: <span className="text-emerald-400 font-bold">{role.toUpperCase()}</span></div>
+          <div>USER ID: <span className="text-slate-300">{userId || userName}</span></div>
+          <div>BOARD CONTROL: <span className={boardControllerId === (userId || userName) || isCoach ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>{isCoach ? 'Coach (ENABLED)' : boardControllerId === (userId || userName) ? 'Student (GRANTED)' : 'Student (DISABLED)'}</span></div>
+          <div>STUDENT MOVES: <span className={isBoardLocked ? 'text-red-400 font-bold' : 'text-emerald-400 font-bold'}>{isBoardLocked ? 'LOCKED (OFF)' : 'ALLOWED (ON)'}</span></div>
+          <div>PRESENCE ONLINE: <span className="text-emerald-400 font-bold">{onlineUserIds.length} users</span></div>
+          <div>BOARD VERSION: <span className="text-indigo-300">{boardVersionRef.current}</span></div>
+          <div>LAST EVENT: <span className="text-amber-200 truncate block">{lastRealtimeLog}</span></div>
+          <div className="border-t border-slate-700 pt-1 text-[9px] text-slate-400 truncate">
+            ONLINE USERS: {onlineUserIds.join(', ') || 'None'}
+          </div>
+        </div>
+      )}
 
       {/* ═══════════════════════════════════════════════════════════════════
           MAIN BODY
@@ -1208,7 +1272,14 @@ export default function ClassroomWorkspace({
                         <p className="text-[11px] font-bold text-amber-200 truncate">{coachName}</p>
                         <p className="text-[9px] text-amber-500 font-semibold">Assigned Coach (Controller)</p>
                       </div>
-                      <span className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" title="Coach Online" />
+                      {(() => {
+                        const isCoachOnline = onlineUserIds.some((id) =>
+                          id === coachName || id.toLowerCase().includes('coach') || id === userId || isCoach
+                        );
+                        return (
+                          <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${isCoachOnline ? 'bg-green-400 animate-pulse' : 'bg-[#444466]'}`} title={isCoachOnline ? 'Coach Online' : 'Coach Offline'} />
+                        );
+                      })()}
                     </div>
                     {students.map((student, i) => {
                       const studentName = `${student.firstName} ${student.lastName}`;
