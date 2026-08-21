@@ -25,6 +25,7 @@ interface StudentInfo {
   lastName: string;
   email: string;
   studentProfileId?: string;
+  userId?: string;
 }
 
 interface ClassroomWorkspaceProps {
@@ -255,13 +256,19 @@ export default function ClassroomWorkspace({
         event: 'board-load',
         payload: {
           classId,
+          sessionId: activeSessionId,
           fen: pos.fen,
           pgn: (pos as any).pgn || '',
           moves: [],
           puzzleId: pos.id || null,
           title: pos.title || 'Teaching Position',
+          description: pos.description || pos.hint || (pos as any).coachNotes || '',
+          solution: pos.solution || '',
+          explanation: pos.explanation || (pos as any).notes || '',
+          chapterTitle: pos.chapterTitle || '',
           orientation: pos.boardOrientation || 'white',
           sourceUserId: userId || userName,
+          version: boardVersionRef.current,
           timestamp: new Date().toISOString(),
         },
       });
@@ -335,6 +342,37 @@ export default function ClassroomWorkspace({
   /* ── Monotonically Increasing Board Version & Board Controller Authority ──── */
   const boardVersionRef = useRef<number>(1);
   const [boardControllerId, setBoardControllerId] = useState<string>(isCoach ? (userId || userName) : '');
+
+  const isStudentControlGranted = useCallback(() => {
+    if (isCoach) return true;
+    if (!boardControllerId) return false;
+    const target = boardControllerId.trim().toLowerCase();
+    const myId = (userId || '').trim().toLowerCase();
+    const myName = (userName || '').trim().toLowerCase();
+
+    if (myId && target === myId) return true;
+    if (myName && target === myName) return true;
+    if (myName && (target.includes(myName) || myName.includes(target))) return true;
+
+    const currentStudent = students.find(
+      (s: any) =>
+        (s.userId && s.userId.trim().toLowerCase() === target) ||
+        (s.studentProfileId && s.studentProfileId.trim().toLowerCase() === target) ||
+        (`${s.firstName} ${s.lastName}`.trim().toLowerCase() === target) ||
+        (s.firstName && s.firstName.length >= 2 && target.includes(s.firstName.toLowerCase()))
+    );
+
+    if (currentStudent) {
+      const matchUserId = (currentStudent.userId || '').trim().toLowerCase();
+      const matchProfileId = (currentStudent.studentProfileId || '').trim().toLowerCase();
+      const matchName = `${currentStudent.firstName} ${currentStudent.lastName}`.trim().toLowerCase();
+
+      if (myId && (myId === matchUserId || myId === matchProfileId)) return true;
+      if (myName && (myName === matchName || myName.toLowerCase().includes(currentStudent.firstName.toLowerCase()))) return true;
+    }
+
+    return false;
+  }, [isCoach, boardControllerId, userId, userName, students]);
 
   // Board State Persistence Helper: Persists authoritative state to DB and broadcasts to canonical channel
   const persistAndBroadcastBoardState = useCallback(async (
@@ -555,9 +593,27 @@ export default function ClassroomWorkspace({
       .on('broadcast', { event: 'board-load' }, ({ payload }: any) => {
         if (payload?.classId && payload.classId !== classId) return;
         if (payload?.fen) {
+          if (payload.version) boardVersionRef.current = payload.version;
           setCurrentFen(payload.fen);
           setGameMoves(payload.moves || []);
           setCurrentMoveIndex(-1);
+          setActivePosition({
+            id: payload.puzzleId || Math.random().toString(),
+            lessonId: '',
+            title: payload.title || 'Teaching Position',
+            description: payload.description || '',
+            solution: payload.solution || '',
+            explanation: payload.explanation || '',
+            chapterTitle: payload.chapterTitle || '',
+            fen: payload.fen,
+            difficulty: 'Beginner',
+            tags: [],
+            boardOrientation: payload.orientation || 'white',
+            defaultBoardLock: false,
+            orderNumber: 1,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
           setBoardKey((k) => k + 1);
           setLastRealtimeLog(`board-load: ${payload.title || 'Position'}`);
         }
@@ -566,7 +622,7 @@ export default function ClassroomWorkspace({
         if (payload?.classId && payload.classId !== classId) return;
         if (payload?.sourceUserId && payload.sourceUserId === userId) return;
         if (payload?.fen) {
-          if (payload.version && payload.version <= boardVersionRef.current) return;
+          if (payload.version && payload.version < boardVersionRef.current) return;
           if (payload.version) boardVersionRef.current = payload.version;
           setCurrentFen(payload.fen);
           if (Array.isArray(payload.moves)) {
@@ -1017,8 +1073,14 @@ export default function ClassroomWorkspace({
           {/* Chessboard */}
           <div
             ref={boardContainerRef}
-            className="flex-1 overflow-y-auto flex items-center justify-center p-2 bg-[#0a0a1a]"
+            className="flex-1 overflow-y-auto flex flex-col items-center justify-center p-2 bg-[#0a0a1a] relative"
           >
+            {!isCoach && isStudentControlGranted() && (
+              <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 px-3 py-1 bg-emerald-500 text-white font-extrabold text-xs rounded-full shadow-lg border border-emerald-300 animate-bounce flex items-center gap-1.5">
+                <span>🎮</span>
+                <span>You Have Board Control! You can make moves.</span>
+              </div>
+            )}
             <ChessWorkspace
               key={boardKey}
               initialFen={currentFen}
@@ -1031,7 +1093,7 @@ export default function ClassroomWorkspace({
               showCoordinates={showCoordinates}
               spotlightedStudentId={spotlightedStudentId}
               spotlightedStudentName={spotlightedStudentName}
-              readOnly={!isCoach && boardControllerId !== (userId || userName)}
+              readOnly={!isCoach && !isStudentControlGranted()}
               isEditorOpen={showSetPositionModal}
               onToggleEditorOpen={setShowSetPositionModal}
               allowIllegalMovesExternal={allowIllegalMoves}
