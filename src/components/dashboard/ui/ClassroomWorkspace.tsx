@@ -115,12 +115,19 @@ export default function ClassroomWorkspace({
   const [jitsiJoined, setJitsiJoined] = useState(false);
 
   /* ── Persistent Session Timer ───────────────────────────────────────────── */
-  const [startedAtTime, setStartedAtTime] = useState<string | null>(() => {
+  const [mountTimeRef] = useState<string>(() => new Date().toISOString());
+
+  const [startedAtTime, setStartedAtTime] = useState<string>(() => {
     if (startedAt) return startedAt;
     if (typeof window !== 'undefined' && classId) {
-      return localStorage.getItem(`classroom_started_at_${classId}`);
+      const saved = localStorage.getItem(`classroom_started_at_${classId}`);
+      if (saved) return saved;
     }
-    return null;
+    if (scheduledStart) {
+      const ms = new Date(scheduledStart).getTime();
+      if (!isNaN(ms)) return scheduledStart;
+    }
+    return mountTimeRef;
   });
 
   const [endedAtTime, setEndedAtTime] = useState<string | null>(() => {
@@ -150,17 +157,15 @@ export default function ClassroomWorkspace({
       return duration * 60;
     }
 
-    // 2. Compute elapsed time since startedAtTime (or fallback to scheduledStart)
-    const baseIso = startedAtTime || (status === 'LIVE' ? scheduledStart : null);
-    if (baseIso) {
-      const startMs = new Date(baseIso).getTime();
-      if (!isNaN(startMs)) {
-        return Math.max(0, Math.floor((Date.now() - startMs) / 1000));
-      }
+    // 2. Compute elapsed time since startedAtTime (or mount time fallback)
+    const baseIso = startedAtTime || mountTimeRef;
+    const startMs = new Date(baseIso).getTime();
+    if (!isNaN(startMs)) {
+      return Math.max(1, Math.floor((Date.now() - startMs) / 1000));
     }
 
-    return 0;
-  }, [status, startedAtTime, endedAtTime, scheduledStart, duration]);
+    return 1;
+  }, [status, startedAtTime, endedAtTime, duration, mountTimeRef]);
 
   const [elapsedSeconds, setElapsedSeconds] = useState(calculateElapsed);
 
@@ -760,6 +765,32 @@ export default function ClassroomWorkspace({
     }
   }, [isCoach, classId, status, startedAtTime]);
 
+  // Student Auto-Exit Effect: When class status is COMPLETED, automatically redirect student to dashboard
+  useEffect(() => {
+    if (isCoach) return;
+    if (status === 'COMPLETED' || endedAtTime) {
+      router.push('/dashboard/student/classes');
+      return;
+    }
+
+    const checkCompleted = async () => {
+      try {
+        const { data } = await supabase
+          .from('classes')
+          .select('status')
+          .eq('id', classId)
+          .maybeSingle();
+        if (data && data.status === 'COMPLETED') {
+          setStatus('COMPLETED');
+          router.push('/dashboard/student/classes');
+        }
+      } catch {}
+    };
+
+    const interval = setInterval(checkCompleted, 3000);
+    return () => clearInterval(interval);
+  }, [isCoach, status, endedAtTime, classId, router]);
+
   const [homeworkToast, setHomeworkToast] = useState<string | null>(null);
 
   // (Push-to-Talk via spacebar not needed — Jitsi handles its own audio controls)
@@ -979,9 +1010,9 @@ export default function ClassroomWorkspace({
           <button
             type="button"
             onClick={isCoach ? handleOpenEndClassModal : () => router.push(isCoach ? '/dashboard/coach/classes' : '/dashboard/student/classes')}
-            className="px-3 h-7 bg-[#e11d48] hover:bg-[#f43f5e] text-white font-extrabold text-[11px] rounded uppercase tracking-wider flex items-center justify-center shadow"
+            className="px-3 h-7 bg-[#e11d48] hover:bg-[#f43f5e] text-white font-extrabold text-[11px] rounded uppercase tracking-wider flex items-center justify-center shadow transition-colors"
           >
-            EXIT
+            {isCoach ? 'END CLASS' : 'LEAVE CLASS'}
           </button>
 
           {/* Notification bell */}

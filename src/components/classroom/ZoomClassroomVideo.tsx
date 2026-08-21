@@ -682,10 +682,26 @@ export default function ZoomClassroomVideo({
       )}
 
       {/* ── Zoom Embedded Container ── */}
+      <style>{`
+        #zoom-embedded-video-container,
+        #zoom-embedded-video-container *,
+        [id*="zmmtg-root"],
+        .aria-canvas,
+        .video-canvas,
+        .speaker-video,
+        .video-avatar {
+          background-color: #090914 !important;
+        }
+        #zoom-embedded-video-container canvas,
+        #zoom-embedded-video-container video {
+          object-fit: cover !important;
+          border-radius: 0.75rem !important;
+        }
+      `}</style>
       <div
         ref={containerRef}
         id="zoom-embedded-video-container"
-        className="w-full flex-1 min-h-[220px]"
+        className="w-full h-full flex-1 min-h-[220px] bg-[#090914] rounded-xl overflow-hidden"
         style={{ visibility: connectionState === 'connected' ? 'visible' : 'hidden' }}
       />
 
