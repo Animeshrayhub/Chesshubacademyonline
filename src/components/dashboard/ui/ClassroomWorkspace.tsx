@@ -70,7 +70,7 @@ interface HomeworkWorkbook {
   track: string;
 }
 
-type RightTab = 'at' | 'response' | 'leaderboard' | 'participants' | 'engine';
+type RightTab = 'at' | 'chat' | 'response' | 'leaderboard' | 'participants' | 'engine';
 
 /* ─── Component ─────────────────────────────────────────────────────────── */
 export default function ClassroomWorkspace({
@@ -867,86 +867,75 @@ export default function ClassroomWorkspace({
     <div className="fixed inset-0 bg-[#0f0f1f] text-white flex flex-col overflow-hidden select-none" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
 
       {/* ═══════════════════════════════════════════════════════════════════
-          TOP NAVBAR HEADER BAR
+          TOP NAVBAR HEADER BAR (MATCHING REFERENCE UI/UX)
       ═══════════════════════════════════════════════════════════════════ */}
-      <header className="h-12 bg-[#0a0a1a] border-b border-[#222244] flex items-center justify-between px-4 flex-shrink-0 z-30 shadow-md">
-        {/* Left: Class title & timer */}
+      <header className="h-12 bg-[#252528] border-b border-[#35353a] flex items-center justify-between px-4 flex-shrink-0 z-30 shadow-md">
+        {/* Left: Class title & CUSTOM MEETING toggle badge */}
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-extrabold text-amber-400 tracking-tight flex items-center gap-1.5">
-              <span className="text-xs">♟️</span>
-              <span>{displayTitle}</span>
-            </span>
-            <span className="px-2 py-0.5 text-[10px] font-bold bg-[#1e1e3e] border border-[#2a2a4a] text-[#8888cc] rounded tracking-widest uppercase">
-              {status === 'LIVE' ? 'LIVE SESSION' : status === 'SCHEDULED' ? 'SCHEDULED' : 'CUSTOM MEETING'}
-            </span>
-          </div>
+          <span className="text-sm font-bold text-white tracking-tight flex items-center gap-1.5 truncate max-w-xs md:max-w-md">
+            <span>{displayTitle}</span>
+          </span>
 
-          {/* Timer always visible */}
-          <div className="flex items-center gap-1.5 ml-2 bg-[#1a1a32] px-2.5 py-1 rounded-lg border border-[#2a2a4a]">
-            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            <span className="text-xs font-mono font-black text-white tabular-nums">
-              {formatElapsed(elapsedSeconds)}
-            </span>
+          {/* Toggle pill matching screenshot */}
+          <div className="hidden sm:flex items-center gap-1.5 bg-[#1a1a1d] px-2.5 py-1 rounded-full border border-[#333338] text-[10px] font-bold text-[#aaaaaa]">
+            <span className="w-2 h-2 rounded-full bg-white" />
+            <span>CUSTOM MEETING</span>
           </div>
         </div>
 
-        {/* Center: Action Buttons (Coach Only) */}
-        {isCoach && (
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowLessonDrawer(true)}
-              className="px-3 h-7 bg-[#1e1e3e] hover:bg-[#2a2a4e] border border-[#2a2a4e] text-[#ccccee] text-[11px] font-bold rounded transition-all uppercase tracking-wide"
-            >
-              LOAD GAME
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowSetPositionModal(true)}
-              className="px-3 h-7 bg-[#c84b31] hover:bg-[#d55339] text-white text-[11px] font-extrabold rounded transition-all uppercase tracking-wide shadow-md"
-            >
-              🎨 SET POSITION
-            </button>
-
-            {/* Local Device MP4 Recorder for Admin / Coach */}
-            <ClassroomLocalRecorder classId={classId} isCoachOrAdmin={isCoach} />
-          </div>
-        )}
-
-        {/* Right: Prominent END CLASS & Exit */}
+        {/* Center / Right controls matching reference layout */}
         <div className="flex items-center gap-2">
-          {/* Dev / Coach Diagnostics Toggle */}
+          {/* LOAD GAME (N) button */}
           <button
             type="button"
-            onClick={() => setShowClassroomDiag(!showClassroomDiag)}
-            className="px-2.5 h-7 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-[10px] font-mono rounded transition-colors shadow"
+            onClick={() => setShowLessonDrawer(true)}
+            className="px-2.5 h-7 bg-[#2e2e34] hover:bg-[#383840] border border-[#44444c] text-white text-[11px] font-bold rounded transition-all flex items-center gap-1"
           >
-            {showClassroomDiag ? 'Hide Diag' : '🛠️ Diag'}
+            <span className="text-[#888899]">&lt;</span>
+            <span>LOAD GAME ({activeLessonPositions.length || 4})</span>
+            <span className="text-[#888899]">&gt;</span>
           </button>
 
-          {/* Prominent Red End Class Button for Coach & Admin at all times */}
-          {isCoach && (
-            <button
-              type="button"
-              onClick={handleOpenEndClassModal}
-              disabled={isPending || isSubmittingEndReport}
-              className="px-3.5 h-7 bg-red-600 hover:bg-red-500 text-white font-extrabold text-[11px] rounded uppercase tracking-wider flex items-center gap-1 shadow-lg animate-pulse"
-            >
-              <span>🛑</span>
-              <span>END CLASS</span>
-            </button>
-          )}
+          {/* LOAD CURRICULUM */}
+          <button
+            type="button"
+            onClick={() => setShowLessonDrawer(true)}
+            className="px-2.5 h-7 bg-[#2e2e34] hover:bg-[#383840] border border-[#44444c] text-white text-[11px] font-bold rounded transition-all hidden md:flex items-center"
+          >
+            LOAD CURRICULUM
+          </button>
+
+          {/* LOAD PDF */}
+          <button
+            type="button"
+            onClick={() => setShowSetPositionModal(true)}
+            className="px-2.5 h-7 bg-[#2e2e34] hover:bg-[#383840] border border-[#44444c] text-white text-[11px] font-bold rounded transition-all hidden md:flex items-center"
+          >
+            LOAD PDF
+          </button>
+
+          {/* Live Session Timer (00:04:48 style) */}
+          <div className="flex items-center gap-1.5 px-2.5 h-7 bg-[#161618] border border-[#303036] rounded font-mono font-bold text-xs text-white tabular-nums">
+            {formatElapsed(elapsedSeconds)}
+          </div>
+
+          {/* Red EXIT / END CLASS Button */}
+          <button
+            type="button"
+            onClick={isCoach ? handleOpenEndClassModal : () => router.push(isCoach ? '/dashboard/coach/classes' : '/dashboard/student/classes')}
+            className="px-3 h-7 bg-[#e11d48] hover:bg-[#f43f5e] text-white font-extrabold text-[11px] rounded uppercase tracking-wider flex items-center justify-center shadow"
+          >
+            EXIT
+          </button>
 
           {/* Notification bell */}
           <button
             type="button"
-            className="w-7 h-7 rounded-full bg-[#c84b31] hover:bg-[#d55339] flex items-center justify-center text-white text-sm transition-all relative ml-1"
+            className="w-7 h-7 rounded-full bg-[#e11d48] hover:bg-[#f43f5e] flex items-center justify-center text-white text-xs transition-all relative"
           >
             🔔
             {chatUnread > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 text-white text-[8px] font-black rounded-full flex items-center justify-center">
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-white text-[#e11d48] text-[8px] font-black rounded-full flex items-center justify-center">
                 {chatUnread}
               </span>
             )}
@@ -1125,29 +1114,43 @@ export default function ClassroomWorkspace({
               />
             </div>
 
-            {/* ── 5-Tab Panel ─────────────────────────────────────────────── */}
+            {/* ── 6-Tab Panel Matching Reference UI ───────────────────────── */}
             <div className="flex flex-col flex-1 overflow-hidden">
-              <div className="flex items-center border-b border-[#222244] flex-shrink-0 bg-[#0a0a1a]">
-                {([
-                  ['at', 'AT'],
-                  ['response', 'RESPONSE'],
-                  ['leaderboard', 'LEADERBOARD'],
-                  ['participants', 'PARTICIPANTS'],
-                  ...(isCoach ? [['engine', 'ENGINE'] as [RightTab, string]] : []),
-                ]).map(([key, label]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setRightTab(key as RightTab)}
-                    className={`flex-1 py-2.5 text-[10px] font-extrabold uppercase tracking-wide transition-colors border-b-2 ${
-                      rightTab === key
-                        ? 'text-white border-[#c84b31] bg-[#1a1a32]'
-                        : 'text-[#666688] border-transparent hover:text-[#aaaacc] hover:bg-[#141428]'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
+              <div className="flex items-center justify-between border-b border-[#2d2d35] flex-shrink-0 bg-[#1e1e24] px-1">
+                <div className="flex items-center flex-1 overflow-x-auto no-scrollbar">
+                  {([
+                    ['at', 'MOVES'],
+                    ['chat', 'CHAT'],
+                    ['response', 'RESPONSE'],
+                    ['leaderboard', 'LEADERBOARD'],
+                    ['participants', 'PARTICIPANTS'],
+                    ...(isCoach ? [['engine', 'ENGINE'] as [RightTab, string]] : []),
+                  ]).map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setRightTab(key as RightTab)}
+                      className={`px-3 py-2.5 text-[10px] font-extrabold uppercase tracking-wide transition-all border-b-2 whitespace-nowrap ${
+                        rightTab === key
+                          ? 'text-white border-[#e11d48] bg-[#292932]'
+                          : 'text-[#888899] border-transparent hover:text-white hover:bg-[#23232a]'
+                      }`}
+                    >
+                      {label}
+                      {key === 'chat' && chatUnread > 0 && (
+                        <span className="ml-1 px-1 py-0.2 bg-rose-600 text-white text-[8px] font-bold rounded-full">
+                          {chatUnread}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Popout & Edit Icons on right of tab bar matching screenshot */}
+                <div className="flex items-center gap-1.5 px-2 text-[#8888aa] text-xs shrink-0">
+                  <button type="button" title="Popout Window" className="hover:text-white transition-colors">❐</button>
+                  <button type="button" title="Edit Position" onClick={() => setShowSetPositionModal(true)} className="hover:text-white transition-colors">✎</button>
+                </div>
               </div>
 
               {/* Tab Content */}
@@ -1160,49 +1163,57 @@ export default function ClassroomWorkspace({
                       onJumpToMove={handleJumpToMove}
                       showMovesForParticipants={showMovesForParticipants}
                       isCoach={isCoach}
+                      activePosition={activePosition ? {
+                        title: activePosition.title,
+                        description: activePosition.description,
+                        solution: activePosition.solution,
+                        explanation: activePosition.explanation,
+                        chapterTitle: activePosition.chapterTitle,
+                      } : undefined}
                     />
+                  </div>
+                )}
 
-                    {/* Chat Section */}
-                    <div className="border-t border-[#222244] flex-shrink-0 bg-[#0a0a1a]">
-                      <div className="max-h-32 overflow-y-auto px-3 py-2 space-y-1.5">
-                        {messages.length === 0 && (
-                          <p className="text-[10px] text-[#555577] italic text-center py-2">No messages yet</p>
-                        )}
-                        {messages.map((msg) => (
-                          <div key={msg.id} className={`flex gap-2 ${msg.sender_name === userName ? 'justify-end' : ''}`}>
-                            <div className={`max-w-[85%] px-2.5 py-1.5 rounded-xl text-[11px] leading-tight ${
-                              msg.sender_role === 'coach' || msg.sender_role === 'admin'
-                                ? 'bg-amber-900/40 border border-amber-700/40 text-amber-100'
-                                : msg.sender_name === userName
-                                ? 'bg-[#c84b31] text-white'
-                                : 'bg-[#1a1a32] text-[#ccccee]'
-                            }`}>
-                              {msg.sender_name !== userName && (
-                                <p className="text-[9px] font-bold text-[#8888cc] mb-0.5">{msg.sender_name}</p>
-                              )}
-                              {msg.message}
-                            </div>
+                {rightTab === 'chat' && (
+                  <div className="flex flex-col flex-1 overflow-hidden bg-[#14141a]">
+                    <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
+                      {messages.length === 0 && (
+                        <p className="text-[11px] text-[#666688] italic text-center py-6">No messages in chat yet.</p>
+                      )}
+                      {messages.map((msg) => (
+                        <div key={msg.id} className={`flex gap-2 ${msg.sender_name === userName ? 'justify-end' : ''}`}>
+                          <div className={`max-w-[85%] px-3 py-1.5 rounded-xl text-[11px] leading-snug ${
+                            msg.sender_role === 'coach' || msg.sender_role === 'admin'
+                              ? 'bg-amber-950/70 border border-amber-800/60 text-amber-100'
+                              : msg.sender_name === userName
+                              ? 'bg-rose-600 text-white'
+                              : 'bg-[#22222c] text-white border border-[#333344]'
+                          }`}>
+                            {msg.sender_name !== userName && (
+                              <p className="text-[9px] font-bold text-[#8888cc] mb-0.5">{msg.sender_name}</p>
+                            )}
+                            {msg.message}
                           </div>
-                        ))}
-                        <div ref={chatBottomRef} />
-                      </div>
-                      <form onSubmit={sendChatMessage} className="flex gap-2 px-2 py-1.5 border-t border-[#222244]">
-                        <input
-                          type="text"
-                          value={chatInput}
-                          onChange={(e) => setChatInput(e.target.value)}
-                          placeholder="Type a message..."
-                          className="flex-1 bg-[#1a1a32] border border-[#2a2a4a] rounded-lg px-2.5 py-1.5 text-[11px] text-white placeholder-[#555577] focus:outline-none focus:border-[#c84b31]"
-                        />
-                        <button
-                          type="submit"
-                          disabled={!chatInput.trim()}
-                          className="px-3 py-1.5 bg-[#c84b31] hover:bg-[#d55339] text-white text-[10px] font-bold rounded-lg transition-colors disabled:opacity-40"
-                        >
-                          ▶
-                        </button>
-                      </form>
+                        </div>
+                      ))}
+                      <div ref={chatBottomRef} />
                     </div>
+                    <form onSubmit={sendChatMessage} className="flex gap-2 px-3 py-2 border-t border-[#2a2a35] bg-[#1a1a22]">
+                      <input
+                        type="text"
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        placeholder="Type a message..."
+                        className="flex-1 bg-[#252532] border border-[#38384a] rounded-lg px-3 py-1.5 text-[11px] text-white placeholder-[#666688] focus:outline-none focus:border-rose-500"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!chatInput.trim()}
+                        className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-bold rounded-lg transition-colors disabled:opacity-40"
+                      >
+                        Send
+                      </button>
+                    </form>
                   </div>
                 )}
 

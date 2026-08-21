@@ -49,16 +49,16 @@ interface PillBtnProps {
 
 function PillBtn({ icon, label, onClick, active, disabled, danger, primary, title }: PillBtnProps) {
   const base =
-    'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all duration-150 select-none flex-shrink-0 border';
+    'inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all duration-150 select-none flex-shrink-0 border';
   const styles = primary
-    ? 'bg-gradient-to-br from-[#c84b31] to-[#a83924] text-white border-[#c84b31]/60 shadow shadow-[#c84b31]/20 hover:brightness-110 active:scale-95'
+    ? 'bg-rose-600 text-white border-rose-500 shadow hover:bg-rose-500 active:scale-95'
     : danger
-    ? 'bg-red-900/60 text-red-300 border-red-700/50 hover:bg-red-800/70 hover:text-red-100 active:scale-95'
+    ? 'bg-rose-950/70 text-rose-300 border-rose-800/60 hover:bg-rose-900 active:scale-95'
     : active
-    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+    ? 'bg-rose-600 text-white border-rose-500 hover:bg-rose-500'
     : disabled
-    ? 'bg-[#0d0d1e] text-[#33334a] border-[#1a1a30] cursor-not-allowed opacity-50'
-    : 'bg-[#14142a] text-[#9999bb] border-[#252545] hover:bg-[#1e1e3a] hover:text-white hover:border-[#3d3d66] active:scale-95';
+    ? 'bg-[#181820] text-[#444455] border-[#242430] cursor-not-allowed opacity-50'
+    : 'bg-[#25252b] text-[#cccccc] border-[#383842] hover:bg-[#32323a] hover:text-white active:scale-95';
 
   return (
     <button
@@ -68,8 +68,8 @@ function PillBtn({ icon, label, onClick, active, disabled, danger, primary, titl
       disabled={disabled}
       className={`${base} ${styles}`}
     >
-      <span className="text-[13px] leading-none">{icon}</span>
-      <span className="leading-none tracking-wide whitespace-nowrap">{label}</span>
+      <span className="text-[12px] leading-none font-mono">{icon}</span>
+      {label && <span className="leading-none tracking-tight whitespace-nowrap">{label}</span>}
     </button>
   );
 }

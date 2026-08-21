@@ -15,6 +15,13 @@ interface ClassroomMoveNotationProps {
   onJumpToMove: (idx: number) => void;
   showMovesForParticipants: boolean;
   isCoach: boolean;
+  activePosition?: {
+    title?: string;
+    description?: string;
+    solution?: string;
+    explanation?: string;
+    chapterTitle?: string;
+  };
 }
 
 export default function ClassroomMoveNotation({
@@ -23,6 +30,7 @@ export default function ClassroomMoveNotation({
   onJumpToMove,
   showMovesForParticipants,
   isCoach,
+  activePosition,
 }: ClassroomMoveNotationProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
@@ -133,6 +141,24 @@ export default function ClassroomMoveNotation({
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden bg-[#0d0d1a]">
+      {/* Active Position Details Header (Matching Screenshot Cyan Style) */}
+      {activePosition && (activePosition.title || activePosition.description || activePosition.explanation) && (
+        <div className="p-3 bg-[#090918] border-b border-[#1e1e38] text-[12px] leading-relaxed select-text">
+          <p className="text-[#00d2ff] font-extrabold mb-1.5 flex items-center gap-1.5">
+            <span>⚡ {activePosition.title || 'Chapter Position'}</span>
+            {activePosition.chapterTitle && (
+              <span className="text-[#38bdf8]/80 text-[10px] font-normal">({activePosition.chapterTitle})</span>
+            )}
+          </p>
+          {(activePosition.description || activePosition.explanation) && (
+            <div className="text-[#00d2ff]/90 font-medium space-y-1 text-[11px] font-sans">
+              {activePosition.description && <p>( {activePosition.description} )</p>}
+              {activePosition.explanation && <p className="text-white font-mono">{activePosition.explanation}</p>}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Header bar with PGN export/copy & Play button */}
       <div className="flex items-center justify-between px-3 py-1.5 bg-[#121226] border-b border-[#222244] text-[10px] text-[#8888aa] font-bold">
         <div className="flex items-center gap-2">

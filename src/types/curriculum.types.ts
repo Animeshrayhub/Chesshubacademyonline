@@ -14,6 +14,8 @@ export interface TeachingPosition {
   lessonId: string;
   positionNumber?: number;
   title: string;
+  description?: string;
+  chapterTitle?: string;
   fen: string;
   solution?: string;
   alternativeSolution?: string;
