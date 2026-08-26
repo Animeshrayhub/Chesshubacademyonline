@@ -1425,29 +1425,17 @@ export default function ClassroomWorkspace({
             style={{ width: `${rightColWidth}px` }}
           >
             {/* ── Zoom Meeting SDK Embedded Video Stage ── */}
-            {/* Panel mode: fills flex-1 height above tabs. PIP mode: floating draggable overlay */}
-            {!videoPipMode && (
-              <div className="flex-shrink-0 relative w-full max-w-full overflow-hidden" style={{ height: '42%', minHeight: '200px', maxHeight: '360px' }}>
-                {/* PIP toggle button */}
-                <button
-                  type="button"
-                  onClick={() => setVideoPipMode(true)}
-                  title="Pop out to floating video"
-                  className="absolute top-1.5 right-1.5 z-30 px-2 py-0.5 bg-[#1a1a3a]/90 hover:bg-[#252548] border border-[#3a3a6a] text-[10px] font-bold text-[#8888cc] rounded transition-all flex items-center gap-1"
-                >
-                  <span>⇱</span><span>Float</span>
-                </button>
-                <ZoomClassroomVideo
-                  classId={classId}
-                  meetingNumber={effectiveMeetingNumber}
-                  passcode={zoomPasscode}
-                  userName={userName}
-                  role={role}
-                  isAudioMuted={jitsiAudioMuted}
-                  isVideoMuted={jitsiVideoMuted}
-                />
-              </div>
-            )}
+            <div className="flex-shrink-0 relative w-full max-w-full overflow-hidden" style={{ height: '42%', minHeight: '200px', maxHeight: '360px' }}>
+              <ZoomClassroomVideo
+                classId={classId}
+                meetingNumber={effectiveMeetingNumber}
+                passcode={zoomPasscode}
+                userName={userName}
+                role={role}
+                isAudioMuted={jitsiAudioMuted}
+                isVideoMuted={jitsiVideoMuted}
+              />
+            </div>
 
             {/* ── 6-Tab Panel Matching Reference UI ───────────────────────── */}
             <div className="flex flex-col flex-1 overflow-hidden">
@@ -1484,9 +1472,8 @@ export default function ClassroomWorkspace({
                   ))}
                 </div>
 
-                {/* Popout & Edit Icons on right of tab bar matching screenshot */}
+                {/* Edit Position Icon on right of tab bar matching screenshot */}
                 <div className="flex items-center gap-1.5 px-2 text-[#8888aa] text-xs shrink-0">
-                  <button type="button" title="Popout Window" className="hover:text-white transition-colors">❐</button>
                   <button type="button" title="Edit Position" onClick={() => setShowSetPositionModal(true)} className="hover:text-white transition-colors">✎</button>
                 </div>
               </div>

@@ -833,33 +833,22 @@ export default function ZoomClassroomVideo({
             {localMuted ? '🎙️❌' : '🎙️'}
           </span>
         </div>
-
-        {/* Bottom-Right Fullscreen Expand Button matching reference UI */}
-        <button
-          type="button"
-          onClick={() => setIsFullscreen((f) => !f)}
-          title="Fullscreen Stage Mode"
-          className="absolute bottom-3 right-3 z-20 w-7 h-7 bg-black/80 hover:bg-black border border-white/15 text-white rounded-lg flex items-center justify-center text-xs transition-all shadow-md cursor-pointer pointer-events-auto"
-        >
-          ⛶
-        </button>
       </div>
 
-      {/* ── Bottom Controls Bar ── */}
+      {/* ── Bottom Controls Bar (Ultra Clean Reference UI) ── */}
       {connectionState === 'connected' && (
-        <div className="px-3 py-1.5 bg-[#070714] border-t border-[#1e1e3a] flex items-center justify-between gap-2 z-30 pointer-events-auto">
+        <div className="px-3 py-1.5 bg-[#18181c] border-t border-[#2a2a32] flex items-center justify-between gap-2 z-30 pointer-events-auto">
           <div className="flex items-center gap-1.5">
             {/* Mute/Unmute — calls SDK mute() asynchronously */}
             <button
               type="button"
               onClick={handleToggleMute}
               disabled={muteLoading}
-              title={!audioDiag.audioConnected ? 'Audio not connected yet — use Zoom toolbar' : ''}
-              className={`px-2.5 py-1 text-[10px] font-bold rounded-lg border transition-all flex items-center gap-1 disabled:opacity-60 ${
+              className={`px-3 py-1 text-[11px] font-bold rounded-lg border transition-all flex items-center gap-1.5 disabled:opacity-60 cursor-pointer ${
                 localMuted
-                  ? 'bg-red-950/80 border-red-500/50 text-red-300 hover:bg-red-900'
-                  : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
-              } ${!audioDiag.audioConnected ? 'border-dashed opacity-70' : ''}`}
+                  ? 'bg-rose-950/80 border-rose-600/60 text-rose-200 hover:bg-rose-900'
+                  : 'bg-[#2a2a32] border-[#3a3a44] text-slate-200 hover:bg-[#343440]'
+              }`}
             >
               <span>{muteLoading ? '⏳' : localMuted ? '🔇' : '🎙️'}</span>
               <span>{muteLoading ? '…' : localMuted ? 'Unmute' : 'Mute'}</span>
@@ -869,69 +858,15 @@ export default function ZoomClassroomVideo({
             <button
               type="button"
               onClick={() => handleToggleView(viewType === 'gallery' ? 'speaker' : 'gallery')}
-              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[10px] font-bold text-slate-200 rounded-lg transition-colors flex items-center gap-1"
+              className="px-3 py-1 bg-[#2a2a32] hover:bg-[#343440] border border-[#3a3a44] text-[11px] font-bold text-slate-200 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
             >
               <span>{viewType === 'gallery' ? '🔲' : '👤'}</span>
               <span>{viewType === 'gallery' ? 'Gallery' : 'Speaker'}</span>
             </button>
-
-            {/* Connect Audio / Enable Audio Button */}
-            {(!audioDiag.audioConnected || audioDiag.autoplayBlocked) && (
-              <button
-                type="button"
-                onClick={handleUnlockAudio}
-                className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-black rounded-lg shadow-md transition-all flex items-center gap-1.5 animate-pulse border border-amber-400/80 cursor-pointer"
-                title="Click to connect microphone & speaker live voice"
-              >
-                <span>🔊</span>
-                <span>Connect Voice Audio</span>
-              </button>
-            )}
-
-            {/* Coach Master Mute All Students */}
-            {isCoach && (
-              <button
-                type="button"
-                onClick={handleMuteAllStudents}
-                className="px-2 py-1 bg-rose-950/80 hover:bg-rose-900 border border-rose-800/60 text-[10px] font-bold text-rose-300 rounded-lg transition-colors flex items-center gap-1"
-                title="Mute all student microphones"
-              >
-                <span>🔇</span>
-                <span>Mute All</span>
-              </button>
-            )}
-
-            {/* Test Audio Tool */}
-            <button
-              type="button"
-              onClick={handleTestAudio}
-              className="px-2 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[10px] font-bold text-slate-300 rounded-lg transition-colors flex items-center gap-1"
-              title="Play local audio test tone"
-            >
-              <span>🎵</span>
-              <span>Test Audio</span>
-            </button>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Audio connection status chip */}
-            <button
-              type="button"
-              onClick={handleUnlockAudio}
-              className={`text-[10px] font-extrabold px-2 py-0.5 rounded border transition-all cursor-pointer ${
-                audioDiag.audioConnected
-                  ? audioDiag.isMuted
-                    ? 'bg-amber-950 text-amber-300 border-amber-800/60'
-                    : 'bg-emerald-950 text-emerald-400 border-emerald-800/60 shadow-sm'
-                  : 'bg-red-950/80 text-red-300 border-red-700 animate-bounce'
-              }`}
-            >
-              {audioDiag.audioConnected
-                ? (audioDiag.isMuted ? '🔇 Muted' : '🎙️ Live Voice Connected')
-                : '⚠️ Click to Connect Audio'}
-            </button>
-
-            <span className="text-[10px] font-extrabold text-indigo-300 bg-indigo-950 px-2 py-0.5 rounded border border-indigo-800/60">
+            <span className="text-[10px] font-extrabold text-indigo-300 bg-indigo-950/80 px-2.5 py-1 rounded-lg border border-indigo-800/60">
               👥 {participantCount} {participantCount === 1 ? 'Participant' : 'Participants'}
             </span>
           </div>
