@@ -623,18 +623,19 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
           onClose={() => setCompletionClass(null)}
           classId={completionClass.id}
           className={`${completionClass.class_type} Lesson (${completionClass.studentNames.join(', ')})`}
+          durationMinutes={completionClass.duration_minutes || 45}
           students={completionClass.studentNames.map((name, idx) => ({
             id: `st-${idx}-${completionClass.id}`,
             name,
             email: `${name.toLowerCase().replace(/\s+/g, '.')}@student.com`,
           }))}
-          onCompleted={() => {
+          onCompleted={(actualMins) => {
             const completedId = completionClass.id;
             const nowIso = new Date().toISOString();
             setClassList((prev) =>
               prev.map((c) =>
                 c.id === completedId
-                  ? { ...c, status: 'COMPLETED', updated_at: nowIso, completed_at: nowIso }
+                  ? { ...c, status: 'COMPLETED', duration_minutes: actualMins || c.duration_minutes, updated_at: nowIso, completed_at: nowIso }
                   : c
               )
             );

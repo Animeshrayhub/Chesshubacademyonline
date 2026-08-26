@@ -884,6 +884,7 @@ export interface CompleteClassSessionInput {
   sessionNotes: string;
   topicCovered?: string;
   recordingUrl?: string;
+  actualDurationMinutes?: number;
   attendance: Array<{
     studentId: string;
     status: 'PRESENT' | 'LATE' | 'ABSENT' | 'EXCUSED';
@@ -894,7 +895,7 @@ export interface CompleteClassSessionInput {
 /**
  * Completes a class session:
  * 1. Updates class status to 'COMPLETED' (or 'RECORDING_AVAILABLE' if recordingUrl provided)
- * 2. Saves session notes & optional Google Drive recording link
+ * 2. Saves session notes, actual duration in minutes & optional Google Drive recording link
  * 3. Records student attendance records in class_attendance table
  */
 export async function completeClassSession(
@@ -905,20 +906,26 @@ export async function completeClassSession(
 
     const classStatus = input.recordingUrl?.trim() ? 'RECORDING_AVAILABLE' : 'COMPLETED';
 
-    // 1. Update class record safely (session_notes, status, updated_at)
+    const updatePayload: any = {
+      status: classStatus,
+      session_notes: input.sessionNotes,
+      recording_url: input.recordingUrl?.trim() || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (input.actualDurationMinutes && input.actualDurationMinutes > 0) {
+      updatePayload.duration_minutes = input.actualDurationMinutes;
+    }
+
+    // 1. Update class record safely (session_notes, status, duration_minutes, updated_at)
     let updatedClass: any = null;
     let classErr: any = null;
 
-    // Tier 1: Try updating status, session_notes, recording_url
+    // Tier 1: Try updating status, session_notes, recording_url, duration_minutes
     try {
       const { data, error } = await admin
         .from('classes')
-        .update({
-          status: classStatus,
-          session_notes: input.sessionNotes,
-          recording_url: input.recordingUrl?.trim() || null,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq('id', input.classId)
         .select()
         .maybeSingle();

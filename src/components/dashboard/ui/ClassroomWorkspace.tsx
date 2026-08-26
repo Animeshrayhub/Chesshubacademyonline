@@ -192,6 +192,16 @@ export default function ClassroomWorkspace({
   const [elapsedSeconds, setElapsedSeconds] = useState(calculateElapsed);
 
   useEffect(() => {
+    if (typeof window !== 'undefined' && classId) {
+      try {
+        if (!localStorage.getItem(`class_start_time_${classId}`)) {
+          localStorage.setItem(`class_start_time_${classId}`, Date.now().toString());
+        }
+      } catch {}
+    }
+  }, [classId]);
+
+  useEffect(() => {
     setElapsedSeconds(calculateElapsed());
 
     if (status === 'COMPLETED' || endedAtTime) {

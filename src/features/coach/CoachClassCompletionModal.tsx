@@ -11,8 +11,9 @@ interface CoachClassCompletionModalProps {
   onClose: () => void;
   classId: string;
   className?: string;
+  durationMinutes?: number;
   students: Array<{ id: string; name: string; email: string }>;
-  onCompleted?: () => void;
+  onCompleted?: (actualMins: number) => void;
 }
 
 export default function CoachClassCompletionModal({
@@ -20,26 +21,39 @@ export default function CoachClassCompletionModal({
   onClose,
   classId,
   className = 'Live Session',
+  durationMinutes = 45,
   students,
   onCompleted,
 }: CoachClassCompletionModalProps) {
   const [topicCovered, setTopicCovered] = useState('Tactics & Endgame Fundamentals');
   const [sessionNotes, setSessionNotes] = useState('');
   const [recordingUrl, setRecordingUrl] = useState('');
+  const [actualDuration, setActualDuration] = useState<number>(durationMinutes || 45);
   const [assignHomework, setAssignHomework] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [dispatchSuccess, setDispatchSuccess] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  // Restore draft from localStorage when opening
+  // Calculate real elapsed session duration from start time or pre-fill with scheduled duration
   useEffect(() => {
     if (isOpen && typeof window !== 'undefined') {
       try {
+        const savedStart = localStorage.getItem(`class_start_time_${classId}`);
+        if (savedStart) {
+          const startTime = parseInt(savedStart, 10);
+          if (!isNaN(startTime) && startTime > 0) {
+            const elapsedMins = Math.max(1, Math.round((Date.now() - startTime) / 60000));
+            setActualDuration(elapsedMins);
+          }
+        } else if (durationMinutes) {
+          setActualDuration(durationMinutes);
+        }
+
         const savedDraft = localStorage.getItem(`completion_notes_draft_${classId}`);
         if (savedDraft) setSessionNotes(savedDraft);
       } catch {}
     }
-  }, [isOpen, classId]);
+  }, [isOpen, classId, durationMinutes]);
 
   // Auto-save draft on notes change
   const handleNotesChange = (val: string) => {
@@ -96,11 +110,13 @@ export default function CoachClassCompletionModal({
     }));
 
     startTransition(async () => {
+      const finalMins = Number(actualDuration) || durationMinutes || 45;
       const res = await completeClassSessionAction({
         classId,
         sessionNotes: finalNotes,
         topicCovered,
         recordingUrl: recordingUrl.trim() || undefined,
+        actualDurationMinutes: finalMins,
         attendance: attendanceArray,
       });
 
@@ -108,13 +124,16 @@ export default function CoachClassCompletionModal({
         playChessSound('victory');
         setDispatchSuccess(true);
 
-        // Clear draft
+        // Clear draft and start time
         if (typeof window !== 'undefined' && classId) {
-          try { localStorage.removeItem(`completion_notes_draft_${classId}`); } catch {}
+          try {
+            localStorage.removeItem(`completion_notes_draft_${classId}`);
+            localStorage.removeItem(`class_start_time_${classId}`);
+          } catch {}
         }
 
         setTimeout(() => {
-          if (onCompleted) onCompleted();
+          if (onCompleted) onCompleted(finalMins);
           onClose();
         }, 1500);
       } else {
@@ -131,7 +150,7 @@ export default function CoachClassCompletionModal({
             <span>🏁 Completing {className}</span>
           </p>
           <p className="text-[11px] text-indigo-700 leading-relaxed">
-            Review student attendance, record session observations, and attach optional Google Drive recording link.
+            Review student attendance, record real actual session duration, and submit coach lesson observations.
           </p>
         </div>
 
@@ -190,20 +209,35 @@ export default function CoachClassCompletionModal({
           </div>
         </div>
 
-        {/* 2. Topic & Lesson Observations */}
+        {/* 2. Topic, Duration & Lesson Observations */}
         <div className="space-y-3">
-          <Input
-            id="completion-topic"
-            label="2. Primary Curriculum Topic Covered"
-            placeholder="e.g. Sicilian Defense Dragon & Pawn Endgames"
-            value={topicCovered}
-            onChange={(e) => setTopicCovered(e.target.value)}
-            required
-          />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="md:col-span-2">
+              <Input
+                id="completion-topic"
+                label="2. Primary Curriculum Topic Covered"
+                placeholder="e.g. Sicilian Defense Dragon & Pawn Endgames"
+                value={topicCovered}
+                onChange={(e) => setTopicCovered(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <Input
+                id="actual-duration"
+                type="number"
+                label="3. Real Duration (Min)"
+                placeholder="45"
+                value={actualDuration}
+                onChange={(e) => setActualDuration(Math.max(1, Number(e.target.value)))}
+                required
+              />
+            </div>
+          </div>
 
           <div>
             <label htmlFor="completion-notes" className="block text-xs font-bold text-text-secondary mb-1">
-              3. Coach Lesson Observations & Performance Summary *
+              4. Coach Lesson Observations & Performance Summary *
             </label>
             <textarea
               id="completion-notes"
@@ -221,7 +255,7 @@ export default function CoachClassCompletionModal({
         <div>
           <Input
             id="completion-recording"
-            label="4. Google Drive Class Recording Link (Optional)"
+            label="5. Google Drive Class Recording Link (Optional)"
             placeholder="https://drive.google.com/file/d/1A2B3C.../view"
             value={recordingUrl}
             onChange={(e) => setRecordingUrl(e.target.value)}
