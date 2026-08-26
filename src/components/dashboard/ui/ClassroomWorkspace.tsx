@@ -137,7 +137,19 @@ export default function ClassroomWorkspace({
   const [jitsiJoined, setJitsiJoined] = useState(false);
 
   /* ── Persistent Session Timer ───────────────────────────────────────────── */
+  const [isMounted, setIsMounted] = useState(false);
   const [mountTimeRef] = useState<string>(() => new Date().toISOString());
+
+  useEffect(() => {
+    setIsMounted(true);
+    if (typeof window !== 'undefined' && classId) {
+      let saved = localStorage.getItem(`classroom_started_at_${classId}`);
+      if (!saved) {
+        saved = startedAt || new Date().toISOString();
+        try { localStorage.setItem(`classroom_started_at_${classId}`, saved); } catch {}
+      }
+    }
+  }, [classId, startedAt]);
 
   const [startedAtTime, setStartedAtTime] = useState<string>(() => {
     if (startedAt) return startedAt;
@@ -1194,8 +1206,8 @@ export default function ClassroomWorkspace({
             </>
           )}
           {/* Live Session Timer (00:04:48 style) */}
-          <div className="flex items-center gap-1.5 px-2.5 h-7 bg-[#161618] border border-[#303036] rounded font-mono font-bold text-xs text-white tabular-nums">
-            {formatElapsed(elapsedSeconds)}
+          <div suppressHydrationWarning className="flex items-center gap-1.5 px-2.5 h-7 bg-[#161618] border border-[#303036] rounded font-mono font-bold text-xs text-white tabular-nums">
+            <span suppressHydrationWarning>{isMounted ? formatElapsed(elapsedSeconds) : '00:00:00'}</span>
           </div>
 
           {/* Red EXIT / END CLASS Button */}
