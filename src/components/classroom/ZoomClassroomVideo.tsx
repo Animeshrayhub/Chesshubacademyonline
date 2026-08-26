@@ -1,7 +1,15 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { getZoomSignatureAction } from '@/actions/zoom';
+
+// ── Public imperative handle ─────────────────────────────────────────────────
+// Allows ClassroomWorkspace to call muteAudio() / unmuteAudio() without owning
+// the Zoom state.  Use forwardRef to expose this to the parent.
+export interface ZoomClassroomVideoHandle {
+  muteAudio: () => Promise<void>;
+  unmuteAudio: () => Promise<void>;
+}
 
 interface ZoomClassroomVideoProps {
   classId: string;
@@ -10,8 +18,10 @@ interface ZoomClassroomVideoProps {
   userName: string;
   userEmail?: string;
   role: 'admin' | 'coach' | 'student';
-  isAudioMuted?: boolean;
-  isVideoMuted?: boolean;
+  /** If true, Zoom join() will start with mic muted (from pre-join modal) */
+  startWithMutedAudio?: boolean;
+  /** If true, Zoom join() will start with video off (from pre-join modal) */
+  startWithVideoOff?: boolean;
   onClassEndedByCoach?: () => void;
 }
 
@@ -38,19 +48,23 @@ interface AudioDiagState {
   sdkMuteError: string | null;
 }
 
-export default function ZoomClassroomVideo({
-  classId,
-  meetingNumber,
-  passcode = 'chesshub',
-  userName,
-  userEmail,
-  role,
-  isAudioMuted = false,
-  isVideoMuted = false,
-  onClassEndedByCoach,
-}: ZoomClassroomVideoProps) {
+// Use forwardRef so ClassroomWorkspace can call .muteAudio() on this component
+const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVideoProps>(
+  function ZoomClassroomVideo(
+    {
+      classId,
+      meetingNumber,
+      passcode = 'chesshub',
+      userName,
+      userEmail,
+      role,
+      startWithMutedAudio = false,
+      startWithVideoOff = false,
+      onClassEndedByCoach,
+    },
+    ref
+  ) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const fallbackVideoRef = useRef<HTMLVideoElement>(null);
   const zoomClientRef = useRef<any>(null);
   const initStartedRef = useRef<boolean>(false);
 
@@ -61,43 +75,16 @@ export default function ZoomClassroomVideo({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [mediaPermissionDenied, setMediaPermissionDenied] = useState<boolean>(false);
   const [showDiagnostics, setShowDiagnostics] = useState<boolean>(false);
-  const [hasNativeCameraStream, setHasNativeCameraStream] = useState<boolean>(false);
 
-  // Live Native WebRTC Camera Stream fallback for clear video rendering
-  useEffect(() => {
-    let activeStream: MediaStream | null = null;
-    if (!isVideoMuted && typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
-      navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-        .then((stream) => {
-          activeStream = stream;
-          setHasNativeCameraStream(true);
-          if (fallbackVideoRef.current) {
-            fallbackVideoRef.current.srcObject = stream;
-            fallbackVideoRef.current.play().catch(() => {});
-          }
-        })
-        .catch((err) => {
-          console.warn('[ZoomClassroomVideo] Camera stream permission or device notice:', err);
-          setHasNativeCameraStream(false);
-        });
-    } else {
-      setHasNativeCameraStream(false);
-      if (fallbackVideoRef.current) {
-        fallbackVideoRef.current.srcObject = null;
-      }
-    }
-    return () => {
-      if (activeStream) {
-        activeStream.getTracks().forEach((track) => track.stop());
-      }
-    };
-  }, [isVideoMuted]);
-
-  // Video Stage & Layout State
+  // ── Video Stage & Layout State ─────────────────────────────────────────────
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [viewType, setViewTypeState] = useState<'gallery' | 'speaker'>('gallery');
   const [participantCount, setParticipantCount] = useState<number>(1);
   const [activeSpeakerName, setActiveSpeakerName] = useState<string | null>(null);
+
+  // ── SDK Camera State ───────────────────────────────────────────────────────
+  const [localVideoOn, setLocalVideoOn] = useState<boolean>(!startWithVideoOff);
+  const [videoLoading, setVideoLoading] = useState<boolean>(false);
 
   // ── AUDIO DIAGNOSTICS STATE ──────────────────────────────────────────────
   const [audioDiag, setAudioDiag] = useState<AudioDiagState>({
@@ -106,7 +93,7 @@ export default function ZoomClassroomVideo({
     audioConnectionStatus: 0,
     micPermission: 'unknown',
     micDetected: false,
-    isMuted: isAudioMuted,
+    isMuted: startWithMutedAudio,
     isTalking: false,
     autoplayBlocked: false,
     participants: [],
@@ -114,7 +101,7 @@ export default function ZoomClassroomVideo({
   });
 
   // Local muted state — kept in sync with SDK via user-updated events
-  const [localMuted, setLocalMuted] = useState<boolean>(isAudioMuted);
+  const [localMuted, setLocalMuted] = useState<boolean>(startWithMutedAudio);
   const [muteLoading, setMuteLoading] = useState<boolean>(false);
 
   // SDK init step diagnostics
@@ -175,6 +162,10 @@ export default function ZoomClassroomVideo({
         meetingJoined: true,
       }));
       setLocalMuted(me.muted ?? false);
+
+      // Sync video state from SDK
+      const videoOn = me.video ?? me.bVideoOn ?? false;
+      setLocalVideoOn(videoOn);
     } catch {
       // ignore
     }
@@ -214,10 +205,11 @@ export default function ZoomClassroomVideo({
 
       if (navigator.mediaDevices?.getUserMedia) {
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+          // Brief probe to get permission status — immediately release tracks
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
           micDetected = stream.getAudioTracks().length > 0;
           micPermission = 'granted';
-          stream.getTracks().forEach((t) => t.stop());
+          stream.getTracks().forEach((t) => t.stop()); // Release immediately; Zoom SDK acquires its own
         } catch (permErr: any) {
           console.warn('[zoom] Media permission check:', permErr?.name, permErr?.message);
           if (permErr?.name === 'NotAllowedError' || permErr?.name === 'PermissionDeniedError') {
@@ -253,7 +245,7 @@ export default function ZoomClassroomVideo({
       // ── 3. Import & create embedded SDK client ─────────────────────────
       setDiagStep('IMPORT_SDK');
       const ZoomMtgEmbedded = (await import('@zoom/meetingsdk/embedded')).default;
-      const clientInstance = ZoomMtgEmbedded.createClient();
+      const clientInstance: any = ZoomMtgEmbedded.createClient();
       zoomClientRef.current = clientInstance;
 
       // ── 4. Init embedded client ────────────────────────────────────────
@@ -302,30 +294,11 @@ export default function ZoomClassroomVideo({
       });
 
       // ── CRITICAL: user-updated fires when audio connects/disconnects/mutes ──
-      clientInstance.on('user-updated', (payload: any) => {
+      clientInstance.on('user-updated', () => {
+        // NOTE: Do NOT create AudioContext here — it's expensive and causes audio glitches.
+        // Instead, just sync state from the SDK.
         refreshParticipants(clientInstance);
-        // If this update is about the local user, sync our audio state
         syncCurrentUserAudio(clientInstance);
-
-        // Detect autoplay blocked: remote participant has audio='computer' but we can't hear them
-        // This is best-effort; the SDK doesn't expose a direct autoplay API
-        if (!isCoach && payload?.audio === 'computer') {
-          // Remote participant connected audio — check if audio context is suspended
-          try {
-            const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-            if (AudioContext) {
-              const testCtx = new AudioContext();
-              if (testCtx.state === 'suspended') {
-                setAudioDiag((prev) => ({ ...prev, autoplayBlocked: true }));
-              }
-              if (testCtx.state !== 'closed') {
-                testCtx.close().catch(() => {});
-              }
-            }
-          } catch {
-            // ignore
-          }
-        }
       });
 
       // Active speaker (isTalking)
@@ -363,6 +336,11 @@ export default function ZoomClassroomVideo({
         joinPayload.zak = zak;
       }
 
+      // Pass initial mute preference into the Zoom join payload
+      if (startWithMutedAudio) {
+        joinPayload.audioOptions = { mute: true };
+      }
+
       await (clientInstance as any).join(joinPayload);
 
       setConnectionState('connected');
@@ -380,6 +358,19 @@ export default function ZoomClassroomVideo({
 
       syncCurrentUserAudio(clientInstance);
       refreshParticipants(clientInstance);
+
+      // Apply initial video state (startWithVideoOff)
+      if (startWithVideoOff) {
+        try {
+          const c = clientInstance as any;
+          if (typeof c.stopVideo === 'function') {
+            await c.stopVideo();
+          }
+        } catch {
+          // ignore — video may not have started yet
+        }
+        setLocalVideoOn(false);
+      }
 
       // Re-check after 2s and 5s — audio connection may take a moment to register
       setTimeout(() => {
@@ -400,7 +391,7 @@ export default function ZoomClassroomVideo({
       setDiagStep('FAILED');
       setDiagInfo((prev) => ({ ...prev, errorText: rawMsg }));
     }
-  }, [classId, cleanMeetingId, isCoach, passcode, refreshParticipants, syncCurrentUserAudio, userEmail, userName]);
+  }, [classId, cleanMeetingId, isCoach, passcode, refreshParticipants, startWithMutedAudio, startWithVideoOff, syncCurrentUserAudio, userEmail, userName]);
 
   // ── Mount / Unmount ──────────────────────────────────────────────────────
 
@@ -422,6 +413,41 @@ export default function ZoomClassroomVideo({
     };
   }, [startConnection]);
 
+  // Sync fullscreen state with browser fullscreenchange event
+  useEffect(() => {
+    const handler = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handler);
+    return () => document.removeEventListener('fullscreenchange', handler);
+  }, []);
+
+  // ── Imperative handle (for parent to call muteAudio / unmuteAudio) ────────
+  useImperativeHandle(ref, () => ({
+    muteAudio: async () => {
+      const client = zoomClientRef.current;
+      if (!client || typeof client.mute !== 'function') return;
+      try {
+        await client.mute({ muted: true, userId: client.getCurrentUser?.()?.userId });
+        setLocalMuted(true);
+        setTimeout(() => syncCurrentUserAudio(client), 300);
+      } catch (e) {
+        console.warn('[zoom] imperative mute failed:', e);
+      }
+    },
+    unmuteAudio: async () => {
+      const client = zoomClientRef.current;
+      if (!client || typeof client.mute !== 'function') return;
+      try {
+        await client.mute({ muted: false, userId: client.getCurrentUser?.()?.userId });
+        setLocalMuted(false);
+        setTimeout(() => syncCurrentUserAudio(client), 300);
+      } catch (e) {
+        console.warn('[zoom] imperative unmute failed:', e);
+      }
+    },
+  }), [syncCurrentUserAudio]);
+
   // ── Controls ─────────────────────────────────────────────────────────────
 
   const handleRetry = () => {
@@ -442,13 +468,14 @@ export default function ZoomClassroomVideo({
       participants: [],
       sdkMuteError: null,
     });
+    setLocalMuted(false);
+    setLocalVideoOn(true);
     startConnection();
   };
 
   /**
    * Mute/unmute via the SDK.
-   * MUST be awaited — SDK returns ExecutedResult = Promise<string | ExecutedFailure>.
-   * Only updates local state AFTER SDK confirms the operation.
+   * Updates local state ONLY AFTER the SDK confirms the operation via user-updated event.
    */
   const handleToggleMute = async () => {
     const client = zoomClientRef.current;
@@ -479,6 +506,7 @@ export default function ZoomClassroomVideo({
         console.error('[zoom] mute ExecutedFailure:', failure);
         setAudioDiag((prev) => ({ ...prev, sdkMuteError: errMsg }));
       } else {
+        // Optimistically update; user-updated event will confirm
         setLocalMuted(targetMuted);
         setTimeout(() => syncCurrentUserAudio(client), 300);
       }
@@ -488,6 +516,54 @@ export default function ZoomClassroomVideo({
       setAudioDiag((prev) => ({ ...prev, sdkMuteError: errMsg }));
     } finally {
       setMuteLoading(false);
+    }
+  };
+
+  /**
+   * Camera on/off via the real Zoom SDK startVideo / stopVideo.
+   */
+  const handleToggleCamera = async () => {
+    const client = zoomClientRef.current;
+    if (!client || videoLoading) return;
+    setVideoLoading(true);
+
+    const targetVideoOn = !localVideoOn;
+
+    try {
+      if (targetVideoOn) {
+        if (typeof client.startVideo === 'function') {
+          await client.startVideo();
+        }
+      } else {
+        if (typeof client.stopVideo === 'function') {
+          await client.stopVideo();
+        }
+      }
+      // Optimistically set state; user-updated event will confirm
+      setLocalVideoOn(targetVideoOn);
+      setTimeout(() => syncCurrentUserAudio(client), 300);
+    } catch (e: any) {
+      console.error('[zoom] camera toggle exception:', e);
+    } finally {
+      setVideoLoading(false);
+    }
+  };
+
+  /**
+   * Fullscreen: use real browser Fullscreen API on the Zoom container element.
+   */
+  const handleToggleFullscreen = async () => {
+    if (!containerRef.current) return;
+    try {
+      if (!document.fullscreenElement) {
+        await containerRef.current.requestFullscreen();
+        // isFullscreen will be updated by the 'fullscreenchange' event listener
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch (err: any) {
+      // NotAllowedError, TypeError — just log; don't crash
+      console.warn('[zoom] fullscreen request failed:', err?.name, err?.message);
     }
   };
 
@@ -505,6 +581,7 @@ export default function ZoomClassroomVideo({
   /**
    * Autoplay unlock & Audio Join — triggered by a deliberate user click.
    * Resumes suspended AudioContext instances and joins Zoom computer audio.
+   * IMPORTANT: Do NOT close the AudioContext here — resuming it is the goal.
    */
   const handleUnlockAudio = async () => {
     try {
@@ -518,12 +595,17 @@ export default function ZoomClassroomVideo({
         }
       }
 
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-      if (AudioContext) {
-        const ctx = new AudioContext();
-        await ctx.resume();
-        if (ctx.state !== 'closed') {
-          await ctx.close().catch(() => {});
+      // Resume any suspended AudioContext — do NOT close it, that defeats the purpose
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContextClass) {
+        try {
+          const ctx = new AudioContextClass();
+          if (ctx.state === 'suspended') {
+            await ctx.resume();
+          }
+          // Leave context open so audio continues to flow
+        } catch {
+          // ignore
         }
       }
       setAudioDiag((prev) => ({ ...prev, autoplayBlocked: false }));
@@ -542,24 +624,6 @@ export default function ZoomClassroomVideo({
     }
   };
 
-  const handleTestAudio = () => {
-    try {
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-      if (AudioContext) {
-        const ctx = new AudioContext();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(587.33, ctx.currentTime);
-        gain.gain.setValueAtTime(0.15, ctx.currentTime);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.4);
-      }
-    } catch {}
-  };
-
   // ── Derived display values ────────────────────────────────────────────────
 
   const audioStatusLabel = audioDiag.audioConnected
@@ -573,11 +637,6 @@ export default function ZoomClassroomVideo({
     : 'text-red-400';
 
   const audioConnStatusLabel = ['Not Connected', 'Connecting…', 'Connected ✓', 'Failed ✗'][audioDiag.audioConnectionStatus] ?? 'Unknown';
-
-  // Coach participants excluding self
-  const remoteParticipants = audioDiag.participants.filter(
-    (p) => p.userName !== userName && p.userName !== (isCoach ? 'Coach' : 'Student')
-  );
 
   // ── RENDER ────────────────────────────────────────────────────────────────
 
@@ -616,7 +675,7 @@ export default function ZoomClassroomVideo({
         </div>
 
         <div className="flex items-center gap-1">
-          {/* Diagnostics toggle — all roles in this build for debugging */}
+          {/* Diagnostics toggle */}
           <button
             type="button"
             onClick={() => setShowDiagnostics(!showDiagnostics)}
@@ -625,10 +684,10 @@ export default function ZoomClassroomVideo({
             {showDiagnostics ? 'Hide Diag' : '🛠️ Diag'}
           </button>
 
-          {/* Fullscreen toggle */}
+          {/* Fullscreen toggle — uses real browser Fullscreen API */}
           <button
             type="button"
-            onClick={() => setIsFullscreen(!isFullscreen)}
+            onClick={handleToggleFullscreen}
             className="px-2 py-0.5 bg-indigo-600/90 hover:bg-indigo-500 text-[10px] font-bold text-white rounded border border-indigo-400/40 transition-colors shadow flex items-center gap-1"
           >
             <span>{isFullscreen ? '🗗' : '⛶'}</span>
@@ -651,6 +710,14 @@ export default function ZoomClassroomVideo({
           >
             🔊 Enable Audio
           </button>
+        </div>
+      )}
+
+      {/* ── Permission Denied Banner ── */}
+      {mediaPermissionDenied && (
+        <div className="absolute top-10 left-2 right-2 z-30 px-3 py-1.5 bg-red-950/90 border border-red-500/40 rounded-md text-[10px] text-red-200 font-medium flex flex-col gap-1 shadow-lg">
+          <span className="font-bold">🎙️ Camera or microphone permission is blocked.</span>
+          <span>Click the 🔒 lock icon in your browser address bar, allow access, then click Retry.</span>
         </div>
       )}
 
@@ -680,6 +747,7 @@ export default function ZoomClassroomVideo({
             <div>Mic Permission: <span className={audioDiag.micPermission === 'granted' ? 'text-emerald-400' : audioDiag.micPermission === 'denied' ? 'text-red-400' : 'text-amber-400'}>{audioDiag.micPermission.toUpperCase()}</span></div>
             <div>Mic Detected: <span className={audioDiag.micDetected ? 'text-emerald-400' : 'text-amber-400'}>{audioDiag.micDetected ? 'YES' : 'NO'}</span></div>
             <div>Muted (SDK): <span className={audioDiag.isMuted ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'}>{audioDiag.isMuted ? 'YES (MUTED)' : 'NO (LIVE)'}</span></div>
+            <div>Camera: <span className={localVideoOn ? 'text-emerald-400 font-bold' : 'text-slate-400 font-bold'}>{localVideoOn ? 'ON' : 'OFF'}</span></div>
             <div>Talking: <span className={audioDiag.isTalking ? 'text-emerald-400 font-bold animate-pulse' : 'text-slate-400'}>{audioDiag.isTalking ? 'YES' : 'NO'}</span></div>
             <div>Autoplay Blocked: <span className={audioDiag.autoplayBlocked ? 'text-red-400 font-bold' : 'text-emerald-400'}>{audioDiag.autoplayBlocked ? 'YES ⚠️' : 'NO'}</span></div>
             {audioDiag.sdkMuteError && (
@@ -724,14 +792,6 @@ export default function ZoomClassroomVideo({
       {connectionState === 'connected' && networkQuality === 'poor' && (
         <div className="absolute top-10 right-2 z-30 px-2.5 py-1 bg-red-950/90 border border-red-500/50 rounded-md text-[10px] font-bold text-red-200 flex items-center gap-1.5 animate-pulse">
           <span>⚠️</span><span>Poor connection</span>
-        </div>
-      )}
-
-      {/* ── Media Permission Warning ── */}
-      {mediaPermissionDenied && (
-        <div className="absolute top-10 left-2 right-2 z-30 px-3 py-1.5 bg-amber-950/90 border border-amber-500/40 rounded-md text-[10px] text-amber-200 font-medium flex items-center gap-1.5 shadow-lg">
-          <span>🎙️</span>
-          <span>Microphone access is blocked. Enable it in browser settings, then retry.</span>
         </div>
       )}
 
@@ -803,22 +863,10 @@ export default function ZoomClassroomVideo({
         ref={containerRef}
         id="zoom-embedded-video-container"
         className="w-full h-full flex-1 min-h-[220px] bg-[#28282c] rounded-xl overflow-hidden relative border border-[#38383e] shadow-inner"
-        style={{ visibility: connectionState === 'connected' ? 'visible' : 'visible' }}
       >
-        {/* Live Native Camera Feed */}
-        <video
-          ref={fallbackVideoRef}
-          autoPlay
-          playsInline
-          muted
-          className={`w-full h-full object-cover rounded-xl transition-opacity absolute inset-0 z-10 ${
-            hasNativeCameraStream && !isVideoMuted ? 'opacity-100' : 'opacity-0 hidden'
-          }`}
-        />
-
-        {/* Sleek Reference UI Avatar Card when Camera is OFF */}
-        {(isVideoMuted || (!hasNativeCameraStream && connectionState === 'connected')) && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#28282c] p-4 relative">
+        {/* Avatar Card when Camera is OFF or not yet connected */}
+        {(!localVideoOn || connectionState !== 'connected') && connectionState !== 'connecting' && connectionState !== 'error' && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#28282c] p-4">
             {/* Centered Green Circle Avatar */}
             <div className="w-20 h-20 rounded-full bg-[#16a34a] border-2 border-emerald-400/40 flex items-center justify-center text-white text-3xl font-extrabold shadow-xl">
               {(userName || 'A').charAt(0).toUpperCase()}
@@ -826,20 +874,20 @@ export default function ZoomClassroomVideo({
           </div>
         )}
 
-        {/* Bottom-Left Name Badge matching reference UI */}
+        {/* Bottom-Left Name Badge */}
         <div className="absolute bottom-3 left-3 z-20 px-2.5 py-1 bg-black/80 backdrop-blur rounded-lg border border-white/10 text-[11px] font-bold text-white flex items-center gap-1.5 shadow-md pointer-events-auto">
-          <span>{userName || 'Animesh Ray'} (You)</span>
+          <span>{userName || 'You'} (You)</span>
           <span className={localMuted ? 'text-red-400' : 'text-emerald-400'}>
             {localMuted ? '🎙️❌' : '🎙️'}
           </span>
         </div>
       </div>
 
-      {/* ── Bottom Controls Bar (Ultra Clean Reference UI) ── */}
+      {/* ── Bottom Controls Bar ── */}
       {connectionState === 'connected' && (
-        <div className="px-3 py-1.5 bg-[#18181c] border-t border-[#2a2a32] flex items-center justify-between gap-2 z-30 pointer-events-auto">
+        <div className="px-3 py-1.5 bg-[#18181c] border-t border-[#2a2a32] flex items-center justify-between gap-2 z-30 pointer-events-auto flex-shrink-0">
           <div className="flex items-center gap-1.5">
-            {/* Mute/Unmute — calls SDK mute() asynchronously */}
+            {/* Mute/Unmute — calls real SDK mute() */}
             <button
               type="button"
               onClick={handleToggleMute}
@@ -849,9 +897,26 @@ export default function ZoomClassroomVideo({
                   ? 'bg-rose-950/80 border-rose-600/60 text-rose-200 hover:bg-rose-900'
                   : 'bg-[#2a2a32] border-[#3a3a44] text-slate-200 hover:bg-[#343440]'
               }`}
+              title={localMuted ? 'Unmute Microphone' : 'Mute Microphone'}
             >
               <span>{muteLoading ? '⏳' : localMuted ? '🔇' : '🎙️'}</span>
               <span>{muteLoading ? '…' : localMuted ? 'Unmute' : 'Mute'}</span>
+            </button>
+
+            {/* Camera On/Off — calls real SDK startVideo / stopVideo */}
+            <button
+              type="button"
+              onClick={handleToggleCamera}
+              disabled={videoLoading}
+              className={`px-3 py-1 text-[11px] font-bold rounded-lg border transition-all flex items-center gap-1.5 disabled:opacity-60 cursor-pointer ${
+                !localVideoOn
+                  ? 'bg-slate-900/80 border-slate-600/60 text-slate-400 hover:bg-slate-800'
+                  : 'bg-[#2a2a32] border-[#3a3a44] text-slate-200 hover:bg-[#343440]'
+              }`}
+              title={localVideoOn ? 'Turn Camera Off' : 'Turn Camera On'}
+            >
+              <span>{videoLoading ? '⏳' : localVideoOn ? '📹' : '📷'}</span>
+              <span>{videoLoading ? '…' : localVideoOn ? 'Camera' : 'Cam Off'}</span>
             </button>
 
             {/* View Layout Selector */}
@@ -859,10 +924,24 @@ export default function ZoomClassroomVideo({
               type="button"
               onClick={() => handleToggleView(viewType === 'gallery' ? 'speaker' : 'gallery')}
               className="px-3 py-1 bg-[#2a2a32] hover:bg-[#343440] border border-[#3a3a44] text-[11px] font-bold text-slate-200 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+              title="Toggle Gallery / Speaker view"
             >
               <span>{viewType === 'gallery' ? '🔲' : '👤'}</span>
               <span>{viewType === 'gallery' ? 'Gallery' : 'Speaker'}</span>
             </button>
+
+            {/* Coach-only: Mute All Students */}
+            {isCoach && (
+              <button
+                type="button"
+                onClick={handleMuteAllStudents}
+                className="px-3 py-1 bg-rose-950/60 border border-rose-700/50 text-[11px] font-bold text-rose-300 rounded-lg hover:bg-rose-900/80 transition-colors flex items-center gap-1.5 cursor-pointer"
+                title="Mute all student microphones"
+              >
+                <span>🔇</span>
+                <span>Mute All</span>
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -874,4 +953,7 @@ export default function ZoomClassroomVideo({
       )}
     </div>
   );
-}
+});
+
+ZoomClassroomVideo.displayName = 'ZoomClassroomVideo';
+export default ZoomClassroomVideo;

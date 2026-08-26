@@ -10,24 +10,18 @@ interface ToolbarProps {
   showMoveDots?: boolean;
   isFullscreen: boolean;
   isRightPanelCollapsed: boolean;
-  isAudioMuted?: boolean;
-  isVideoMuted?: boolean;
   isBoardLocked?: boolean;
   allowIllegalMoves?: boolean;
   soundEnabled?: boolean;
   hasHandRaised?: boolean;
-  onToggleAudio?: () => void;
-  onToggleVideo?: () => void;
   onToggleMoveDots?: () => void;
   onToggleBoardLock?: () => void;
   onToggleIllegalMoves?: () => void;
   onToggleSound?: () => void;
   onRaiseHand?: () => void;
-  onMasterMuteAll?: () => void;
   onOpenMultiBoardGrid?: () => void;
   onOpenImportModal?: () => void;
   onOpenThemeModal?: () => void;
-  onToggleClock?: () => void;
   onFlip: () => void;
   onToggleCoordinates: () => void;
   onToggleEngine: () => void;
@@ -96,24 +90,18 @@ export default function ClassroomBottomToolbar({
   showMoveDots = true,
   isFullscreen,
   isRightPanelCollapsed,
-  isAudioMuted = false,
-  isVideoMuted = false,
   isBoardLocked = false,
   allowIllegalMoves = false,
   soundEnabled = true,
   hasHandRaised = false,
-  onToggleAudio,
-  onToggleVideo,
   onToggleMoveDots,
   onToggleBoardLock,
   onToggleIllegalMoves,
   onToggleSound,
   onRaiseHand,
-  onMasterMuteAll,
   onOpenMultiBoardGrid,
   onOpenImportModal,
   onOpenThemeModal,
-  onToggleClock,
   onFlip,
   onToggleCoordinates,
   onToggleEngine,
@@ -138,28 +126,6 @@ export default function ClassroomBottomToolbar({
       shadow-[0_-4px_20px_rgba(0,0,0,0.5)]
     ">
 
-      {/* Media Controls */}
-      {onToggleAudio && (
-        <PillBtn
-          icon={isAudioMuted ? '🔇' : '🎙️'}
-          label={isAudioMuted ? 'Unmute' : 'Mute'}
-          onClick={() => onToggleAudio()}
-          danger={isAudioMuted}
-          active={!isAudioMuted}
-          title={isAudioMuted ? 'Unmute Microphone' : 'Mute Microphone'}
-        />
-      )}
-      {onToggleVideo && (
-        <PillBtn
-          icon={isVideoMuted ? '📷' : '📹'}
-          label={isVideoMuted ? 'Cam Off' : 'Camera'}
-          onClick={() => onToggleVideo()}
-          danger={isVideoMuted}
-          active={!isVideoMuted}
-          title={isVideoMuted ? 'Turn Camera On' : 'Turn Camera Off'}
-        />
-      )}
-
       {/* Student Raise Hand Button */}
       {!isCoach && onRaiseHand && (
         <PillBtn
@@ -169,17 +135,6 @@ export default function ClassroomBottomToolbar({
           active={hasHandRaised}
           primary={hasHandRaised}
           title="Notify coach you have a question"
-        />
-      )}
-
-      {/* Coach Master Mute All */}
-      {isCoach && onMasterMuteAll && (
-        <PillBtn
-          icon="🔇"
-          label="Mute All"
-          onClick={onMasterMuteAll}
-          danger
-          title="Mute all student microphones"
         />
       )}
 

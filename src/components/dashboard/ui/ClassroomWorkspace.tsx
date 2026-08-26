@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useTransition, useCallback } from 'react';
+import type { ZoomClassroomVideoHandle } from '@/components/classroom/ZoomClassroomVideo';
 import { useRouter } from 'next/navigation';
 import { Chess } from 'chess.js';
 import { supabase } from '@/utils/supabaseClient';
@@ -131,10 +132,12 @@ export default function ClassroomWorkspace({
   const fallbackMeetingId = (cleanClassIdDigits.padEnd(10, '8')).slice(0, 11);
   const effectiveMeetingNumber = zoomMeetingId || meetingIdFromUrl || fallbackMeetingId;
 
-  /* ── Embedded Video Mute State ─────────────────────────────────────────── */
-  const [jitsiAudioMuted, setJitsiAudioMuted] = useState(false);
-  const [jitsiVideoMuted, setJitsiVideoMuted] = useState(false);
-  const [jitsiJoined, setJitsiJoined] = useState(false);
+  /* ── Pre-Join Mute Preferences (passed into Zoom SDK join payload) ─────── */
+  const [joinWithMutedAudio, setJoinWithMutedAudio] = useState(false);
+  const [joinWithVideoOff, setJoinWithVideoOff] = useState(false);
+
+  /* ── Ref to ZoomClassroomVideo imperative handle for master-mute ───────── */
+  const zoomVideoRef = useRef<ZoomClassroomVideoHandle>(null);
 
   /* ── Persistent Session Timer ───────────────────────────────────────────── */
   const [isMounted, setIsMounted] = useState(false);
@@ -549,14 +552,7 @@ export default function ClassroomWorkspace({
   const [translateMoves, setTranslateMoves] = useState(false);
   const [rightTab, setRightTab] = useState<RightTab>('at');
 
-  /* ── Video PIP (Picture-in-Picture) mode ──────────────────────────────── */
-  const [videoPipMode, setVideoPipMode] = useState<boolean>(false); // false = panel, true = floating PIP
-  const [pipPos, setPipPos] = useState({ x: 20, y: 60 });
-  const [pipSize, setPipSize] = useState({ w: 360, h: 240 });
-  const pipDragging = useRef(false);
-  const pipDragOffset = useRef({ x: 0, y: 0 });
-
-  /* ── 15-Feature Classroom Enhancements State ────────────────────────────── */
+  /* ── Classroom Enhancements State ──────────────────────────────────────── */
   const [sfxEnabled, setSfxEnabled] = useState(true);
   const [raisedHands, setRaisedHands] = useState<Record<string, string>>({}); // { studentId: studentName }
   const [myHandRaised, setMyHandRaised] = useState(false);
@@ -570,25 +566,6 @@ export default function ClassroomWorkspace({
 
   /* ── Board Drawings Sync ────────────────────────────────────────────────── */
   const [syncedDrawings, setSyncedDrawings] = useState<any[]>([]);
-
-  const handlePipMouseDown = useCallback((e: React.MouseEvent) => {
-    pipDragging.current = true;
-    pipDragOffset.current = { x: e.clientX - pipPos.x, y: e.clientY - pipPos.y };
-    const onMove = (ev: MouseEvent) => {
-      if (!pipDragging.current) return;
-      setPipPos({
-        x: Math.max(0, Math.min(window.innerWidth - pipSize.w, ev.clientX - pipDragOffset.current.x)),
-        y: Math.max(48, Math.min(window.innerHeight - pipSize.h, ev.clientY - pipDragOffset.current.y)),
-      });
-    };
-    const onUp = () => {
-      pipDragging.current = false;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  }, [pipPos, pipSize]);
 
   /* ── Quiz State ────────────────────────────────────────────────────────── */
   const [activeQuiz, setActiveQuiz] = useState<QuizQuestion | null>(null);
@@ -857,7 +834,8 @@ export default function ClassroomWorkspace({
       })
       .on('broadcast', { event: 'master-mute' }, () => {
         if (!isCoach) {
-          setJitsiAudioMuted(true);
+          // Call real Zoom SDK mute via the imperative handle
+          zoomVideoRef.current?.muteAudio().catch(() => {});
         }
       })
       .on('broadcast', { event: 'board-drawings' }, ({ payload }: any) => {
@@ -1345,15 +1323,20 @@ export default function ClassroomWorkspace({
             showMoveDots={showMoveDots}
             isFullscreen={isFullscreenBoard}
             isRightPanelCollapsed={isRightPanelCollapsed}
-            isAudioMuted={jitsiAudioMuted}
-            isVideoMuted={jitsiVideoMuted}
             isBoardLocked={isBoardLocked}
+            allowIllegalMoves={allowIllegalMoves}
             soundEnabled={sfxEnabled}
             hasHandRaised={myHandRaised}
-            onToggleAudio={() => setJitsiAudioMuted((m) => !m)}
-            onToggleVideo={() => setJitsiVideoMuted((m) => !m)}
             onToggleMoveDots={() => setShowMoveDots((d) => !d)}
-            onToggleBoardLock={() => setIsBoardLocked((l) => !l)}
+            onToggleBoardLock={() => {
+              const next = !isBoardLocked;
+              setIsBoardLocked(next);
+              mainChannelRef.current?.send({
+                type: 'broadcast',
+                event: 'board-lock',
+                payload: { isBoardLocked: next },
+              });
+            }}
             onToggleIllegalMoves={() => {
               const next = !allowIllegalMoves;
               setAllowIllegalMoves(next);
@@ -1378,13 +1361,6 @@ export default function ClassroomWorkspace({
                 payload: { classId, studentId, studentName: userName },
               });
               if (next) playChessSound('hand');
-            }}
-            onMasterMuteAll={() => {
-              mainChannelRef.current?.send({
-                type: 'broadcast',
-                event: 'master-mute',
-                payload: { classId },
-              });
             }}
             onOpenMultiBoardGrid={() => setShowGridModal(true)}
             onOpenImportModal={() => setShowImportModal(true)}
@@ -1427,13 +1403,14 @@ export default function ClassroomWorkspace({
             {/* ── Zoom Meeting SDK Embedded Video Stage ── */}
             <div className="flex-shrink-0 relative w-full max-w-full overflow-hidden" style={{ height: '42%', minHeight: '200px', maxHeight: '360px' }}>
               <ZoomClassroomVideo
+                ref={zoomVideoRef}
                 classId={classId}
                 meetingNumber={effectiveMeetingNumber}
                 passcode={zoomPasscode}
                 userName={userName}
                 role={role}
-                isAudioMuted={jitsiAudioMuted}
-                isVideoMuted={jitsiVideoMuted}
+                startWithMutedAudio={joinWithMutedAudio}
+                startWithVideoOff={joinWithVideoOff}
               />
             </div>
 
@@ -1897,63 +1874,19 @@ export default function ClassroomWorkspace({
         onConfirmClear={handleConfirmClearBoard}
       />
 
-      {/* Pre-Join Device Check — captures initial mute preference for Jitsi iframe */}
+      {/* Pre-Join Device Check — captures initial mute/video preference for Zoom SDK join payload */}
       <ClassroomPreJoinModal
         isOpen={showPreJoinModal}
         userName={userName}
         userRole={role}
         onJoin={({ isAudioMuted, isVideoMuted }) => {
+          setJoinWithMutedAudio(isAudioMuted);
+          setJoinWithVideoOff(isVideoMuted);
           setShowPreJoinModal(false);
-          setJitsiAudioMuted(isAudioMuted);
-          setJitsiVideoMuted(isVideoMuted);
-          setJitsiJoined(true);
         }}
       />
 
-      {/* ── FLOATING PIP VIDEO OVERLAY ─────────────────────────────────── */}
-      {videoPipMode && (
-        <div
-          style={{
-            position: 'fixed',
-            left: pipPos.x,
-            top: pipPos.y,
-            width: pipSize.w,
-            height: pipSize.h,
-            zIndex: 9999,
-            borderRadius: 12,
-            overflow: 'hidden',
-            boxShadow: '0 8px 40px rgba(0,0,0,0.7)',
-            border: '1.5px solid #3a3a6a',
-            background: '#090914',
-            display: 'flex',
-            flexDirection: 'column',
-          }}
-        >
-          {/* PIP drag handle header */}
-          <div
-            onMouseDown={handlePipMouseDown}
-            style={{ height: 28, background: '#1a1a32', cursor: 'grab', display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingLeft: 10, paddingRight: 6, flexShrink: 0, userSelect: 'none' }}
-          >
-            <span style={{ fontSize: 10, fontWeight: 700, color: '#8888cc', letterSpacing: 1 }}>📹 VIDEO — DRAG TO MOVE</span>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <button type="button" onClick={() => setPipSize((s) => ({ w: Math.max(240, s.w - 80), h: Math.max(160, s.h - 50) }))} style={{ fontSize: 12, color: '#8888cc', background: 'none', border: 'none', cursor: 'pointer' }}>−</button>
-              <button type="button" onClick={() => setPipSize((s) => ({ w: Math.min(700, s.w + 80), h: Math.min(500, s.h + 50) }))} style={{ fontSize: 12, color: '#8888cc', background: 'none', border: 'none', cursor: 'pointer' }}>+</button>
-              <button type="button" onClick={() => setVideoPipMode(false)} style={{ fontSize: 13, color: '#cc4444', background: 'none', border: 'none', cursor: 'pointer' }} title="Dock video back to panel">✕</button>
-            </div>
-          </div>
-          <div style={{ flex: 1, minHeight: 0 }}>
-            <ZoomClassroomVideo
-              classId={classId}
-              meetingNumber={effectiveMeetingNumber}
-              passcode={zoomPasscode}
-              userName={userName}
-              role={role}
-              isAudioMuted={jitsiAudioMuted}
-              isVideoMuted={jitsiVideoMuted}
-            />
-          </div>
-        </div>
-      )}
+      {/* PIP floating overlay removed — only one ZoomClassroomVideo instance is mounted */}
 
       {/* ── Raise Hand Toast Notification for Coach ── */}
       {handNotice && (
