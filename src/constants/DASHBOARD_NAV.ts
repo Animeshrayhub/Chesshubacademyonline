@@ -128,6 +128,7 @@ const STUDENT_SETTINGS_CHILDREN: SubNavItem[] = [
 export const STUDENT_NAV: NavItem[] = [
   { label: 'Overview',            href: '/dashboard/student',                  iconKey: 'layoutDashboard', roles: ['student'] },
   { label: '📹 Live Classroom',    href: '/dashboard/student/classes',          iconKey: 'video',           roles: ['student'] },
+  { label: '♟ Bot Training',       href: '/dashboard/student/bot-training',     iconKey: 'puzzle',          roles: ['student'] },
   { label: 'AI Game Review Bot',  href: '/dashboard/student/review-bot',       iconKey: 'brain',           roles: ['student'] },
   { label: '♟ AI Opening Teacher', href: '/dashboard/student/openings',        iconKey: 'brain',           roles: ['student'] },
   { label: 'Homework',            href: '/dashboard/student/homework',         iconKey: 'bookOpen',        roles: ['student'], children: STUDENT_HOMEWORK_CHILDREN },

@@ -16,7 +16,7 @@ if (fs.existsSync(envPath)) {
 }
 
 if (!supabaseServiceKey) {
-  supabaseServiceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpdHF3eWlpYWdkeG16a2dpbXBlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MzYxODA1MiwiZXhwIjoyMDk5MTk0MDUyfQ.WcpkODKOmKI0q75Id0RCeaheoZdbUYaT6NrivUX_u30';
+  supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 }
 
 console.log('Connecting to Supabase at:', supabaseUrl);

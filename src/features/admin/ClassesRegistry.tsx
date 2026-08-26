@@ -77,8 +77,26 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
     return nameMatch && statusMatch;
   });
 
-  const totalPages = Math.ceil(filtered.length / pageSize);
-  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+  // Sort logic — TODAY's classes (26 Aug 2026) pinned to TOP!
+  const sorted = [...filtered].sort((a, b) => {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const todayEnd = todayStart + 24 * 60 * 60 * 1000;
+
+    const timeA = new Date(a.scheduled_start).getTime();
+    const timeB = new Date(b.scheduled_start).getTime();
+
+    const aIsToday = timeA >= todayStart && timeA < todayEnd;
+    const bIsToday = timeB >= todayStart && timeB < todayEnd;
+
+    if (aIsToday && !bIsToday) return -1;
+    if (!aIsToday && bIsToday) return 1;
+
+    return timeA - timeB;
+  });
+
+  const totalPages = Math.ceil(sorted.length / pageSize);
+  const paginated = sorted.slice((page - 1) * pageSize, page * pageSize);
 
   const resetForm = () => {
     setFormData({

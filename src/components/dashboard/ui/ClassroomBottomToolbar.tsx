@@ -14,11 +14,20 @@ interface ToolbarProps {
   isVideoMuted?: boolean;
   isBoardLocked?: boolean;
   allowIllegalMoves?: boolean;
+  soundEnabled?: boolean;
+  hasHandRaised?: boolean;
   onToggleAudio?: () => void;
   onToggleVideo?: () => void;
   onToggleMoveDots?: () => void;
   onToggleBoardLock?: () => void;
   onToggleIllegalMoves?: () => void;
+  onToggleSound?: () => void;
+  onRaiseHand?: () => void;
+  onMasterMuteAll?: () => void;
+  onOpenMultiBoardGrid?: () => void;
+  onOpenImportModal?: () => void;
+  onOpenThemeModal?: () => void;
+  onToggleClock?: () => void;
   onFlip: () => void;
   onToggleCoordinates: () => void;
   onToggleEngine: () => void;
@@ -91,11 +100,20 @@ export default function ClassroomBottomToolbar({
   isVideoMuted = false,
   isBoardLocked = false,
   allowIllegalMoves = false,
+  soundEnabled = true,
+  hasHandRaised = false,
   onToggleAudio,
   onToggleVideo,
   onToggleMoveDots,
   onToggleBoardLock,
   onToggleIllegalMoves,
+  onToggleSound,
+  onRaiseHand,
+  onMasterMuteAll,
+  onOpenMultiBoardGrid,
+  onOpenImportModal,
+  onOpenThemeModal,
+  onToggleClock,
   onFlip,
   onToggleCoordinates,
   onToggleEngine,
@@ -142,6 +160,29 @@ export default function ClassroomBottomToolbar({
         />
       )}
 
+      {/* Student Raise Hand Button */}
+      {!isCoach && onRaiseHand && (
+        <PillBtn
+          icon="✋"
+          label={hasHandRaised ? 'Hand Raised!' : 'Raise Hand'}
+          onClick={onRaiseHand}
+          active={hasHandRaised}
+          primary={hasHandRaised}
+          title="Notify coach you have a question"
+        />
+      )}
+
+      {/* Coach Master Mute All */}
+      {isCoach && onMasterMuteAll && (
+        <PillBtn
+          icon="🔇"
+          label="Mute All"
+          onClick={onMasterMuteAll}
+          danger
+          title="Mute all student microphones"
+        />
+      )}
+
       <Divider />
 
       {/* Move Navigation */}
@@ -156,7 +197,7 @@ export default function ClassroomBottomToolbar({
 
       <Divider />
 
-      {/* Board Controls */}
+      {/* Board & Theme Controls */}
       <PillBtn icon="🔄" label="Reset" onClick={onReset} title="Reset to Teaching Position" />
       <PillBtn icon="⇅" label="Flip" onClick={onFlip} active={boardFlipped} title="Flip Board" />
       <PillBtn icon="#" label="Coords" onClick={onToggleCoordinates} active={showCoordinates} title="Toggle Coordinates" />
@@ -170,13 +211,38 @@ export default function ClassroomBottomToolbar({
         />
       )}
 
+      {/* Sound SFX & Theme Controls */}
+      {onToggleSound && (
+        <PillBtn
+          icon={soundEnabled ? '🔊' : '🔇'}
+          label={soundEnabled ? 'SFX ON' : 'SFX OFF'}
+          onClick={onToggleSound}
+          active={soundEnabled}
+          title="Toggle Chess Sound Effects"
+        />
+      )}
+      {onOpenThemeModal && (
+        <PillBtn
+          icon="🎨"
+          label="Theme"
+          onClick={onOpenThemeModal}
+          title="Change Board Theme & Colors"
+        />
+      )}
+
       <Divider />
 
       {/* Coach-Only Tools */}
       {isCoach && (
         <>
           <PillBtn icon="🧠" label="Engine" onClick={onToggleEngine} active={showEngine} title="Toggle Engine Analysis" />
-          <PillBtn icon="🎨" label="Editor" onClick={onSetPosition} primary title="Set Position / Board Editor" />
+          <PillBtn icon="✏️" label="Editor" onClick={onSetPosition} primary title="Set Position / Board Editor" />
+          {onOpenImportModal && (
+            <PillBtn icon="📥" label="Import" onClick={onOpenImportModal} title="Import PGN or FEN" />
+          )}
+          {onOpenMultiBoardGrid && (
+            <PillBtn icon="🗂️" label="Grid" onClick={onOpenMultiBoardGrid} title="Monitor all student boards" />
+          )}
           <PillBtn icon="🗑️" label="Clear" onClick={onClearArrows} danger title="Clear Board / Pieces / Drawings" />
           {onToggleBoardLock && (
             <PillBtn

@@ -18,6 +18,12 @@ import ClassroomPreJoinModal from './ClassroomPreJoinModal';
 import { startClassAction, submitClassEndReportAction, updateParticipantHeartbeatAction } from '@/actions/classes';
 import { listHomeworkAction, listChaptersAction, assignChapterToClassAction } from '@/actions/homework';
 import { endZoomMeetingAction } from '@/actions/zoom';
+import ClassroomQuizTab from './ClassroomQuizTab';
+import { playChessSound, isChessSoundEnabled, setChessSoundEnabled } from '@/utils/chessAudio';
+import ClassroomSummaryModal from './ClassroomSummaryModal';
+import ClassroomMultiBoardGridModal from './ClassroomMultiBoardGridModal';
+import ClassroomStudyImportModal from './ClassroomStudyImportModal';
+import ClassroomThemeModal from './ClassroomThemeModal';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 interface StudentInfo {
@@ -71,7 +77,23 @@ interface HomeworkWorkbook {
   track: string;
 }
 
-type RightTab = 'at' | 'chat' | 'response' | 'leaderboard' | 'participants' | 'engine';
+type RightTab = 'at' | 'chat' | 'response' | 'leaderboard' | 'participants' | 'engine' | 'quiz';
+
+/* ── Quiz Types ─────────────────────────────────────────────────────────── */
+interface QuizQuestion {
+  id: string;
+  question: string;
+  options: string[];   // Always 4 options [A, B, C, D]
+  correctIndex: number;
+  timerSec: number | null; // null = no timer
+}
+
+interface QuizAnswer {
+  studentName: string;
+  studentId: string;
+  answerIndex: number;
+  answeredAt: string;
+}
 
 /* ─── Component ─────────────────────────────────────────────────────────── */
 export default function ClassroomWorkspace({
@@ -455,6 +477,18 @@ export default function ClassroomWorkspace({
     setCurrentFen(fen);
     if (rawMoves.length === 0) return;
 
+    // Trigger Web Audio SFX
+    const lastMove = rawMoves[rawMoves.length - 1] || '';
+    if (lastMove.includes('x')) {
+      playChessSound('capture');
+    } else if (lastMove.includes('+') || lastMove.includes('#')) {
+      playChessSound('check');
+    } else if (lastMove.includes('O-O')) {
+      playChessSound('castle');
+    } else {
+      playChessSound('move');
+    }
+
     setGameMoves((prevMoves) => {
       let updated: string[];
       if (prevMoves.length === 0 || rawMoves[0] === prevMoves[0]) {
@@ -493,7 +527,67 @@ export default function ClassroomWorkspace({
   const [translateMoves, setTranslateMoves] = useState(false);
   const [rightTab, setRightTab] = useState<RightTab>('at');
 
-  /* ── Chat ──────────────────────────────────────────────────────────────── */
+  /* ── Video PIP (Picture-in-Picture) mode ──────────────────────────────── */
+  const [videoPipMode, setVideoPipMode] = useState<boolean>(false); // false = panel, true = floating PIP
+  const [pipPos, setPipPos] = useState({ x: 20, y: 60 });
+  const [pipSize, setPipSize] = useState({ w: 360, h: 240 });
+  const pipDragging = useRef(false);
+  const pipDragOffset = useRef({ x: 0, y: 0 });
+
+  /* ── 15-Feature Classroom Enhancements State ────────────────────────────── */
+  const [sfxEnabled, setSfxEnabled] = useState(true);
+  const [raisedHands, setRaisedHands] = useState<Record<string, string>>({}); // { studentId: studentName }
+  const [myHandRaised, setMyHandRaised] = useState(false);
+  const [handNotice, setHandNotice] = useState<string | null>(null);
+
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [showGridModal, setShowGridModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [showThemeModal, setShowThemeModal] = useState(false);
+  const [activeBoardTheme, setActiveBoardTheme] = useState('navy');
+
+  /* ── Board Drawings Sync ────────────────────────────────────────────────── */
+  const [syncedDrawings, setSyncedDrawings] = useState<any[]>([]);
+
+  const handlePipMouseDown = useCallback((e: React.MouseEvent) => {
+    pipDragging.current = true;
+    pipDragOffset.current = { x: e.clientX - pipPos.x, y: e.clientY - pipPos.y };
+    const onMove = (ev: MouseEvent) => {
+      if (!pipDragging.current) return;
+      setPipPos({
+        x: Math.max(0, Math.min(window.innerWidth - pipSize.w, ev.clientX - pipDragOffset.current.x)),
+        y: Math.max(48, Math.min(window.innerHeight - pipSize.h, ev.clientY - pipDragOffset.current.y)),
+      });
+    };
+    const onUp = () => {
+      pipDragging.current = false;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [pipPos, pipSize]);
+
+  /* ── Quiz State ────────────────────────────────────────────────────────── */
+  const [activeQuiz, setActiveQuiz] = useState<QuizQuestion | null>(null);
+  const [quizAnswers, setQuizAnswers] = useState<QuizAnswer[]>([]); // coach sees all
+  const [myQuizAnswer, setMyQuizAnswer] = useState<number | null>(null); // student's own answer
+  const [quizRevealed, setQuizRevealed] = useState(false);
+  const [quizTimeLeft, setQuizTimeLeft] = useState<number | null>(null);
+  const [quizBank, setQuizBank] = useState<QuizQuestion[]>(() => {
+    if (typeof window !== 'undefined') {
+      try { return JSON.parse(localStorage.getItem('chesshub_quiz_bank') || '[]'); } catch { return []; }
+    }
+    return [];
+  });
+
+  /* ── Quiz Timer ─────────────────────────────────────────────────────────── */
+  useEffect(() => {
+    if (quizTimeLeft === null || quizTimeLeft <= 0) return;
+    const t = setTimeout(() => setQuizTimeLeft((s) => (s !== null ? s - 1 : null)), 1000);
+    return () => clearTimeout(t);
+  }, [quizTimeLeft]);
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatUnread, setChatUnread] = useState(0);
@@ -583,15 +677,18 @@ export default function ClassroomWorkspace({
         if (payload?.classId && payload.classId !== classId) return;
         if (payload?.sourceUserId && payload.sourceUserId === userId) return;
         if (payload?.fen) {
-          if (payload.version && payload.version <= boardVersionRef.current) return;
-          if (payload.version) boardVersionRef.current = payload.version;
+          // Students always accept incoming moves without version filtering
+          // (version filtering only matters for preventing coach's own echoed events)
+          if (payload?.sourceUserId && payload.sourceUserId === userId) return;
+          if (payload.version) boardVersionRef.current = Math.max(boardVersionRef.current, payload.version);
           setCurrentFen(payload.fen);
-          if (Array.isArray(payload.moves)) {
+          if (Array.isArray(payload.moves) && payload.moves.length >= 0) {
             setGameMoves(payload.moves);
             setCurrentMoveIndex(payload.currentMoveIndex ?? payload.moves.length - 1);
           }
           if (payload.controllerId) setBoardControllerId(payload.controllerId);
-          setBoardKey((k) => k + 1);
+          // Only increment boardKey if FEN actually changed to avoid wiping move history
+          setCurrentFen((prev) => { if (prev !== payload.fen) setBoardKey((k) => k + 1); return payload.fen; });
           setLastRealtimeLog(`board-move: ${payload.fen.slice(0, 20)}…`);
         }
       })
@@ -627,15 +724,16 @@ export default function ClassroomWorkspace({
         if (payload?.classId && payload.classId !== classId) return;
         if (payload?.sourceUserId && payload.sourceUserId === userId) return;
         if (payload?.fen) {
+          if (payload?.sourceUserId && payload.sourceUserId === userId) return;
           if (payload.version && payload.version < boardVersionRef.current) return;
-          if (payload.version) boardVersionRef.current = payload.version;
+          if (payload.version) boardVersionRef.current = Math.max(boardVersionRef.current, payload.version);
           setCurrentFen(payload.fen);
-          if (Array.isArray(payload.moves)) {
+          if (Array.isArray(payload.moves) && payload.moves.length >= 0) {
             setGameMoves(payload.moves);
             setCurrentMoveIndex(payload.currentMoveIndex ?? payload.moves.length - 1);
           }
           if (payload.controllerId) setBoardControllerId(payload.controllerId);
-          setBoardKey((k) => k + 1);
+          setCurrentFen((prev) => { if (prev !== payload.fen) setBoardKey((k) => k + 1); return payload.fen; });
         }
       })
       .on('broadcast', { event: 'board-lock' }, ({ payload }: any) => {
@@ -672,12 +770,79 @@ export default function ClassroomWorkspace({
         }
       })
       .on('broadcast', { event: 'status-change' }, ({ payload }: any) => {
+        if (payload?.classId && payload.classId !== classId) return;
         if (payload.status) setStatus(payload.status);
         if (payload.startedAt) setStartedAtTime(payload.startedAt);
         if (payload.endedAt) setEndedAtTime(payload.endedAt);
         if (payload.status === 'COMPLETED') {
           const targetRoute = role === 'admin' ? '/dashboard/admin/classes' : isCoach ? '/dashboard/coach/classes' : '/dashboard/student/classes';
           router.push(targetRoute);
+        }
+      })
+      .on('broadcast', { event: 'class-ended' }, ({ payload }: any) => {
+        if (payload?.classId && payload.classId !== classId) return;
+        setStatus('COMPLETED');
+        if (payload.endedAt) setEndedAtTime(payload.endedAt);
+        const targetRoute = role === 'admin' ? '/dashboard/admin/classes' : isCoach ? '/dashboard/coach/classes' : '/dashboard/student/classes';
+        router.push(targetRoute);
+      })
+      .on('broadcast', { event: 'quiz-question' }, ({ payload }: any) => {
+        if (payload?.classId && payload.classId !== classId) return;
+        if (isCoach) return; // coach sent it, don't self-receive
+        setActiveQuiz(payload.quiz as QuizQuestion);
+        setMyQuizAnswer(null);
+        setQuizRevealed(false);
+        setQuizAnswers([]);
+        if (payload.quiz?.timerSec) setQuizTimeLeft(payload.quiz.timerSec);
+        setRightTab('quiz');
+      })
+      .on('broadcast', { event: 'quiz-answer' }, ({ payload }: any) => {
+        if (!isCoach) return; // only coach collects answers
+        setQuizAnswers((prev) => {
+          if (prev.some((a) => a.studentId === payload.studentId)) return prev;
+          return [...prev, payload as QuizAnswer];
+        });
+      })
+      .on('broadcast', { event: 'quiz-reveal' }, ({ payload }: any) => {
+        setQuizRevealed(true);
+        if (payload?.quiz) setActiveQuiz(payload.quiz as QuizQuestion);
+      })
+      .on('broadcast', { event: 'quiz-end' }, () => {
+        setActiveQuiz(null);
+        setMyQuizAnswer(null);
+        setQuizRevealed(false);
+        setQuizAnswers([]);
+        setQuizTimeLeft(null);
+      })
+      .on('broadcast', { event: 'raise-hand' }, ({ payload }: any) => {
+        if (payload?.classId && payload.classId !== classId) return;
+        const studentId = payload.studentId || payload.studentName;
+        const studentName = payload.studentName || 'Student';
+        setRaisedHands((prev) => ({ ...prev, [studentId]: studentName }));
+        if (isCoach) {
+          playChessSound('hand');
+          setHandNotice(`✋ ${studentName} raised their hand!`);
+        }
+      })
+      .on('broadcast', { event: 'lower-hand' }, ({ payload }: any) => {
+        if (payload?.studentId) {
+          setRaisedHands((prev) => {
+            const next = { ...prev };
+            delete next[payload.studentId];
+            return next;
+          });
+        }
+      })
+      .on('broadcast', { event: 'master-mute' }, () => {
+        if (!isCoach) {
+          setJitsiAudioMuted(true);
+        }
+      })
+      .on('broadcast', { event: 'board-drawings' }, ({ payload }: any) => {
+        if (payload?.classId && payload.classId !== classId) return;
+        if (payload?.sourceUserId === (userId || userName)) return;
+        if (Array.isArray(payload?.drawings)) {
+          setSyncedDrawings(payload.drawings);
         }
       })
       .on('presence', { event: 'sync' }, () => {
@@ -703,6 +868,7 @@ export default function ClassroomWorkspace({
       })
       .subscribe(async (subStatus: string) => {
         if (subStatus === 'SUBSCRIBED') {
+          setLastRealtimeLog('Connected (SUBSCRIBED)');
           await channel.track({
             userId: userId || userName,
             role: isCoach ? 'COACH' : 'STUDENT',
@@ -712,6 +878,10 @@ export default function ClassroomWorkspace({
             joinedAt: new Date().toISOString(),
             online: true,
           });
+        } else if (subStatus === 'CHANNEL_ERROR' || subStatus === 'TIMED_OUT') {
+          setLastRealtimeLog(`Reconnecting (${subStatus})...`);
+        } else if (subStatus === 'CLOSED') {
+          setLastRealtimeLog('Disconnected (CLOSED)');
         }
       });
 
@@ -738,7 +908,15 @@ export default function ClassroomWorkspace({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSessionId, classId, userName, isCoach, role, userId, rightTab]);
 
-  // Coach Auto-Start Session Effect: Automatically start session timer & update DB status when Coach joins
+  // Student Completed Status Auto-Redirect Effect
+  useEffect(() => {
+    if (!isCoach && status === 'COMPLETED') {
+      const timer = setTimeout(() => {
+        router.push('/dashboard/student/classes');
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [isCoach, status, router]);
   useEffect(() => {
     if (!isCoach || status === 'COMPLETED') return;
 
@@ -876,6 +1054,7 @@ export default function ClassroomWorkspace({
 
   const handleSubmitEndClassReport = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingEndReport || status === 'COMPLETED') return;
     setIsSubmittingEndReport(true);
     setError('');
     const nowISO = new Date().toISOString();
@@ -907,13 +1086,17 @@ export default function ClassroomWorkspace({
       mainChannelRef.current?.send({
         type: 'broadcast',
         event: 'status-change',
-        payload: { status: 'COMPLETED', endedAt: nowISO, startedAt: startedAtTime },
+        payload: { classId, status: 'COMPLETED', endedAt: nowISO, startedAt: startedAtTime },
+      });
+      mainChannelRef.current?.send({
+        type: 'broadcast',
+        event: 'class-ended',
+        payload: { classId, status: 'COMPLETED', endedAt: nowISO, startedAt: startedAtTime },
       });
       await submitClassEndReportAction({ classId, sessionNotes: finalNotes, attendance: attendanceList });
       setStatus('COMPLETED');
       setShowEndClassModal(false);
-      const targetRoute = role === 'admin' ? '/dashboard/admin/classes' : isCoach ? '/dashboard/coach/classes' : '/dashboard/student/classes';
-      router.push(targetRoute);
+      setShowSummaryModal(true);
     } catch (err: any) {
       setError(err?.message || 'Failed to end class. Please try again.');
     } finally {
@@ -972,35 +1155,34 @@ export default function ClassroomWorkspace({
 
         {/* Center / Right controls matching reference layout */}
         <div className="flex items-center gap-2">
-          {/* LOAD GAME (N) button */}
-          <button
-            type="button"
-            onClick={() => setShowLessonDrawer(true)}
-            className="px-2.5 h-7 bg-[#2e2e34] hover:bg-[#383840] border border-[#44444c] text-white text-[11px] font-bold rounded transition-all flex items-center gap-1"
-          >
-            <span className="text-[#888899]">&lt;</span>
-            <span>LOAD GAME ({activeLessonPositions.length || 4})</span>
-            <span className="text-[#888899]">&gt;</span>
-          </button>
-
-          {/* LOAD CURRICULUM */}
-          <button
-            type="button"
-            onClick={() => setShowLessonDrawer(true)}
-            className="px-2.5 h-7 bg-[#2e2e34] hover:bg-[#383840] border border-[#44444c] text-white text-[11px] font-bold rounded transition-all hidden md:flex items-center"
-          >
-            LOAD CURRICULUM
-          </button>
-
-          {/* LOAD PDF */}
-          <button
-            type="button"
-            onClick={() => setShowSetPositionModal(true)}
-            className="px-2.5 h-7 bg-[#2e2e34] hover:bg-[#383840] border border-[#44444c] text-white text-[11px] font-bold rounded transition-all hidden md:flex items-center"
-          >
-            LOAD PDF
-          </button>
-
+          {/* LOAD GAME / CURRICULUM / PDF — COACH ONLY */}
+          {isCoach && (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowLessonDrawer(true)}
+                className="px-2.5 h-7 bg-[#2e2e34] hover:bg-[#383840] border border-[#44444c] text-white text-[11px] font-bold rounded transition-all flex items-center gap-1"
+              >
+                <span className="text-[#888899]">&lt;</span>
+                <span>LOAD GAME ({activeLessonPositions.length || 4})</span>
+                <span className="text-[#888899]">&gt;</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowLessonDrawer(true)}
+                className="px-2.5 h-7 bg-[#2e2e34] hover:bg-[#383840] border border-[#44444c] text-white text-[11px] font-bold rounded transition-all hidden md:flex items-center"
+              >
+                LOAD CURRICULUM
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowSetPositionModal(true)}
+                className="px-2.5 h-7 bg-[#2e2e34] hover:bg-[#383840] border border-[#44444c] text-white text-[11px] font-bold rounded transition-all hidden md:flex items-center"
+              >
+                LOAD PDF
+              </button>
+            </>
+          )}
           {/* Live Session Timer (00:04:48 style) */}
           <div className="flex items-center gap-1.5 px-2.5 h-7 bg-[#161618] border border-[#303036] rounded font-mono font-bold text-xs text-white tabular-nums">
             {formatElapsed(elapsedSeconds)}
@@ -1124,7 +1306,7 @@ export default function ClassroomWorkspace({
               showCoordinates={showCoordinates}
               spotlightedStudentId={spotlightedStudentId}
               spotlightedStudentName={spotlightedStudentName}
-              readOnly={!isCoach && !isStudentControlGranted()}
+              readOnly={!isCoach && (!isStudentControlGranted() || isBoardLocked)}
               isEditorOpen={showSetPositionModal}
               onToggleEditorOpen={setShowSetPositionModal}
               allowIllegalMovesExternal={allowIllegalMoves}
@@ -1144,7 +1326,8 @@ export default function ClassroomWorkspace({
             isAudioMuted={jitsiAudioMuted}
             isVideoMuted={jitsiVideoMuted}
             isBoardLocked={isBoardLocked}
-            allowIllegalMoves={allowIllegalMoves}
+            soundEnabled={sfxEnabled}
+            hasHandRaised={myHandRaised}
             onToggleAudio={() => setJitsiAudioMuted((m) => !m)}
             onToggleVideo={() => setJitsiVideoMuted((m) => !m)}
             onToggleMoveDots={() => setShowMoveDots((d) => !d)}
@@ -1152,13 +1335,38 @@ export default function ClassroomWorkspace({
             onToggleIllegalMoves={() => {
               const next = !allowIllegalMoves;
               setAllowIllegalMoves(next);
-              // Broadcast free-moves state to all students in real-time
               mainChannelRef.current?.send({
                 type: 'broadcast',
                 event: 'free-moves',
                 payload: { allowIllegalMoves: next },
               });
             }}
+            onToggleSound={() => {
+              const next = !sfxEnabled;
+              setSfxEnabled(next);
+              setChessSoundEnabled(next);
+            }}
+            onRaiseHand={() => {
+              const next = !myHandRaised;
+              setMyHandRaised(next);
+              const studentId = userId || userName;
+              mainChannelRef.current?.send({
+                type: 'broadcast',
+                event: next ? 'raise-hand' : 'lower-hand',
+                payload: { classId, studentId, studentName: userName },
+              });
+              if (next) playChessSound('hand');
+            }}
+            onMasterMuteAll={() => {
+              mainChannelRef.current?.send({
+                type: 'broadcast',
+                event: 'master-mute',
+                payload: { classId },
+              });
+            }}
+            onOpenMultiBoardGrid={() => setShowGridModal(true)}
+            onOpenImportModal={() => setShowImportModal(true)}
+            onOpenThemeModal={() => setShowThemeModal(true)}
             onFlip={() => setBoardFlipped((f) => !f)}
             onToggleCoordinates={() => setShowCoordinates((c) => !c)}
             onToggleEngine={() => setShowEngine((e) => !e)}
@@ -1194,35 +1402,50 @@ export default function ClassroomWorkspace({
             className="flex flex-col bg-[#0f0f1f] border-l border-[#222244] flex-shrink-0 overflow-hidden"
             style={{ width: `${rightColWidth}px` }}
           >
-            {/* ── Zoom Meeting SDK Embedded Video Stage (Zero Redirect — stays inside ChessHub) ── */}
-            <div className="flex-shrink-0 min-h-[280px] h-[320px] max-h-[45vh] relative">
-              <ZoomClassroomVideo
-                classId={classId}
-                meetingNumber={effectiveMeetingNumber}
-                passcode={zoomPasscode}
-                userName={userName}
-                role={role}
-                isAudioMuted={jitsiAudioMuted}
-                isVideoMuted={jitsiVideoMuted}
-              />
-            </div>
+            {/* ── Zoom Meeting SDK Embedded Video Stage ── */}
+            {/* Panel mode: fills flex-1 height above tabs. PIP mode: floating draggable overlay */}
+            {!videoPipMode && (
+              <div className="flex-shrink-0 relative" style={{ height: '42%', minHeight: '200px', maxHeight: '360px' }}>
+                {/* PIP toggle button */}
+                <button
+                  type="button"
+                  onClick={() => setVideoPipMode(true)}
+                  title="Pop out to floating video"
+                  className="absolute top-1.5 right-1.5 z-30 px-2 py-0.5 bg-[#1a1a3a]/90 hover:bg-[#252548] border border-[#3a3a6a] text-[10px] font-bold text-[#8888cc] rounded transition-all flex items-center gap-1"
+                >
+                  <span>⇱</span><span>Float</span>
+                </button>
+                <ZoomClassroomVideo
+                  classId={classId}
+                  meetingNumber={effectiveMeetingNumber}
+                  passcode={zoomPasscode}
+                  userName={userName}
+                  role={role}
+                  isAudioMuted={jitsiAudioMuted}
+                  isVideoMuted={jitsiVideoMuted}
+                />
+              </div>
+            )}
 
             {/* ── 6-Tab Panel Matching Reference UI ───────────────────────── */}
             <div className="flex flex-col flex-1 overflow-hidden">
               <div className="flex items-center justify-between border-b border-[#2d2d35] flex-shrink-0 bg-[#1e1e24] px-1">
                 <div className="flex items-center flex-1 overflow-x-auto no-scrollbar">
-                  {([
-                    ['at', 'MOVES'],
-                    ['chat', 'CHAT'],
-                    ['response', 'RESPONSE'],
-                    ['leaderboard', 'LEADERBOARD'],
-                    ['participants', 'PARTICIPANTS'],
-                    ...(isCoach ? [['engine', 'ENGINE'] as [RightTab, string]] : []),
-                  ]).map(([key, label]) => (
+                  {(
+                    [
+                      { key: 'at', label: 'MOVES' },
+                      { key: 'chat', label: 'CHAT' },
+                      { key: 'response', label: 'RESPONSE' },
+                      { key: 'leaderboard', label: 'LEADERBOARD' },
+                      { key: 'participants', label: 'PARTICIPANTS' },
+                      { key: 'quiz', label: activeQuiz ? '❓QUIZ🔴' : '❓QUIZ' },
+                      ...(isCoach ? [{ key: 'engine', label: 'ENGINE' }] : []),
+                    ] as { key: RightTab; label: string }[]
+                  ).map(({ key, label }) => (
                     <button
                       key={key}
                       type="button"
-                      onClick={() => setRightTab(key as RightTab)}
+                      onClick={() => setRightTab(key)}
                       className={`px-3 py-2.5 text-[10px] font-extrabold uppercase tracking-wide transition-all border-b-2 whitespace-nowrap ${
                         rightTab === key
                           ? 'text-white border-[#e11d48] bg-[#292932]'
@@ -1450,6 +1673,69 @@ export default function ClassroomWorkspace({
                 {rightTab === 'engine' && (
                   <ClassroomEnginePanel fen={currentFen} isEnabled={showEngine} />
                 )}
+
+                {/* ── QUIZ TAB ────────────────────────────────────────────────────── */}
+                {rightTab === 'quiz' && (
+                  <ClassroomQuizTab
+                    isCoach={isCoach}
+                    activeQuiz={activeQuiz}
+                    quizAnswers={quizAnswers}
+                    myQuizAnswer={myQuizAnswer}
+                    quizRevealed={quizRevealed}
+                    quizTimeLeft={quizTimeLeft}
+                    quizBank={quizBank}
+                    students={students}
+                    onLaunchQuiz={(q) => {
+                      setActiveQuiz(q);
+                      setQuizAnswers([]);
+                      setMyQuizAnswer(null);
+                      setQuizRevealed(false);
+                      if (q.timerSec) setQuizTimeLeft(q.timerSec);
+                      mainChannelRef.current?.send({
+                        type: 'broadcast',
+                        event: 'quiz-question',
+                        payload: { classId, quiz: q },
+                      });
+                    }}
+                    onReveal={() => {
+                      setQuizRevealed(true);
+                      mainChannelRef.current?.send({
+                        type: 'broadcast',
+                        event: 'quiz-reveal',
+                        payload: { quiz: activeQuiz },
+                      });
+                    }}
+                    onEndQuiz={() => {
+                      setActiveQuiz(null);
+                      setMyQuizAnswer(null);
+                      setQuizRevealed(false);
+                      setQuizAnswers([]);
+                      setQuizTimeLeft(null);
+                      mainChannelRef.current?.send({ type: 'broadcast', event: 'quiz-end', payload: {} });
+                    }}
+                    onStudentAnswer={(answerIndex) => {
+                      if (myQuizAnswer !== null || !activeQuiz) return;
+                      setMyQuizAnswer(answerIndex);
+                      mainChannelRef.current?.send({
+                        type: 'broadcast',
+                        event: 'quiz-answer',
+                        payload: {
+                          studentName: userName,
+                          studentId: userId || userName,
+                          answerIndex,
+                          answeredAt: new Date().toISOString(),
+                        } as QuizAnswer,
+                      });
+                    }}
+                    onSaveToBank={(q) => {
+                      const updated = [...quizBank.filter((b) => b.id !== q.id), q];
+                      setQuizBank(updated);
+                      if (typeof window !== 'undefined') {
+                        try { localStorage.setItem('chesshub_quiz_bank', JSON.stringify(updated)); } catch {}
+                      }
+                    }}
+                  />
+                )}
               </div>
 
               {/* Bottom Control Bar */}
@@ -1613,6 +1899,111 @@ export default function ClassroomWorkspace({
           setJitsiVideoMuted(isVideoMuted);
           setJitsiJoined(true);
         }}
+      />
+
+      {/* ── FLOATING PIP VIDEO OVERLAY ─────────────────────────────────── */}
+      {videoPipMode && (
+        <div
+          style={{
+            position: 'fixed',
+            left: pipPos.x,
+            top: pipPos.y,
+            width: pipSize.w,
+            height: pipSize.h,
+            zIndex: 9999,
+            borderRadius: 12,
+            overflow: 'hidden',
+            boxShadow: '0 8px 40px rgba(0,0,0,0.7)',
+            border: '1.5px solid #3a3a6a',
+            background: '#090914',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          {/* PIP drag handle header */}
+          <div
+            onMouseDown={handlePipMouseDown}
+            style={{ height: 28, background: '#1a1a32', cursor: 'grab', display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingLeft: 10, paddingRight: 6, flexShrink: 0, userSelect: 'none' }}
+          >
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#8888cc', letterSpacing: 1 }}>📹 VIDEO — DRAG TO MOVE</span>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <button type="button" onClick={() => setPipSize((s) => ({ w: Math.max(240, s.w - 80), h: Math.max(160, s.h - 50) }))} style={{ fontSize: 12, color: '#8888cc', background: 'none', border: 'none', cursor: 'pointer' }}>−</button>
+              <button type="button" onClick={() => setPipSize((s) => ({ w: Math.min(700, s.w + 80), h: Math.min(500, s.h + 50) }))} style={{ fontSize: 12, color: '#8888cc', background: 'none', border: 'none', cursor: 'pointer' }}>+</button>
+              <button type="button" onClick={() => setVideoPipMode(false)} style={{ fontSize: 13, color: '#cc4444', background: 'none', border: 'none', cursor: 'pointer' }} title="Dock video back to panel">✕</button>
+            </div>
+          </div>
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <ZoomClassroomVideo
+              classId={classId}
+              meetingNumber={effectiveMeetingNumber}
+              passcode={zoomPasscode}
+              userName={userName}
+              role={role}
+              isAudioMuted={jitsiAudioMuted}
+              isVideoMuted={jitsiVideoMuted}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ── Raise Hand Toast Notification for Coach ── */}
+      {handNotice && (
+        <div className="fixed top-14 right-4 z-[9999] px-4 py-2.5 bg-amber-500 text-slate-950 font-extrabold text-xs rounded-xl shadow-2xl border border-amber-300 animate-bounce flex items-center gap-3">
+          <span>{handNotice}</span>
+          <button
+            type="button"
+            onClick={() => setHandNotice(null)}
+            className="px-2 py-0.5 bg-slate-900/40 hover:bg-slate-900/60 text-white rounded text-[10px]"
+          >
+            Acknowledge
+          </button>
+        </div>
+      )}
+
+      {/* ── Multi-Board Monitor Grid Modal ── */}
+      <ClassroomMultiBoardGridModal
+        isOpen={showGridModal}
+        students={students}
+        currentFen={currentFen}
+        boardControllerId={boardControllerId}
+        onClose={() => setShowGridModal(false)}
+        onGrantControl={(studentId) => handleGrantBoardControl(studentId)}
+      />
+
+      {/* ── PGN / FEN Study Import Modal ── */}
+      <ClassroomStudyImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImportFenOrPgn={(fen, pgn, moves) => {
+          setCurrentFen(fen);
+          setGameMoves(moves);
+          setCurrentMoveIndex(moves.length - 1);
+          setBoardKey((k) => k + 1);
+          persistAndBroadcastBoardState(fen, moves, moves.length - 1);
+        }}
+      />
+
+      {/* ── Board Theme Modal ── */}
+      <ClassroomThemeModal
+        isOpen={showThemeModal}
+        activeTheme={activeBoardTheme}
+        onSelectTheme={(t) => setActiveBoardTheme(t)}
+        onClose={() => setShowThemeModal(false)}
+      />
+
+      {/* ── End-of-Class Performance Summary Modal ── */}
+      <ClassroomSummaryModal
+        isOpen={showSummaryModal}
+        className={activeClassName}
+        classType={classType}
+        durationFormatted={formatElapsed(elapsedSeconds)}
+        coachName={coachName}
+        students={students}
+        movesCount={gameMoves.length}
+        gamePgn={gameMoves.join(' ')}
+        quizScore={activeQuiz ? { correct: quizAnswers.filter((a) => a.answerIndex === activeQuiz.correctIndex).length, total: students.length } : undefined}
+        onClose={() => setShowSummaryModal(false)}
+        onExitDashboard={() => router.push(role === 'admin' ? '/dashboard/admin/classes' : isCoach ? '/dashboard/coach/classes' : '/dashboard/student/classes')}
       />
     </div>
   );

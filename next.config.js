@@ -74,7 +74,7 @@ const nextConfig = {
           {
             key: 'Content-Security-Policy',
             value:
-              "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://source.zoom.us https://*.zoom.us https://*.zoomgov.com https:; frame-src 'self' https://*.zoom.us https://zoom.us https://drive.google.com; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; connect-src 'self' https://*.zoom.us wss://*.zoom.us https://*.zoomgov.com wss://*.zoomgov.com https:; media-src 'self' blob: https://*.zoom.us; worker-src 'self' blob:;",
+              "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://source.zoom.us https://*.zoom.us https://*.zoomgov.com https:; frame-src 'self' https://*.zoom.us https://zoom.us https://drive.google.com; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.zoom.us wss://*.zoom.us https://*.zoomgov.com wss://*.zoomgov.com https:; media-src 'self' blob: https://*.zoom.us; worker-src 'self' blob:;",
           },
         ],
       },

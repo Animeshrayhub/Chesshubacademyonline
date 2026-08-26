@@ -501,6 +501,15 @@ export async function setClassStatus(id: string, status: ClassStatus): Promise<R
       }
     } else if (status === 'COMPLETED') {
       updatePayload.ended_at = nowISO;
+      try {
+        await admin
+          .from('live_sessions')
+          .update({ status: 'ended', ended_at: nowISO, updated_at: nowISO })
+          .eq('class_id', id)
+          .eq('status', 'active');
+      } catch (lsErr) {
+        console.warn('setClassStatus live_sessions update note:', lsErr);
+      }
     }
 
     const { data: updated, error } = await admin

@@ -285,7 +285,9 @@ export default function ZoomClassroomVideo({
               if (testCtx.state === 'suspended') {
                 setAudioDiag((prev) => ({ ...prev, autoplayBlocked: true }));
               }
-              testCtx.close();
+              if (testCtx.state !== 'closed') {
+                testCtx.close().catch(() => {});
+              }
             }
           } catch {
             // ignore
@@ -463,7 +465,9 @@ export default function ZoomClassroomVideo({
       if (AudioContext) {
         const ctx = new AudioContext();
         await ctx.resume();
-        await ctx.close();
+        if (ctx.state !== 'closed') {
+          await ctx.close().catch(() => {});
+        }
       }
       setAudioDiag((prev) => ({ ...prev, autoplayBlocked: false }));
       // Refresh participant audio after unlock

@@ -1,8 +1,7 @@
 const https = require('https');
 
 const projectRef = 'titqwyiiagdxmzkgimpe';
-const serviceKey =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpdHF3eWlpYWdkeG16a2dpbXBlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MzYxODA1MiwiZXhwIjoyMDk5MTk0MDUyfQ.WcpkODKOmKI0q75Id0RCeaheoZdbUYaT6NrivUX_u30';
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 // We'll use the Supabase Management API to run SQL
 // The management API requires the project's service_role or a management token

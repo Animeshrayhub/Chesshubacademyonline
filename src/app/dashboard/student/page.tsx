@@ -100,11 +100,18 @@ export default async function StudentOverviewPage() {
       colorScheme: 'purple',
     },
     {
+      label: 'Play Bot Training',
+      description: 'Train with bots & adaptive puzzles',
+      href: '/dashboard/student/bot-training',
+      iconKey: 'puzzle',
+      colorScheme: 'gold',
+    },
+    {
       label: 'Open Study Workbook',
       description: 'Read curriculum chapters',
       href: '/dashboard/student/homework/workbooks',
       iconKey: 'bookOpen',
-      colorScheme: 'gold',
+      colorScheme: 'purple',
     },
     {
       label: 'Recordings Library',

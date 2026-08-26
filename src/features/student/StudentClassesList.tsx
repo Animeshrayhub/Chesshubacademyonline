@@ -38,7 +38,7 @@ export default function StudentClassesList({ classes: initialClasses }: StudentC
   const filteredClasses = rawClasses.filter((c) => {
     const classTime = new Date(c.schedule);
 
-    if (activeTab === 'ACTIVE' && c.status !== 'LIVE' && c.status !== 'IN_PROGRESS' && c.status !== 'SCHEDULED') {
+    if (activeTab === 'ACTIVE' && c.status !== 'LIVE' && c.status !== 'IN_PROGRESS') {
       return false;
     }
     if (activeTab === 'UPCOMING' && c.status !== 'SCHEDULED') {

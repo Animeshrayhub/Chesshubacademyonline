@@ -125,7 +125,7 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
     return true;
   });
 
-  // Sort logic
+  // Sort logic — TODAY's classes (26 Aug 2026) pinned to top of UPCOMING
   const sortedClasses = [...filteredClasses].sort((a, b) => {
     if (sortBy === 'date-asc') return new Date(a.schedule).getTime() - new Date(b.schedule).getTime();
     if (sortBy === 'date-desc') return new Date(b.schedule).getTime() - new Date(a.schedule).getTime();
@@ -141,8 +141,38 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
     }
 
     if (activeTab === 'UPCOMING') {
-      // SOONEST UPCOMING FIRST (by schedule ASC)
-      return new Date(a.schedule).getTime() - new Date(b.schedule).getTime();
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      const todayEnd = todayStart + 24 * 60 * 60 * 1000;
+
+      const timeA = new Date(a.schedule).getTime();
+      const timeB = new Date(b.schedule).getTime();
+
+      const aIsToday = timeA >= todayStart && timeA < todayEnd;
+      const bIsToday = timeB >= todayStart && timeB < todayEnd;
+      const aIsFuture = timeA >= todayEnd;
+      const bIsFuture = timeB >= todayEnd;
+      const aIsPast = timeA < todayStart;
+      const bIsPast = timeB < todayStart;
+
+      // Group 1: TODAY's classes pinned to TOP!
+      if (aIsToday && !bIsToday) return -1;
+      if (!aIsToday && bIsToday) return 1;
+
+      // Group 2: FUTURE classes next
+      if (aIsFuture && aIsPast) return -1;
+      if (aIsPast && bIsFuture) return 1;
+
+      // Within TODAY: sort by time ASC (earliest today first)
+      if (aIsToday && bIsToday) return timeA - timeB;
+
+      // Within FUTURE: sort by date ASC (closest future first)
+      if (aIsFuture && bIsFuture) return timeA - timeB;
+
+      // Within PAST unstarted: sort by date DESC (most recent past first)
+      if (aIsPast && bIsPast) return timeB - timeA;
+
+      return timeA - timeB;
     }
 
     if (activeTab === 'ACTIVE') {
@@ -402,18 +432,32 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
             const isLive = c.status === 'LIVE' || c.status === 'IN_PROGRESS';
             const isCompleted = c.status === 'COMPLETED' || c.status === 'RECORDING_AVAILABLE';
 
+            const now = new Date();
+            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+            const todayEnd = todayStart + 24 * 60 * 60 * 1000;
+            const classTime = new Date(c.schedule).getTime();
+
+            const isToday = classTime >= todayStart && classTime < todayEnd;
+            const isPastUncompleted = classTime < todayStart && c.status === 'SCHEDULED';
+
             return (
               <div
                 key={c.id}
-                className="bg-white border border-slate-200 hover:border-purple-300 rounded-2xl p-3 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row items-center justify-between gap-4 relative group"
+                className={`bg-white border rounded-2xl p-3 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row items-center justify-between gap-4 relative group ${
+                  isToday
+                    ? 'border-emerald-400 ring-2 ring-emerald-500/20 bg-emerald-50/10'
+                    : 'border-slate-200 hover:border-purple-300'
+                }`}
               >
                 {/* Far Left: Index Number + Date Box */}
                 <div className="flex items-center gap-3 shrink-0">
                   <span className="text-xs font-black text-slate-400 w-4 text-center">{index + 1}</span>
 
-                  <div className="border border-slate-200 rounded-xl px-3 py-1.5 bg-slate-50 flex items-center gap-3 text-center">
+                  <div className={`border rounded-xl px-3 py-1.5 flex items-center gap-3 text-center ${
+                    isToday ? 'bg-emerald-50 border-emerald-300' : 'bg-slate-50 border-slate-200'
+                  }`}>
                     <div>
-                      <span className="text-xl font-black text-purple-800 leading-none block">{dayNum}</span>
+                      <span className={`text-xl font-black leading-none block ${isToday ? 'text-emerald-700' : 'text-purple-800'}`}>{dayNum}</span>
                       <span className="text-[10px] font-bold text-slate-500 block leading-tight">{monthYear}</span>
                     </div>
                     <div className="border-l border-slate-200 pl-3 text-left">
@@ -427,6 +471,11 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <h4 className="text-sm font-bold text-slate-900 truncate tracking-tight">{titleLabel}</h4>
+                    {isToday && (
+                      <span className="px-2 py-0.5 bg-emerald-600 text-white text-[10px] font-extrabold rounded-md shadow-sm animate-bounce flex items-center gap-1">
+                        <span>🟢</span> TODAY
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={() => handleExportIcs(c)}
@@ -475,9 +524,13 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
                       ? 'bg-amber-500 text-white shadow-sm animate-pulse'
                       : isCompleted
                       ? 'bg-emerald-600 text-white'
+                      : isToday
+                      ? 'bg-emerald-600 text-white ring-2 ring-emerald-400/50 animate-pulse'
+                      : isPastUncompleted
+                      ? 'bg-rose-600 text-white font-bold'
                       : 'bg-orange-500 text-white'
                   }`}>
-                    {isLive ? 'In progress' : isCompleted ? 'Completed' : 'Scheduled'}
+                    {isLive ? 'In progress' : isCompleted ? 'Completed' : isToday ? 'Scheduled (Today)' : isPastUncompleted ? 'Missed / Expired' : 'Scheduled'}
                   </span>
 
                   {/* Action Buttons */}

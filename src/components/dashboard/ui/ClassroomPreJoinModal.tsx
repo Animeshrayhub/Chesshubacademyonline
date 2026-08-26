@@ -82,8 +82,14 @@ export default function ClassroomPreJoinModal({
         })
         .catch(() => {});
     } else {
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      if (audioContextRef.current) audioContextRef.current.close();
+      if (audioContextRef.current) {
+        try {
+          if (audioContextRef.current.state !== 'closed') {
+            audioContextRef.current.close().catch(() => {});
+          }
+        } catch (e) {}
+        audioContextRef.current = null;
+      }
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
@@ -91,7 +97,14 @@ export default function ClassroomPreJoinModal({
     }
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      if (audioContextRef.current) audioContextRef.current.close();
+      if (audioContextRef.current) {
+        try {
+          if (audioContextRef.current.state !== 'closed') {
+            audioContextRef.current.close().catch(() => {});
+          }
+        } catch (e) {}
+        audioContextRef.current = null;
+      }
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
       }

@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/supabase/auth';
-import { createSupabaseServer } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * GET /api/coach/openings — List coach's assigned students and their opening progress
+ * GET /api/coach/openings — List students, coaches, and opening progress
  */
 export async function GET(request: NextRequest) {
   try {
@@ -18,41 +17,49 @@ export async function GET(request: NextRequest) {
 
     const adminSupabase = createSupabaseAdmin();
 
-    // 1. Fetch coach's assigned students
-    let studentQuery = adminSupabase
+    // 1. Fetch all students in academy
+    const { data: allStudents, error: studentError } = await adminSupabase
       .from('students')
-      .select('id, current_track, fid_rating, lichess_rating');
+      .select('id, current_track, fid_rating, lichess_rating, assigned_coach_id');
 
-    if (user.role === 'COACH') {
-      studentQuery = studentQuery.eq('assigned_coach_id', user.id);
-    }
-
-    const { data: students, error: studentError } = await studentQuery;
     if (studentError) {
       return NextResponse.json({ error: studentError.message }, { status: 500 });
     }
 
-    const studentIds = ((students as any[]) ?? []).map((s: any) => s.id);
-    if (studentIds.length === 0) {
-      return NextResponse.json({ data: { students: [], progress: [], scores: [], userProfiles: [] } });
-    }
+    const studentList = (allStudents as any[]) ?? [];
 
-    // 2. Fetch user profile names
-    const { data: userProfiles } = await adminSupabase
+    // Filter students for coach (or keep all for admin)
+    const assignedStudents = user.role === 'COACH'
+      ? studentList.filter((s: any) => s.assigned_coach_id === user.id)
+      : studentList;
+
+    const studentIds = studentList.map((s: any) => s.id);
+
+    // 2. Fetch user profile names for all students
+    const { data: userProfiles } = studentIds.length > 0
+      ? await adminSupabase.from('users').select('id, username, first_name, last_name, email, role').in('id', studentIds)
+      : { data: [] };
+
+    // 3. Fetch all coaches in academy for Admin filter dropdown
+    const { data: coaches } = await adminSupabase
       .from('users')
       .select('id, username, first_name, last_name, email')
-      .in('id', studentIds);
+      .eq('role', 'COACH');
 
-    // 3. Fetch progress & scores for these students
-    const [progressRes, scoresRes, chapterProgressRes] = await Promise.all([
-      adminSupabase.from('student_opening_progress').select('*').in('student_id', studentIds),
-      adminSupabase.from('student_opening_scores').select('*').in('student_id', studentIds),
-      adminSupabase.from('student_chapter_progress').select('*').in('student_id', studentIds),
-    ]);
+    // 4. Fetch progress, scores, and chapter progress
+    const [progressRes, scoresRes, chapterProgressRes] = studentIds.length > 0
+      ? await Promise.all([
+          adminSupabase.from('student_opening_progress').select('*').in('student_id', studentIds),
+          adminSupabase.from('student_opening_scores').select('*').in('student_id', studentIds),
+          adminSupabase.from('student_chapter_progress').select('*').in('student_id', studentIds),
+        ])
+      : [{ data: [] }, { data: [] }, { data: [] }];
 
     return NextResponse.json({
       data: {
-        students: students ?? [],
+        students: assignedStudents,
+        allStudents: studentList,
+        coaches: coaches ?? [],
         userProfiles: userProfiles ?? [],
         progress: progressRes.data ?? [],
         scores: scoresRes.data ?? [],
@@ -66,7 +73,7 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * POST /api/coach/openings — Apply coach overrides
+ * POST /api/coach/openings — Apply coach & admin overrides and assignments
  */
 export async function POST(request: NextRequest) {
   try {
@@ -77,16 +84,85 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { action, student_id, opening_id, chapter_id, difficulty_override, is_unlocked } = body;
-
-    if (!student_id || !opening_id) {
-      return NextResponse.json({ error: 'Missing student_id or opening_id' }, { status: 400 });
-    }
+    const { action, student_id, student_ids, opening_id, chapter_id, difficulty_override, is_unlocked, current_track, coach_id } = body;
 
     const adminSupabase = createSupabaseAdmin();
 
     switch (action) {
+      case 'assign_student': {
+        if (!student_id) return NextResponse.json({ error: 'Missing student_id' }, { status: 400 });
+        const targetCoach = coach_id || user.id;
+        const { error } = await adminSupabase
+          .from('students')
+          .update({ assigned_coach_id: targetCoach })
+          .eq('id', student_id);
+
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ success: true });
+      }
+
+      case 'assign_unassigned_students': {
+        const targetStudentIds = student_ids || (student_id ? [student_id] : []);
+        if (targetStudentIds.length === 0) return NextResponse.json({ error: 'No student IDs provided' }, { status: 400 });
+        const targetCoach = coach_id || user.id;
+
+        const { error } = await adminSupabase
+          .from('students')
+          .update({ assigned_coach_id: targetCoach })
+          .in('id', targetStudentIds);
+
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ success: true });
+      }
+
+      case 'unassign_student': {
+        if (!student_id) return NextResponse.json({ error: 'Missing student_id' }, { status: 400 });
+        const { error } = await adminSupabase
+          .from('students')
+          .update({ assigned_coach_id: null })
+          .eq('id', student_id);
+
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ success: true });
+      }
+
+      case 'change_student_track': {
+        if (!student_id || !current_track) {
+          return NextResponse.json({ error: 'Missing student_id or current_track' }, { status: 400 });
+        }
+        const { error } = await adminSupabase
+          .from('students')
+          .update({ current_track })
+          .eq('id', student_id);
+
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ success: true });
+      }
+
+      case 'assign_opening': {
+        if (!student_id || !opening_id) {
+          return NextResponse.json({ error: 'Missing student_id or opening_id' }, { status: 400 });
+        }
+        const { error } = await adminSupabase
+          .from('student_opening_progress')
+          .upsert(
+            {
+              student_id,
+              opening_id,
+              status: 'assigned',
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'student_id,opening_id' }
+          );
+
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ success: true });
+      }
+
       case 'difficulty_override': {
+        if (!student_id || !opening_id) {
+          return NextResponse.json({ error: 'Missing student_id or opening_id' }, { status: 400 });
+        }
         const { error } = await adminSupabase
           .from('student_opening_progress')
           .upsert(
@@ -104,8 +180,8 @@ export async function POST(request: NextRequest) {
       }
 
       case 'chapter_lock_toggle': {
-        if (!chapter_id) {
-          return NextResponse.json({ error: 'Missing chapter_id' }, { status: 400 });
+        if (!student_id || !opening_id || !chapter_id) {
+          return NextResponse.json({ error: 'Missing student_id, opening_id, or chapter_id' }, { status: 400 });
         }
 
         const { error } = await adminSupabase
@@ -127,7 +203,10 @@ export async function POST(request: NextRequest) {
       }
 
       case 'reset_progress': {
-        // Delete opening progress and chapter progress for this student
+        if (!student_id || !opening_id) {
+          return NextResponse.json({ error: 'Missing student_id or opening_id' }, { status: 400 });
+        }
+
         await adminSupabase
           .from('student_opening_progress')
           .delete()

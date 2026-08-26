@@ -34,9 +34,28 @@ function getAuthHeader(): Record<string, string> {
   return {};
 }
 
-// Standard client-side Supabase client with authenticated header injector
+// Custom fetch wrapper that injects live authorization headers from cookies on every HTTP request
+const dynamicAuthFetch = (url: RequestInfo | URL, options?: RequestInit) => {
+  const authHeaders = getAuthHeader();
+  const mergedHeaders = {
+    ...(options?.headers || {}),
+    ...authHeaders,
+  };
+  return fetch(url, {
+    ...options,
+    headers: mergedHeaders,
+  });
+};
+
+// Standard client-side Supabase client
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
   global: {
-    headers: getAuthHeader(),
+    fetch: dynamicAuthFetch,
   },
 });
+

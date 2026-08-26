@@ -132,7 +132,13 @@ export default async function CoachStudentDetailsPage({ params }: StudentDetails
             subtitle={`Overview of progress tracks, homework, and tactical solving metrics for ${studentName}.`}
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/dashboard/coach/students/${params.profileId}/bot-training`}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-extrabold bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-lg shadow-amber-500/20 hover:from-amber-600 hover:to-amber-700 transition-all"
+          >
+            ♟️ Bot Training & Weaknesses
+          </Link>
           <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-100 uppercase tracking-wide">
             {profile.level} TRACK
           </span>

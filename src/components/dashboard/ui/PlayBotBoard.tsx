@@ -175,18 +175,7 @@ export default function PlayBotBoard({ initialFen, classId, onCloseCustom }: Pla
             setFen(nextFen);
             setHistory(game.history());
 
-            if (classId) {
-              const channel = supabase.channel(`live-session:${classId}`);
-              channel.send({
-                type: 'broadcast',
-                event: 'move',
-                payload: {
-                  fen: nextFen,
-                  history: game.history(),
-                  sentAt: Date.now(),
-                },
-              });
-            }
+
 
             // Check game status after Bot move
             checkGameStatus();
@@ -279,18 +268,7 @@ export default function PlayBotBoard({ initialFen, classId, onCloseCustom }: Pla
           setFen(nextFen);
           setHistory(game.history());
 
-          if (classId) {
-            const channel = supabase.channel(`live-session:${classId}`);
-            channel.send({
-              type: 'broadcast',
-              event: 'move',
-              payload: {
-                fen: nextFen,
-                history: game.history(),
-                sentAt: Date.now(),
-              },
-            });
-          }
+
 
           checkGameStatus();
           setSelectedSquare(null);
@@ -376,18 +354,7 @@ export default function PlayBotBoard({ initialFen, classId, onCloseCustom }: Pla
         setFen(nextFen);
         setHistory(game.history());
 
-        if (classId) {
-          const channel = supabase.channel(`live-session:${classId}`);
-          channel.send({
-            type: 'broadcast',
-            event: 'move',
-            payload: {
-              fen: nextFen,
-              history: game.history(),
-              sentAt: Date.now(),
-            },
-          });
-        }
+
 
         checkGameStatus();
         return true;
