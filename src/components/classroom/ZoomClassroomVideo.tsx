@@ -723,14 +723,28 @@ export default function ZoomClassroomVideo({
         #zoom-embedded-video-container,
         #zoom-embedded-video-container *,
         [id*="zmmtg-root"],
+        .meeting-client,
+        .speaker-video,
+        .speaker-video__container,
+        .gallery-video,
         .aria-canvas,
         .video-canvas,
-        .speaker-video,
-        .video-avatar {
+        .video-avatar,
+        .video-avatar-container,
+        .main-layout {
+          width: 100% !important;
+          height: 100% !important;
+          max-width: 100% !important;
+          max-height: 100% !important;
+          box-sizing: border-box !important;
           background-color: #090914 !important;
         }
         #zoom-embedded-video-container canvas,
-        #zoom-embedded-video-container video {
+        #zoom-embedded-video-container video,
+        .video-canvas canvas,
+        .speaker-video canvas {
+          width: 100% !important;
+          height: 100% !important;
           object-fit: cover !important;
           border-radius: 0.75rem !important;
         }
@@ -738,7 +752,7 @@ export default function ZoomClassroomVideo({
       <div
         ref={containerRef}
         id="zoom-embedded-video-container"
-        className="w-full h-full flex-1 min-h-[220px] bg-[#090914] rounded-xl overflow-hidden relative"
+        className="w-full h-full flex-1 min-h-[220px] bg-[#090914] rounded-xl overflow-hidden relative border border-[#1e1e38]"
         style={{ visibility: connectionState === 'connected' ? 'visible' : 'visible' }}
       >
         <video
@@ -746,13 +760,23 @@ export default function ZoomClassroomVideo({
           autoPlay
           playsInline
           muted
-          className={`w-full h-full object-cover rounded-xl transition-opacity ${
+          className={`w-full h-full object-cover rounded-xl transition-opacity absolute inset-0 z-10 ${
             hasNativeCameraStream && !isVideoMuted ? 'opacity-100' : 'opacity-0 hidden'
           }`}
         />
-        {!isVideoMuted && !hasNativeCameraStream && connectionState === 'connected' && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[#090914] text-slate-400 text-xs font-bold gap-2">
-            <span className="animate-pulse">📹</span> Camera Live Video Feed Active
+        {/* Sleek Gradient Avatar Card when Camera is OFF */}
+        {(isVideoMuted || (!hasNativeCameraStream && connectionState === 'connected')) && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-gradient-to-br from-[#0c0c1e] via-[#141428] to-[#070714] p-4 text-center space-y-2">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-500 border-2 border-indigo-400/50 flex items-center justify-center text-white text-xl font-black shadow-lg animate-pulse">
+              {(userName || 'User').split(' ').map((n) => n.charAt(0)).join('').toUpperCase().slice(0, 2)}
+            </div>
+            <div>
+              <p className="text-xs font-bold text-white tracking-tight">{userName}</p>
+              <p className="text-[10px] font-semibold text-emerald-400 flex items-center justify-center gap-1 mt-0.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                <span>{audioDiag.isMuted ? '🔇 Audio Muted' : '🎙️ Live Voice Active'}</span>
+              </p>
+            </div>
           </div>
         )}
       </div>
