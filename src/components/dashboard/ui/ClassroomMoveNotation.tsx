@@ -42,7 +42,7 @@ export default function ClassroomMoveNotation({
     el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, [currentIndex, moves]);
 
-  // Keyboard Left / Right arrow keys listener
+  // Keyboard Left / Right / Up / Down arrow keys listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
@@ -52,6 +52,12 @@ export default function ClassroomMoveNotation({
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
         onJumpToMove(Math.min(moves.length - 1, currentIndex + 1));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        onJumpToMove(-1);
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        onJumpToMove(moves.length - 1);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -268,6 +274,19 @@ export default function ClassroomMoveNotation({
             )}
           </div>
         ))}
+
+        {/* Jump to Live Board button if inspecting history */}
+        {currentIndex < moves.length - 1 && moves.length > 0 && (
+          <div className="pt-2 sticky bottom-0 bg-[#0d0d1a]/90 backdrop-blur pb-1">
+            <button
+              type="button"
+              onClick={() => onJumpToMove(moves.length - 1)}
+              className="w-full py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-black shadow-md flex items-center justify-center gap-1.5 transition-all animate-pulse"
+            >
+              <span>⏩</span> Jump to Live Board (Move {moves.length})
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

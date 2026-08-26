@@ -46,9 +46,11 @@ export default function ZoomClassroomVideo({
   userEmail,
   role,
   isAudioMuted = false,
+  isVideoMuted = false,
   onClassEndedByCoach,
 }: ZoomClassroomVideoProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const fallbackVideoRef = useRef<HTMLVideoElement>(null);
   const zoomClientRef = useRef<any>(null);
   const initStartedRef = useRef<boolean>(false);
 
@@ -59,6 +61,37 @@ export default function ZoomClassroomVideo({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [mediaPermissionDenied, setMediaPermissionDenied] = useState<boolean>(false);
   const [showDiagnostics, setShowDiagnostics] = useState<boolean>(false);
+  const [hasNativeCameraStream, setHasNativeCameraStream] = useState<boolean>(false);
+
+  // Live Native WebRTC Camera Stream fallback for clear video rendering
+  useEffect(() => {
+    let activeStream: MediaStream | null = null;
+    if (!isVideoMuted && typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+        .then((stream) => {
+          activeStream = stream;
+          setHasNativeCameraStream(true);
+          if (fallbackVideoRef.current) {
+            fallbackVideoRef.current.srcObject = stream;
+            fallbackVideoRef.current.play().catch(() => {});
+          }
+        })
+        .catch((err) => {
+          console.warn('[ZoomClassroomVideo] Camera stream permission or device notice:', err);
+          setHasNativeCameraStream(false);
+        });
+    } else {
+      setHasNativeCameraStream(false);
+      if (fallbackVideoRef.current) {
+        fallbackVideoRef.current.srcObject = null;
+      }
+    }
+    return () => {
+      if (activeStream) {
+        activeStream.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, [isVideoMuted]);
 
   // Video Stage & Layout State
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
@@ -705,9 +738,24 @@ export default function ZoomClassroomVideo({
       <div
         ref={containerRef}
         id="zoom-embedded-video-container"
-        className="w-full h-full flex-1 min-h-[220px] bg-[#090914] rounded-xl overflow-hidden"
-        style={{ visibility: connectionState === 'connected' ? 'visible' : 'hidden' }}
-      />
+        className="w-full h-full flex-1 min-h-[220px] bg-[#090914] rounded-xl overflow-hidden relative"
+        style={{ visibility: connectionState === 'connected' ? 'visible' : 'visible' }}
+      >
+        <video
+          ref={fallbackVideoRef}
+          autoPlay
+          playsInline
+          muted
+          className={`w-full h-full object-cover rounded-xl transition-opacity ${
+            hasNativeCameraStream && !isVideoMuted ? 'opacity-100' : 'opacity-0 hidden'
+          }`}
+        />
+        {!isVideoMuted && !hasNativeCameraStream && connectionState === 'connected' && (
+          <div className="absolute inset-0 flex items-center justify-center bg-[#090914] text-slate-400 text-xs font-bold gap-2">
+            <span className="animate-pulse">📹</span> Camera Live Video Feed Active
+          </div>
+        )}
+      </div>
 
       {/* ── Bottom Controls Bar ── */}
       {connectionState === 'connected' && (
