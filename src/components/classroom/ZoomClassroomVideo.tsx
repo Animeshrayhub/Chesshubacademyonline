@@ -769,7 +769,7 @@ export default function ZoomClassroomVideo({
       )}
 
       {/* ── Zoom Embedded Container (Strictly Scoped CSS) ── */}
-      <style>{`
+      <style dangerouslySetInnerHTML={{ __html: `
         #zoom-embedded-video-container {
           position: relative !important;
           width: 100% !important;
@@ -798,7 +798,7 @@ export default function ZoomClassroomVideo({
         body > [id*="zmmtg-root"] {
           display: none !important;
         }
-      `}</style>
+      ` }} />
       <div
         ref={containerRef}
         id="zoom-embedded-video-container"
