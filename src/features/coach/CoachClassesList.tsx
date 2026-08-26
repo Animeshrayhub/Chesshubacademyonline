@@ -638,6 +638,7 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
                   : c
               )
             );
+            setActiveTab('COMPLETED');
             router.refresh();
           }}
         />

@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useTransition } from 'react';
+import React, { useState, useEffect, useTransition } from 'react';
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import { completeClassSessionAction } from '@/actions/classes';
+import { playChessSound } from '@/utils/chessAudio';
 
 interface CoachClassCompletionModalProps {
   isOpen: boolean;
@@ -25,9 +26,28 @@ export default function CoachClassCompletionModal({
   const [topicCovered, setTopicCovered] = useState('Tactics & Endgame Fundamentals');
   const [sessionNotes, setSessionNotes] = useState('');
   const [recordingUrl, setRecordingUrl] = useState('');
+  const [assignHomework, setAssignHomework] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [dispatchSuccess, setDispatchSuccess] = useState(false);
   const [isPending, startTransition] = useTransition();
+
+  // Restore draft from localStorage when opening
+  useEffect(() => {
+    if (isOpen && typeof window !== 'undefined') {
+      try {
+        const savedDraft = localStorage.getItem(`completion_notes_draft_${classId}`);
+        if (savedDraft) setSessionNotes(savedDraft);
+      } catch {}
+    }
+  }, [isOpen, classId]);
+
+  // Auto-save draft on notes change
+  const handleNotesChange = (val: string) => {
+    setSessionNotes(val);
+    if (typeof window !== 'undefined' && classId) {
+      try { localStorage.setItem(`completion_notes_draft_${classId}`, val); } catch {}
+    }
+  };
 
   // Attendance state map: studentId -> 'PRESENT' | 'LATE' | 'ABSENT' | 'EXCUSED'
   const [attendanceMap, setAttendanceMap] = useState<Record<string, 'PRESENT' | 'LATE' | 'ABSENT' | 'EXCUSED'>>(() => {
@@ -54,6 +74,22 @@ export default function CoachClassCompletionModal({
       return;
     }
 
+    // Auto-attach moves PGN from localStorage if available
+    let pgnNotes = '';
+    if (typeof window !== 'undefined' && classId) {
+      try {
+        const movesRaw = localStorage.getItem(`classroom_moves_${classId}`);
+        if (movesRaw) {
+          const moves = JSON.parse(movesRaw);
+          if (Array.isArray(moves) && moves.length > 0) {
+            pgnNotes = `\n\n--- IN-CLASS MOVES PLAYED ---\n${moves.join(' ')}`;
+          }
+        }
+      } catch {}
+    }
+
+    const finalNotes = `[Topic: ${topicCovered}] ${sessionNotes.trim()}${pgnNotes}`;
+
     const attendanceArray = Object.entries(attendanceMap).map(([studentId, status]) => ({
       studentId,
       status,
@@ -62,14 +98,21 @@ export default function CoachClassCompletionModal({
     startTransition(async () => {
       const res = await completeClassSessionAction({
         classId,
-        sessionNotes: `[Topic: ${topicCovered}] ${sessionNotes.trim()}`,
+        sessionNotes: finalNotes,
         topicCovered,
         recordingUrl: recordingUrl.trim() || undefined,
         attendance: attendanceArray,
       });
 
       if (res && res.success) {
+        playChessSound('victory');
         setDispatchSuccess(true);
+
+        // Clear draft
+        if (typeof window !== 'undefined' && classId) {
+          try { localStorage.removeItem(`completion_notes_draft_${classId}`); } catch {}
+        }
+
         setTimeout(() => {
           if (onCompleted) onCompleted();
           onClose();
@@ -167,7 +210,7 @@ export default function CoachClassCompletionModal({
               rows={3}
               placeholder="e.g. Students demonstrated great tactical insight in the 3-ply puzzle drill. Leo struggled with knight forks — assigned extra homework."
               value={sessionNotes}
-              onChange={(e) => setSessionNotes(e.target.value)}
+              onChange={(e) => handleNotesChange(e.target.value)}
               className="w-full px-3 py-2 border border-border rounded-xl text-xs font-semibold text-text-primary focus:outline-none focus:border-primary"
               required
             />
