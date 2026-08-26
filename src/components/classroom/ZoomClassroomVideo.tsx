@@ -802,9 +802,10 @@ export default function ZoomClassroomVideo({
       <div
         ref={containerRef}
         id="zoom-embedded-video-container"
-        className="w-full h-full flex-1 min-h-[220px] bg-[#090914] rounded-xl overflow-hidden relative border border-[#1e1e38]"
+        className="w-full h-full flex-1 min-h-[220px] bg-[#28282c] rounded-xl overflow-hidden relative border border-[#38383e] shadow-inner"
         style={{ visibility: connectionState === 'connected' ? 'visible' : 'visible' }}
       >
+        {/* Live Native Camera Feed */}
         <video
           ref={fallbackVideoRef}
           autoPlay
@@ -814,21 +815,34 @@ export default function ZoomClassroomVideo({
             hasNativeCameraStream && !isVideoMuted ? 'opacity-100' : 'opacity-0 hidden'
           }`}
         />
-        {/* Sleek Gradient Avatar Card when Camera is OFF */}
+
+        {/* Sleek Reference UI Avatar Card when Camera is OFF */}
         {(isVideoMuted || (!hasNativeCameraStream && connectionState === 'connected')) && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-gradient-to-br from-[#0c0c1e] via-[#141428] to-[#070714] p-4 text-center space-y-2">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-500 border-2 border-indigo-400/50 flex items-center justify-center text-white text-xl font-black shadow-lg animate-pulse">
-              {(userName || 'User').split(' ').map((n) => n.charAt(0)).join('').toUpperCase().slice(0, 2)}
-            </div>
-            <div>
-              <p className="text-xs font-bold text-white tracking-tight">{userName}</p>
-              <p className="text-[10px] font-semibold text-emerald-400 flex items-center justify-center gap-1 mt-0.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                <span>{audioDiag.isMuted ? '🔇 Audio Muted' : '🎙️ Live Voice Active'}</span>
-              </p>
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#28282c] p-4 relative">
+            {/* Centered Green Circle Avatar */}
+            <div className="w-20 h-20 rounded-full bg-[#16a34a] border-2 border-emerald-400/40 flex items-center justify-center text-white text-3xl font-extrabold shadow-xl">
+              {(userName || 'A').charAt(0).toUpperCase()}
             </div>
           </div>
         )}
+
+        {/* Bottom-Left Name Badge matching reference UI */}
+        <div className="absolute bottom-3 left-3 z-20 px-2.5 py-1 bg-black/80 backdrop-blur rounded-lg border border-white/10 text-[11px] font-bold text-white flex items-center gap-1.5 shadow-md pointer-events-auto">
+          <span>{userName || 'Animesh Ray'} (You)</span>
+          <span className={localMuted ? 'text-red-400' : 'text-emerald-400'}>
+            {localMuted ? '🎙️❌' : '🎙️'}
+          </span>
+        </div>
+
+        {/* Bottom-Right Fullscreen Expand Button matching reference UI */}
+        <button
+          type="button"
+          onClick={() => setIsFullscreen((f) => !f)}
+          title="Fullscreen Stage Mode"
+          className="absolute bottom-3 right-3 z-20 w-7 h-7 bg-black/80 hover:bg-black border border-white/15 text-white rounded-lg flex items-center justify-center text-xs transition-all shadow-md cursor-pointer pointer-events-auto"
+        >
+          ⛶
+        </button>
       </div>
 
       {/* ── Bottom Controls Bar ── */}

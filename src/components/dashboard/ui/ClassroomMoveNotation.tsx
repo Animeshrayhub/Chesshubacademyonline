@@ -288,6 +288,17 @@ export default function ClassroomMoveNotation({
           </div>
         )}
       </div>
+
+      {/* Bottom Control Bar matching Reference UI */}
+      <div className="px-3 py-2 bg-[#1a1a24] border-t border-[#2a2a38] flex items-center justify-between text-[11px] text-[#aaaabb] font-bold shrink-0 select-none">
+        <label className="flex items-center gap-2 cursor-pointer hover:text-white transition-colors">
+          <div className="relative inline-flex items-center">
+            <input type="checkbox" defaultChecked className="sr-only peer" />
+            <div className="w-8 h-4 bg-[#383848] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-600"></div>
+          </div>
+          <span className="uppercase tracking-wider text-[10px]">SHOW MOVES FOR PARTICIPANTS</span>
+        </label>
+      </div>
     </div>
   );
 }
