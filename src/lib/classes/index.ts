@@ -909,6 +909,7 @@ export async function completeClassSession(
     let updatedClass: any = null;
     let classErr: any = null;
 
+    // Tier 1: Try updating status, session_notes, recording_url
     try {
       const { data, error } = await admin
         .from('classes')
@@ -928,23 +929,47 @@ export async function completeClassSession(
       classErr = e;
     }
 
-    // Fallback if recording_url column is missing on classes table
+    // Tier 2: Try updating status, session_notes (without recording_url)
     if (classErr) {
-      const { data: fbData, error: fbErr } = await admin
+      try {
+        const { data: fbData, error: fbErr } = await admin
+          .from('classes')
+          .update({
+            status: classStatus,
+            session_notes: input.sessionNotes,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', input.classId)
+          .select()
+          .maybeSingle();
+
+        if (!fbErr) {
+          updatedClass = fbData;
+          classErr = null;
+        } else {
+          classErr = fbErr;
+        }
+      } catch (e: any) {
+        classErr = e;
+      }
+    }
+
+    // Tier 3: Core Fallback — update status and updated_at ONLY (guarantees completion even if session_notes column is missing)
+    if (classErr) {
+      const { data: finalData, error: finalErr } = await admin
         .from('classes')
         .update({
           status: classStatus,
-          session_notes: input.sessionNotes,
           updated_at: new Date().toISOString(),
         })
         .eq('id', input.classId)
         .select()
         .maybeSingle();
 
-      if (fbErr) {
-        return { success: false, error: new DatabaseError('Failed to complete class session', fbErr) };
+      if (finalErr) {
+        return { success: false, error: new DatabaseError('Failed to complete class session', finalErr) };
       }
-      updatedClass = fbData;
+      updatedClass = finalData;
     }
 
     // 2. Insert attendance records into class_attendance if any
