@@ -369,8 +369,15 @@ export default function ZoomClassroomVideo({
       setDiagStep('JOINED');
       setAudioDiag((prev) => ({ ...prev, meetingJoined: true }));
 
-      // ── 7. Post-join: verify actual audio connection state ────────────
-      // The SDK auto-connects audio after join; we verify immediately and after a delay
+      // ── 7. Post-join: auto-connect audio stream ───────────────────────
+      try {
+        if (typeof (clientInstance as any).joinAudio === 'function') {
+          await (clientInstance as any).joinAudio();
+        }
+      } catch (aErr) {
+        console.warn('[zoom] Auto joinAudio notice:', aErr);
+      }
+
       syncCurrentUserAudio(clientInstance);
       refreshParticipants(clientInstance);
 
@@ -445,27 +452,34 @@ export default function ZoomClassroomVideo({
    */
   const handleToggleMute = async () => {
     const client = zoomClientRef.current;
-    if (!client || typeof client.mute !== 'function') return;
+    if (!client) return;
+
+    // If audio is not connected, attempt audio join first
+    if (!audioDiag.audioConnected && typeof client.joinAudio === 'function') {
+      try { await client.joinAudio(); } catch {}
+    }
+
+    if (typeof client.mute !== 'function') return;
     if (muteLoading) return;
 
-    const targetMuted = !localMuted;
     setMuteLoading(true);
     setAudioDiag((prev) => ({ ...prev, sdkMuteError: null }));
 
-    try {
-      const result = await client.mute(targetMuted);
+    const targetMuted = !localMuted;
 
-      // SDK returns '' on success, or an ExecutedFailure object on failure
-      if (result && typeof result === 'object' && 'type' in result) {
+    try {
+      const result = await client.mute({
+        muted: targetMuted,
+        userId: client.getCurrentUser?.()?.userId,
+      });
+
+      if (result && typeof result === 'object' && 'type' in result && result.type !== 'success') {
         const failure = result as { type: string; reason: string };
         const errMsg = `Mute failed: ${failure.type} — ${failure.reason}`;
         console.error('[zoom] mute ExecutedFailure:', failure);
         setAudioDiag((prev) => ({ ...prev, sdkMuteError: errMsg }));
-        // Do NOT update localMuted — SDK rejected the operation
       } else {
-        // Success — update React state and sync from SDK to confirm
         setLocalMuted(targetMuted);
-        // Re-sync from SDK to get authoritative state
         setTimeout(() => syncCurrentUserAudio(client), 300);
       }
     } catch (e: any) {
@@ -489,11 +503,21 @@ export default function ZoomClassroomVideo({
   };
 
   /**
-   * Autoplay unlock — triggered by a deliberate user click.
-   * Resumes suspended AudioContext instances so the browser allows remote audio playback.
+   * Autoplay unlock & Audio Join — triggered by a deliberate user click.
+   * Resumes suspended AudioContext instances and joins Zoom computer audio.
    */
   const handleUnlockAudio = async () => {
     try {
+      const client = zoomClientRef.current;
+      if (client) {
+        if (typeof client.joinAudio === 'function') {
+          try { await client.joinAudio(); } catch {}
+        }
+        if (typeof client.startAudio === 'function') {
+          try { await client.startAudio(); } catch {}
+        }
+      }
+
       const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
       if (AudioContext) {
         const ctx = new AudioContext();
@@ -508,6 +532,32 @@ export default function ZoomClassroomVideo({
     } catch {
       // ignore
     }
+  };
+
+  const handleMuteAllStudents = async () => {
+    const client = zoomClientRef.current;
+    if (!client || !isCoach) return;
+    if (typeof client.muteAll === 'function') {
+      try { await client.muteAll(true); } catch {}
+    }
+  };
+
+  const handleTestAudio = () => {
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContext) {
+        const ctx = new AudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.4);
+      }
+    } catch {}
   };
 
   // ── Derived display values ────────────────────────────────────────────────
@@ -811,30 +861,61 @@ export default function ZoomClassroomVideo({
               <span>{viewType === 'gallery' ? 'Gallery' : 'Speaker'}</span>
             </button>
 
-            {/* Autoplay unlock — compact version always in controls when needed */}
-            {audioDiag.autoplayBlocked && (
+            {/* Connect Audio / Enable Audio Button */}
+            {(!audioDiag.audioConnected || audioDiag.autoplayBlocked) && (
               <button
                 type="button"
                 onClick={handleUnlockAudio}
-                className="px-2.5 py-1 bg-amber-700 hover:bg-amber-600 border border-amber-500/60 text-[10px] font-bold text-amber-100 rounded-lg transition-colors flex items-center gap-1 animate-pulse"
+                className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-black rounded-lg shadow-md transition-all flex items-center gap-1.5 animate-pulse border border-amber-400/80 cursor-pointer"
+                title="Click to connect microphone & speaker live voice"
               >
                 <span>🔊</span>
-                <span>Enable Audio</span>
+                <span>Connect Voice Audio</span>
               </button>
             )}
+
+            {/* Coach Master Mute All Students */}
+            {isCoach && (
+              <button
+                type="button"
+                onClick={handleMuteAllStudents}
+                className="px-2 py-1 bg-rose-950/80 hover:bg-rose-900 border border-rose-800/60 text-[10px] font-bold text-rose-300 rounded-lg transition-colors flex items-center gap-1"
+                title="Mute all student microphones"
+              >
+                <span>🔇</span>
+                <span>Mute All</span>
+              </button>
+            )}
+
+            {/* Test Audio Tool */}
+            <button
+              type="button"
+              onClick={handleTestAudio}
+              className="px-2 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[10px] font-bold text-slate-300 rounded-lg transition-colors flex items-center gap-1"
+              title="Play local audio test tone"
+            >
+              <span>🎵</span>
+              <span>Test Audio</span>
+            </button>
           </div>
 
           <div className="flex items-center gap-2">
             {/* Audio connection status chip */}
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
-              audioDiag.audioConnected
-                ? audioDiag.isMuted
-                  ? 'bg-amber-950 text-amber-300 border-amber-800/60'
-                  : 'bg-emerald-950 text-emerald-400 border-emerald-800/60'
-                : 'bg-red-950/60 text-red-400 border-red-800/60'
-            }`}>
-              {audioDiag.audioConnected ? (audioDiag.isMuted ? '🔇 Muted' : '🎙️ Live') : '⚠️ No Audio'}
-            </span>
+            <button
+              type="button"
+              onClick={handleUnlockAudio}
+              className={`text-[10px] font-extrabold px-2 py-0.5 rounded border transition-all cursor-pointer ${
+                audioDiag.audioConnected
+                  ? audioDiag.isMuted
+                    ? 'bg-amber-950 text-amber-300 border-amber-800/60'
+                    : 'bg-emerald-950 text-emerald-400 border-emerald-800/60 shadow-sm'
+                  : 'bg-red-950/80 text-red-300 border-red-700 animate-bounce'
+              }`}
+            >
+              {audioDiag.audioConnected
+                ? (audioDiag.isMuted ? '🔇 Muted' : '🎙️ Live Voice Connected')
+                : '⚠️ Click to Connect Audio'}
+            </button>
 
             <span className="text-[10px] font-extrabold text-indigo-300 bg-indigo-950 px-2 py-0.5 rounded border border-indigo-800/60">
               👥 {participantCount} {participantCount === 1 ? 'Participant' : 'Participants'}
