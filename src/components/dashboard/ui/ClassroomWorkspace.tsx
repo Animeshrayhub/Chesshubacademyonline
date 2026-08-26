@@ -1415,7 +1415,7 @@ export default function ClassroomWorkspace({
             {/* ── Zoom Meeting SDK Embedded Video Stage ── */}
             {/* Panel mode: fills flex-1 height above tabs. PIP mode: floating draggable overlay */}
             {!videoPipMode && (
-              <div className="flex-shrink-0 relative" style={{ height: '42%', minHeight: '200px', maxHeight: '360px' }}>
+              <div className="flex-shrink-0 relative w-full max-w-full overflow-hidden" style={{ height: '42%', minHeight: '200px', maxHeight: '360px' }}>
                 {/* PIP toggle button */}
                 <button
                   type="button"

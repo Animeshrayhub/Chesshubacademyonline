@@ -768,35 +768,35 @@ export default function ZoomClassroomVideo({
         </div>
       )}
 
-      {/* ── Zoom Embedded Container ── */}
+      {/* ── Zoom Embedded Container (Strictly Scoped CSS) ── */}
       <style>{`
-        #zoom-embedded-video-container,
-        #zoom-embedded-video-container *,
-        [id*="zmmtg-root"],
-        .meeting-client,
-        .speaker-video,
-        .speaker-video__container,
-        .gallery-video,
-        .aria-canvas,
-        .video-canvas,
-        .video-avatar,
-        .video-avatar-container,
-        .main-layout {
+        #zoom-embedded-video-container {
+          position: relative !important;
           width: 100% !important;
           height: 100% !important;
           max-width: 100% !important;
           max-height: 100% !important;
+          overflow: hidden !important;
           box-sizing: border-box !important;
           background-color: #090914 !important;
         }
+        #zoom-embedded-video-container * {
+          box-sizing: border-box !important;
+        }
         #zoom-embedded-video-container canvas,
         #zoom-embedded-video-container video,
-        .video-canvas canvas,
-        .speaker-video canvas {
+        #zoom-embedded-video-container .speaker-video,
+        #zoom-embedded-video-container .gallery-video,
+        #zoom-embedded-video-container .video-canvas {
           width: 100% !important;
           height: 100% !important;
+          max-width: 100% !important;
+          max-height: 100% !important;
           object-fit: cover !important;
           border-radius: 0.75rem !important;
+        }
+        body > [id*="zmmtg-root"] {
+          display: none !important;
         }
       `}</style>
       <div
