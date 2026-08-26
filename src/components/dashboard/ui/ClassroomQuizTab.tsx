@@ -1,13 +1,25 @@
 'use client';
 
-import React, { useState, useId } from 'react';
+import React, { useState, useEffect, useId, useCallback } from 'react';
+import {
+  fetchQuizQuestionsAction,
+  createQuizSessionAction,
+  saveQuizAnswerAction,
+  endQuizSessionAction,
+  saveQuizResultsAction,
+  type QuizQuestionDB,
+} from '@/actions/quiz';
 
+// ── Types ─────────────────────────────────────────────────────────────────────
 interface QuizQuestion {
   id: string;
   question: string;
   options: string[];
   correctIndex: number;
   timerSec: number | null;
+  explanation?: string | null;
+  topic?: string;
+  difficulty?: string;
 }
 
 interface QuizAnswer {
@@ -27,11 +39,14 @@ interface StudentInfo {
 
 interface ClassroomQuizTabProps {
   isCoach: boolean;
+  classId: string;
+  userId?: string;
   activeQuiz: QuizQuestion | null;
   quizAnswers: QuizAnswer[];
   myQuizAnswer: number | null;
   quizRevealed: boolean;
   quizTimeLeft: number | null;
+  /** External quiz bank passed from parent (localStorage cache) */
   quizBank: QuizQuestion[];
   students: StudentInfo[];
   onLaunchQuiz: (q: QuizQuestion) => void;
@@ -49,86 +64,49 @@ const OPTION_COLORS = [
   { bg: 'bg-rose-600/20', border: 'border-rose-500/40', text: 'text-rose-200', hover: 'hover:bg-rose-600/40' },
 ];
 
-const DEFAULT_QUIZ_QUESTIONS: QuizQuestion[] = [
-  {
-    id: 'q_def_1',
-    question: 'What is the point value of a Rook in standard chess relative scoring?',
-    options: ['3 Points', '5 Points', '9 Points', '1 Point'],
-    correctIndex: 1,
-    timerSec: 30,
-  },
-  {
-    id: 'q_def_2',
-    question: 'Which chess piece is the only one capable of jumping over other pieces?',
-    options: ['Bishop', 'Rook', 'Knight', 'Queen'],
-    correctIndex: 2,
-    timerSec: 30,
-  },
-  {
-    id: 'q_def_3',
-    question: 'What is it called when a pawn reaches the enemy back rank (8th rank)?',
-    options: ['En Passant', 'Promotion', 'Castling', 'Checkmate'],
-    correctIndex: 1,
-    timerSec: 30,
-  },
-  {
-    id: 'q_def_4',
-    question: 'Which tactical move attacks two or more enemy pieces simultaneously with a single piece?',
-    options: ['Pin', 'Skewer', 'Fork', 'Battery'],
-    correctIndex: 2,
-    timerSec: 30,
-  },
-  {
-    id: 'q_def_5',
-    question: 'What is the special move involving the King and a Rook for king safety?',
-    options: ['En Passant', 'Promotion', 'Castling', 'Fianchetto'],
-    correctIndex: 2,
-    timerSec: 30,
-  },
-  {
-    id: 'q_def_6',
-    question: 'What happens when a King is attacked and has no legal moves to escape or block?',
-    options: ['Stalemate', 'Checkmate', 'Draw by Repetition', 'Resignation'],
-    correctIndex: 1,
-    timerSec: 30,
-  },
-  {
-    id: 'q_def_7',
-    question: 'In the opening phase of a game, control of which board area is most essential?',
-    options: ['Flanks', 'Center (d4, e4, d5, e5)', 'Back Rank', 'Corners'],
-    correctIndex: 1,
-    timerSec: 30,
-  },
-  {
-    id: 'q_def_8',
-    question: 'Which piece can move diagonally any number of open squares?',
-    options: ['Rook', 'Bishop', 'Knight', 'Pawn'],
-    correctIndex: 1,
-    timerSec: 30,
-  },
-  {
-    id: 'q_def_9',
-    question: 'What is the result of a game when a player has no legal moves but is NOT in check?',
-    options: ['Win for White', 'Win for Black', 'Stalemate (Draw)', 'Loss for Active Player'],
-    correctIndex: 2,
-    timerSec: 30,
-  },
-  {
-    id: 'q_def_10',
-    question: 'What is a "Pin" in chess tactics?',
-    options: [
-      'A piece is restricted because moving it exposes a higher-value piece behind it',
-      'Attacking the enemy King with two pieces simultaneously',
-      'Pawn capture moving diagonally past another pawn',
-      'Promoting a pawn to a second Queen'
-    ],
-    correctIndex: 0,
-    timerSec: 30,
-  },
-];
+// ── Coach-only DB-backed quiz bank (loaded from quiz_questions table) ─────────
+function useDbQuizBank() {
+  const [dbQuestions, setDbQuestions] = useState<QuizQuestion[]>([]);
+  const [totalAvailable, setTotalAvailable] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetchQuizQuestionsAction(50);
+      if (res.success && res.data) {
+        const mapped: QuizQuestion[] = res.data.map((q: QuizQuestionDB) => ({
+          id: q.id,
+          question: q.question,
+          options: q.options,
+          correctIndex: q.correct_index,
+          timerSec: q.timer_sec ?? 30,
+          explanation: q.explanation,
+          topic: q.topic,
+          difficulty: q.difficulty,
+        }));
+        setDbQuestions(mapped);
+        setTotalAvailable(res.totalAvailable ?? mapped.length);
+      } else {
+        setError(res.error?.message || 'Failed to load questions from database.');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Unexpected error loading questions.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { dbQuestions, totalAvailable, loading, error, load };
+}
+
+// ── Main Component ────────────────────────────────────────────────────────────
 export default function ClassroomQuizTab({
   isCoach,
+  classId,
+  userId,
   activeQuiz,
   quizAnswers,
   myQuizAnswer,
@@ -142,28 +120,80 @@ export default function ClassroomQuizTab({
   onStudentAnswer,
   onSaveToBank,
 }: ClassroomQuizTabProps) {
-  const effectiveBank = propQuizBank && propQuizBank.length > 0 ? propQuizBank : DEFAULT_QUIZ_QUESTIONS;
-  const quizBank = effectiveBank;
   const uid = useId();
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [showBank, setShowBank] = useState(false);
+
+  // ── Coach: DB bank & session tracking ─────────────────────────────────────
+  const { dbQuestions, totalAvailable, loading: dbLoading, error: dbError, load: loadDbQuestions } = useDbQuizBank();
+  const [quizSessionId, setQuizSessionId] = useState<string | null>(null);
+  const [quizIndex, setQuizIndex] = useState(0); // which question in the bank
+  const [coachView, setCoachView] = useState<'bank' | 'create' | 'topics'>('bank');
+
+  // Merge DB questions with prop bank (prop bank = localStorage cache for ad-hoc questions)
+  const allBankQuestions: QuizQuestion[] = [
+    ...dbQuestions,
+    ...(propQuizBank || []).filter((p) => !dbQuestions.some((d) => d.id === p.id)),
+  ];
+
+  // ── Create form state ──────────────────────────────────────────────────────
   const [draftQuestion, setDraftQuestion] = useState('');
   const [draftOptions, setDraftOptions] = useState(['', '', '', '']);
   const [draftCorrect, setDraftCorrect] = useState(0);
-  const [draftTimer, setDraftTimer] = useState<number | null>(null);
+  const [draftTimer, setDraftTimer] = useState<number | null>(30);
 
   const resetForm = () => {
     setDraftQuestion('');
     setDraftOptions(['', '', '', '']);
     setDraftCorrect(0);
-    setDraftTimer(null);
-    setShowCreateForm(false);
+    setDraftTimer(30);
+    setCoachView('bank');
   };
 
-  const handleLaunch = () => {
+  // ── Start a quiz session and launch the first question ────────────────────
+  const handleStartDbQuiz = async () => {
+    if (allBankQuestions.length === 0) return;
+    const qCount = Math.min(allBankQuestions.length, 50);
+
+    // Create persistent session
+    const sessionRes = await createQuizSessionAction(classId, qCount);
+    if (sessionRes.success && sessionRes.data) {
+      setQuizSessionId(sessionRes.data.sessionId);
+    }
+
+    setQuizIndex(0);
+    const first = allBankQuestions[0];
+    onLaunchQuiz(first);
+  };
+
+  // ── Coach launches next question ──────────────────────────────────────────
+  const handleNextQuestion = () => {
+    const next = quizIndex + 1;
+    if (next >= allBankQuestions.length) {
+      // No more questions — end quiz
+      handleEndQuiz();
+      return;
+    }
+    setQuizIndex(next);
+    onReveal(); // brief reveal of previous answer
+    setTimeout(() => {
+      onLaunchQuiz(allBankQuestions[next]);
+    }, 1500);
+  };
+
+  // ── Coach ends quiz and saves results ─────────────────────────────────────
+  const handleEndQuiz = async () => {
+    if (quizSessionId) {
+      await endQuizSessionAction(quizSessionId);
+    }
+    onEndQuiz();
+    setQuizSessionId(null);
+    setQuizIndex(0);
+  };
+
+  // ── Create + launch ad-hoc question ───────────────────────────────────────
+  const handleLaunchAdHoc = async () => {
     if (!draftQuestion.trim() || draftOptions.some((o) => !o.trim())) return;
     const q: QuizQuestion = {
-      id: `q_${Date.now()}`,
+      id: `q_adhoc_${Date.now()}`,
       question: draftQuestion.trim(),
       options: draftOptions.map((o) => o.trim()),
       correctIndex: draftCorrect,
@@ -174,16 +204,32 @@ export default function ClassroomQuizTab({
     resetForm();
   };
 
-  const handleLoadFromBank = (q: QuizQuestion) => {
-    setDraftQuestion(q.question);
-    setDraftOptions([...q.options]);
-    setDraftCorrect(q.correctIndex);
-    setDraftTimer(q.timerSec);
-    setShowBank(false);
-    setShowCreateForm(true);
+  // ── Student: persist answer when submitted ─────────────────────────────────
+  const handleStudentAnswer = async (answerIndex: number) => {
+    onStudentAnswer(answerIndex);
+    // Save to DB (best-effort, non-blocking)
+    if (quizSessionId && activeQuiz && userId) {
+      saveQuizAnswerAction({
+        quizSessionId,
+        questionId: activeQuiz.id,
+        studentId: userId,
+        studentName: userId, // parent could pass userName; this is the studentId
+        answerIndex,
+        correct: answerIndex === activeQuiz.correctIndex,
+      }).catch(() => {/* non-fatal */});
+    }
   };
 
-  // ── STUDENT VIEW ─────────────────────────────────────────────────────────
+  // ── Load DB questions on first coach open ──────────────────────────────────
+  useEffect(() => {
+    if (isCoach && dbQuestions.length === 0 && !dbLoading) {
+      loadDbQuestions();
+    }
+  }, [isCoach, dbQuestions.length, dbLoading, loadDbQuestions]);
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // STUDENT VIEW
+  // ─────────────────────────────────────────────────────────────────────────────
   if (!isCoach) {
     return (
       <div className="flex-1 overflow-y-auto p-3 bg-[#0d0d1a] space-y-3">
@@ -195,14 +241,33 @@ export default function ClassroomQuizTab({
           </div>
         ) : (
           <div className="space-y-3">
+            {/* Timer */}
             {quizTimeLeft !== null && quizTimeLeft > 0 && !quizRevealed && (
               <div className={`flex items-center justify-center gap-2 py-1.5 rounded-lg font-mono font-extrabold text-sm ${quizTimeLeft <= 5 ? 'bg-red-950/80 text-red-300 animate-pulse' : 'bg-[#1a1a32] text-amber-300'}`}>
                 ⏱ {quizTimeLeft}s
               </div>
             )}
+
+            {/* Topic / Difficulty badge */}
+            {(activeQuiz.topic || activeQuiz.difficulty) && (
+              <div className="flex items-center gap-2 flex-wrap">
+                {activeQuiz.topic && (
+                  <span className="text-[9px] px-2 py-0.5 bg-indigo-900/40 text-indigo-300 border border-indigo-700/40 rounded-full font-bold">{activeQuiz.topic}</span>
+                )}
+                {activeQuiz.difficulty && (
+                  <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold border ${activeQuiz.difficulty === 'Advanced' ? 'bg-red-900/40 text-red-300 border-red-700/40' : activeQuiz.difficulty === 'Intermediate' ? 'bg-amber-900/40 text-amber-300 border-amber-700/40' : 'bg-emerald-900/40 text-emerald-300 border-emerald-700/40'}`}>
+                    {activeQuiz.difficulty}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Question */}
             <div className="bg-[#1a1a32] border border-[#2a2a4a] rounded-xl p-3">
               <p className="text-xs font-extrabold text-white leading-relaxed">{activeQuiz.question}</p>
             </div>
+
+            {/* Options */}
             <div className="space-y-2">
               {activeQuiz.options.map((opt, i) => {
                 const colors = OPTION_COLORS[i];
@@ -220,7 +285,7 @@ export default function ClassroomQuizTab({
                     key={i}
                     type="button"
                     disabled={myQuizAnswer !== null || quizRevealed}
-                    onClick={() => onStudentAnswer(i)}
+                    onClick={() => handleStudentAnswer(i)}
                     className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all text-left ${extraClass} disabled:cursor-not-allowed`}
                   >
                     <span className="w-6 h-6 rounded-full border border-current flex items-center justify-center text-[11px] font-extrabold flex-shrink-0">
@@ -231,15 +296,25 @@ export default function ClassroomQuizTab({
                 );
               })}
             </div>
+
+            {/* Revealed result */}
             {quizRevealed && (
-              <div className={`p-3 rounded-xl text-center text-xs font-extrabold ${myQuizAnswer === activeQuiz.correctIndex ? 'bg-emerald-900/50 text-emerald-300 border border-emerald-700/40' : 'bg-red-900/30 text-red-300 border border-red-700/30'}`}>
-                {myQuizAnswer === null
-                  ? "⏰ Time's up! You didn't answer."
-                  : myQuizAnswer === activeQuiz.correctIndex
-                  ? '🎉 Correct! Well done!'
-                  : `❌ Incorrect. Correct answer: ${OPTION_LABELS[activeQuiz.correctIndex]}`}
+              <div>
+                <div className={`p-3 rounded-xl text-center text-xs font-extrabold ${myQuizAnswer === activeQuiz.correctIndex ? 'bg-emerald-900/50 text-emerald-300 border border-emerald-700/40' : 'bg-red-900/30 text-red-300 border border-red-700/30'}`}>
+                  {myQuizAnswer === null
+                    ? "⏰ Time's up! You didn't answer."
+                    : myQuizAnswer === activeQuiz.correctIndex
+                    ? '🎉 Correct! Well done!'
+                    : `❌ Incorrect. Correct: ${OPTION_LABELS[activeQuiz.correctIndex]}`}
+                </div>
+                {activeQuiz.explanation && (
+                  <div className="mt-2 p-2.5 bg-[#1a1a2a] border border-[#2a2a4a] rounded-xl text-[11px] text-[#aaaacc] leading-relaxed">
+                    💡 {activeQuiz.explanation}
+                  </div>
+                )}
               </div>
             )}
+
             {myQuizAnswer !== null && !quizRevealed && (
               <div className="p-2 bg-[#1a1a32] border border-[#2a2a4a] rounded-xl text-center text-xs text-[#8888cc]">
                 ✅ Answer submitted — waiting for coach to reveal…
@@ -251,34 +326,58 @@ export default function ClassroomQuizTab({
     );
   }
 
-  // ── COACH VIEW ────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────────
+  // COACH VIEW
+  // ─────────────────────────────────────────────────────────────────────────────
   const totalStudents = students.length;
 
   return (
     <div className="flex-1 overflow-y-auto bg-[#0d0d1a]">
+      {/* ── Active Quiz View ── */}
       {activeQuiz ? (
         <div className="p-3 space-y-3">
+          {/* Header */}
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <p className="text-[10px] font-extrabold text-[#888899] uppercase tracking-widest">Active Quiz</p>
-            <div className="flex gap-2">
+            <div>
+              <p className="text-[10px] font-extrabold text-[#888899] uppercase tracking-widest">Active Quiz</p>
+              {allBankQuestions.length > 0 && (
+                <p className="text-[10px] text-[#555577]">Question {quizIndex + 1} of {Math.min(allBankQuestions.length, 50)}</p>
+              )}
+            </div>
+            <div className="flex gap-1.5 flex-wrap">
               {!quizRevealed && (
                 <button type="button" onClick={onReveal} className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-extrabold rounded transition-colors">
-                  👁 Reveal Answer
+                  👁 Reveal
                 </button>
               )}
-              <button type="button" onClick={onEndQuiz} className="px-2.5 py-1 bg-red-800/60 hover:bg-red-700/80 text-red-200 text-[10px] font-bold rounded border border-red-700/40 transition-colors">
+              {quizRevealed && quizIndex < Math.min(allBankQuestions.length, 50) - 1 && (
+                <button type="button" onClick={handleNextQuestion} className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-extrabold rounded transition-colors">
+                  Next →
+                </button>
+              )}
+              <button type="button" onClick={handleEndQuiz} className="px-2.5 py-1 bg-red-800/60 hover:bg-red-700/80 text-red-200 text-[10px] font-bold rounded border border-red-700/40 transition-colors">
                 End Quiz
               </button>
             </div>
           </div>
+
+          {/* Timer */}
           {quizTimeLeft !== null && quizTimeLeft > 0 && !quizRevealed && (
             <div className={`text-center font-mono font-extrabold text-sm py-1 rounded-lg ${quizTimeLeft <= 5 ? 'bg-red-950/80 text-red-300 animate-pulse' : 'bg-[#1a1a32] text-amber-300'}`}>
               ⏱ {quizTimeLeft}s remaining
             </div>
           )}
+
+          {/* Question */}
           <div className="bg-[#1a1a32] border border-[#2a2a4a] rounded-xl p-3">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              {activeQuiz.topic && <span className="text-[9px] px-1.5 py-0.5 bg-indigo-900/40 text-indigo-300 border border-indigo-700/40 rounded-full font-bold">{activeQuiz.topic}</span>}
+              {activeQuiz.difficulty && <span className="text-[9px] px-1.5 py-0.5 bg-amber-900/40 text-amber-300 border border-amber-700/40 rounded-full font-bold">{activeQuiz.difficulty}</span>}
+            </div>
             <p className="text-xs font-bold text-white">{activeQuiz.question}</p>
           </div>
+
+          {/* Response bars */}
           <div className="space-y-2">
             <p className="text-[10px] font-bold text-[#555577] uppercase tracking-widest">
               Responses: {quizAnswers.length} / {totalStudents}
@@ -291,7 +390,7 @@ export default function ClassroomQuizTab({
               return (
                 <div key={i} className="space-y-0.5">
                   <div className="flex items-center justify-between text-[10px] font-bold">
-                    <span className={colors.text}>{OPTION_LABELS[i]}: {opt.slice(0, 28)}{opt.length > 28 ? '…' : ''}</span>
+                    <span className={colors.text}>{OPTION_LABELS[i]}: {opt.slice(0, 30)}{opt.length > 30 ? '…' : ''}</span>
                     <span className={isCorrect && quizRevealed ? 'text-emerald-400 font-extrabold' : 'text-[#888899]'}>{count}{isCorrect && quizRevealed ? ' ✓' : ''}</span>
                   </div>
                   <div className="h-4 bg-[#1a1a2a] rounded-full overflow-hidden">
@@ -301,71 +400,132 @@ export default function ClassroomQuizTab({
               );
             })}
           </div>
+
+          {/* Student answer list */}
           {quizAnswers.length > 0 && (
             <div className="space-y-1">
-              <p className="text-[10px] font-bold text-[#555577] uppercase">Responses:</p>
+              <p className="text-[10px] font-bold text-[#555577] uppercase">Student Answers:</p>
               {quizAnswers.map((a) => (
                 <div key={a.studentId} className="flex items-center gap-2 text-[10px] bg-[#1a1a2a] rounded px-2 py-1">
-                  <span className="font-bold text-white">{a.studentName}</span>
-                  <span className={`px-1 rounded font-extrabold ${a.answerIndex === activeQuiz.correctIndex ? 'bg-emerald-900/50 text-emerald-300' : 'bg-red-900/40 text-red-300'}`}>
+                  <span className="font-bold text-white truncate max-w-[80px]">{a.studentName}</span>
+                  <span className={`px-1.5 rounded font-extrabold ${a.answerIndex === activeQuiz.correctIndex ? 'bg-emerald-900/50 text-emerald-300' : 'bg-red-900/40 text-red-300'}`}>
                     {OPTION_LABELS[a.answerIndex]}{quizRevealed && (a.answerIndex === activeQuiz.correctIndex ? ' ✓' : ' ✗')}
                   </span>
                 </div>
               ))}
             </div>
           )}
+
+          {/* Explanation (after reveal) */}
+          {quizRevealed && activeQuiz.explanation && (
+            <div className="p-2.5 bg-[#1a1a2a] border border-[#2a2a4a] rounded-xl text-[11px] text-[#aaaacc] leading-relaxed">
+              💡 {activeQuiz.explanation}
+            </div>
+          )}
         </div>
+
       ) : (
+        /* ── Idle Coach View ── */
         <div className="p-3 space-y-3">
-          <p className="text-[10px] font-extrabold text-[#888899] uppercase tracking-widest">In-Class Quiz</p>
-          {!showCreateForm && (
-            <div className="flex gap-2">
-              <button type="button" onClick={() => { setShowCreateForm(true); setShowBank(false); }} className="flex-1 py-2.5 bg-[#c84b31] hover:bg-[#d55339] text-white text-[11px] font-extrabold rounded-xl transition-colors flex items-center justify-center gap-1.5">
-                <span>✏️</span><span>Create Question</span>
-              </button>
-              <button type="button" onClick={() => setShowBank((v) => !v)} className="flex-1 py-2.5 bg-[#1a1a32] hover:bg-[#252548] border border-[#2a2a4a] text-[#aaaacc] text-[11px] font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5">
-                <span>📚</span><span>Bank ({quizBank.length})</span>
-              </button>
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-extrabold text-[#888899] uppercase tracking-widest">In-Class Quiz</p>
+            <button type="button" onClick={loadDbQuestions} disabled={dbLoading}
+              className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold transition-colors disabled:opacity-50">
+              {dbLoading ? '⏳ Loading…' : '🔄 Refresh'}
+            </button>
+          </div>
+
+          {/* DB question count status */}
+          {totalAvailable !== null && (
+            <div className={`p-2.5 rounded-xl border text-[10px] font-bold flex items-center gap-2 ${totalAvailable >= 50 ? 'bg-emerald-950/50 border-emerald-700/40 text-emerald-300' : totalAvailable > 0 ? 'bg-amber-950/50 border-amber-700/40 text-amber-300' : 'bg-red-950/50 border-red-700/40 text-red-300'}`}>
+              <span>{totalAvailable >= 50 ? '✅' : totalAvailable > 0 ? '⚠️' : '❌'}</span>
+              <span>
+                {totalAvailable >= 50
+                  ? `${totalAvailable} questions ready (50-question quiz available)`
+                  : totalAvailable > 0
+                  ? `Only ${totalAvailable} valid questions available. 50 are required for full quiz.`
+                  : 'No active questions in database. Add questions via admin panel.'}
+              </span>
             </div>
           )}
-          {showBank && !showCreateForm && (
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {quizBank.length === 0 ? (
-                <p className="text-xs text-[#555577] italic text-center py-4">No saved questions yet.</p>
-              ) : (
-                quizBank.map((q) => (
-                  <div key={q.id} className="bg-[#1a1a32] border border-[#2a2a4a] rounded-xl p-3 cursor-pointer hover:border-[#c84b31]/60 transition-colors" onClick={() => handleLoadFromBank(q)}>
-                    <p className="text-xs font-bold text-white leading-tight mb-1">{q.question}</p>
-                    <div className="flex gap-1 flex-wrap">
-                      {q.options.map((o, i) => (
-                        <span key={i} className={`text-[9px] px-1.5 py-0.5 rounded ${i === q.correctIndex ? 'bg-emerald-900/50 text-emerald-300' : 'bg-[#252548] text-[#666688]'}`}>
-                          {OPTION_LABELS[i]}: {o.slice(0, 16)}{o.length > 16 ? '…' : ''}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))
+
+          {dbError && (
+            <div className="p-2.5 bg-red-950/50 border border-red-700/40 text-red-300 text-[10px] rounded-xl">
+              ⚠️ {dbError}
+            </div>
+          )}
+
+          {/* Tab switcher */}
+          <div className="flex gap-1.5">
+            {(['bank', 'create'] as const).map((v) => (
+              <button key={v} type="button" onClick={() => setCoachView(v)}
+                className={`flex-1 py-1.5 text-[10px] font-extrabold rounded-lg border transition-all ${coachView === v ? 'bg-[#c84b31] border-[#c84b31] text-white' : 'bg-[#1a1a32] border-[#2a2a4a] text-[#888899] hover:border-[#c84b31]/60'}`}>
+                {v === 'bank' ? `📚 Question Bank (${allBankQuestions.length})` : '✏️ Create Custom'}
+              </button>
+            ))}
+          </div>
+
+          {/* ── Question Bank View ── */}
+          {coachView === 'bank' && (
+            <div className="space-y-2">
+              {/* Start Full Quiz CTA */}
+              {allBankQuestions.length > 0 && (
+                <button type="button" onClick={handleStartDbQuiz}
+                  className="w-full py-3 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-extrabold text-xs rounded-xl shadow transition-all flex items-center justify-center gap-2">
+                  🚀 Start {Math.min(allBankQuestions.length, 50)}-Question Quiz
+                </button>
               )}
+
+              {/* Question list */}
+              <div className="max-h-64 overflow-y-auto space-y-1.5">
+                {allBankQuestions.length === 0 && !dbLoading && (
+                  <p className="text-xs text-[#555577] italic text-center py-4">
+                    {dbError ? 'Failed to load questions.' : 'No questions available. Click Refresh or Create Custom.'}
+                  </p>
+                )}
+                {allBankQuestions.slice(0, 50).map((q, idx) => (
+                  <div
+                    key={q.id}
+                    onClick={() => onLaunchQuiz(q)}
+                    className="bg-[#1a1a32] border border-[#2a2a4a] rounded-xl p-2.5 cursor-pointer hover:border-[#c84b31]/60 transition-colors"
+                  >
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-[9px] font-bold text-[#555577]">#{idx + 1}</span>
+                      {q.topic && <span className="text-[8px] px-1 py-0.5 bg-indigo-900/40 text-indigo-300 rounded font-bold">{q.topic}</span>}
+                      {q.difficulty && <span className="text-[8px] px-1 py-0.5 bg-amber-900/40 text-amber-300 rounded font-bold">{q.difficulty}</span>}
+                    </div>
+                    <p className="text-[11px] font-bold text-white leading-tight">
+                      {q.question.slice(0, 70)}{q.question.length > 70 ? '…' : ''}
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
-          {showCreateForm && (
+
+          {/* ── Create Custom Question View ── */}
+          {coachView === 'create' && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-[11px] font-extrabold text-white">New Quiz Question</p>
-                <button type="button" onClick={resetForm} className="text-[10px] text-[#888899] hover:text-white transition-colors">✕ Cancel</button>
-              </div>
               <div>
                 <label className="block text-[10px] font-bold text-[#888899] uppercase mb-1">Question</label>
-                <textarea rows={2} value={draftQuestion} onChange={(e) => setDraftQuestion(e.target.value)} placeholder="e.g. What is the best move for white here?" className="w-full bg-[#1a1a32] border border-[#2a2a4a] rounded-lg px-2.5 py-2 text-xs text-white placeholder-[#444466] focus:outline-none focus:border-[#c84b31] resize-none" />
+                <textarea rows={2} value={draftQuestion} onChange={(e) => setDraftQuestion(e.target.value)}
+                  placeholder="e.g. What is the best move for white here?"
+                  className="w-full bg-[#1a1a32] border border-[#2a2a4a] rounded-lg px-2.5 py-2 text-xs text-white placeholder-[#444466] focus:outline-none focus:border-[#c84b31] resize-none" />
               </div>
               <div className="space-y-1.5">
-                <label className="block text-[10px] font-bold text-[#888899] uppercase mb-1">Options <span className="text-[#555577] normal-case">(click to mark correct)</span></label>
+                <label className="block text-[10px] font-bold text-[#888899] uppercase mb-1">
+                  Options <span className="text-[#555577] normal-case">(click circle to mark correct)</span>
+                </label>
                 {draftOptions.map((opt, i) => (
                   <div key={i} className="flex items-center gap-2">
-                    <button type="button" onClick={() => setDraftCorrect(i)} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-[10px] font-extrabold flex-shrink-0 transition-all ${draftCorrect === i ? 'bg-emerald-600 border-emerald-400 text-white' : 'bg-transparent border-[#3a3a5a] text-[#666688] hover:border-[#8888cc]'}`}>
+                    <button type="button" onClick={() => setDraftCorrect(i)}
+                      className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-[10px] font-extrabold flex-shrink-0 transition-all ${draftCorrect === i ? 'bg-emerald-600 border-emerald-400 text-white' : 'bg-transparent border-[#3a3a5a] text-[#666688] hover:border-[#8888cc]'}`}>
                       {draftCorrect === i ? '✓' : OPTION_LABELS[i]}
                     </button>
-                    <input id={`${uid}-opt-${i}`} type="text" value={opt} onChange={(e) => { const next = [...draftOptions]; next[i] = e.target.value; setDraftOptions(next); }} placeholder={`Option ${OPTION_LABELS[i]}`} className="flex-1 bg-[#1a1a32] border border-[#2a2a4a] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-[#444466] focus:outline-none focus:border-[#c84b31]" />
+                    <input id={`${uid}-opt-${i}`} type="text" value={opt}
+                      onChange={(e) => { const next = [...draftOptions]; next[i] = e.target.value; setDraftOptions(next); }}
+                      placeholder={`Option ${OPTION_LABELS[i]}`}
+                      className="flex-1 bg-[#1a1a32] border border-[#2a2a4a] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-[#444466] focus:outline-none focus:border-[#c84b31]" />
                   </div>
                 ))}
               </div>
@@ -373,21 +533,18 @@ export default function ClassroomQuizTab({
                 <label className="block text-[10px] font-bold text-[#888899] uppercase mb-1">Countdown Timer</label>
                 <div className="flex gap-2">
                   {([null, 15, 30, 60] as Array<number | null>).map((t) => (
-                    <button key={String(t)} type="button" onClick={() => setDraftTimer(t)} className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg border transition-all ${draftTimer === t ? 'bg-[#c84b31] border-[#c84b31] text-white' : 'bg-[#1a1a32] border-[#2a2a4a] text-[#888899] hover:border-[#c84b31]/60'}`}>
+                    <button key={String(t)} type="button" onClick={() => setDraftTimer(t)}
+                      className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg border transition-all ${draftTimer === t ? 'bg-[#c84b31] border-[#c84b31] text-white' : 'bg-[#1a1a32] border-[#2a2a4a] text-[#888899] hover:border-[#c84b31]/60'}`}>
                       {t === null ? 'None' : `${t}s`}
                     </button>
                   ))}
                 </div>
               </div>
-              <button type="button" onClick={handleLaunch} disabled={!draftQuestion.trim() || draftOptions.some((o) => !o.trim())} className="w-full py-3 bg-gradient-to-r from-[#c84b31] to-rose-600 hover:from-[#d55339] hover:to-rose-500 text-white font-extrabold text-xs rounded-xl shadow transition-all disabled:opacity-40 flex items-center justify-center gap-2">
-                🚀 Launch Question to Students
+              <button type="button" onClick={handleLaunchAdHoc}
+                disabled={!draftQuestion.trim() || draftOptions.some((o) => !o.trim())}
+                className="w-full py-3 bg-gradient-to-r from-[#c84b31] to-rose-600 hover:from-[#d55339] hover:to-rose-500 text-white font-extrabold text-xs rounded-xl shadow transition-all disabled:opacity-40 flex items-center justify-center gap-2">
+                🚀 Launch to Students
               </button>
-            </div>
-          )}
-          {!showCreateForm && !showBank && (
-            <div className="text-center py-8">
-              <p className="text-[11px] text-[#555577]">Create a question or load one from your saved bank.</p>
-              <p className="text-[10px] text-[#444466] mt-1">Students will see it instantly on their screen.</p>
             </div>
           )}
         </div>

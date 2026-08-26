@@ -67,6 +67,7 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
   const containerRef = useRef<HTMLDivElement>(null);
   const zoomClientRef = useRef<any>(null);
   const initStartedRef = useRef<boolean>(false);
+  const audioCtxRef = useRef<AudioContext | null>(null); // persistent; never create more than once
 
   const [connectionState, setConnectionState] = useState<
     'connecting' | 'connected' | 'reconnecting' | 'error' | 'disconnected'
@@ -409,6 +410,11 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
         }
         zoomClientRef.current = null;
       }
+      // Close the persistent AudioContext on unmount
+      if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+        try { audioCtxRef.current.close(); } catch {}
+        audioCtxRef.current = null;
+      }
       initStartedRef.current = false;
     };
   }, [startConnection]);
@@ -580,8 +586,8 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
 
   /**
    * Autoplay unlock & Audio Join — triggered by a deliberate user click.
-   * Resumes suspended AudioContext instances and joins Zoom computer audio.
-   * IMPORTANT: Do NOT close the AudioContext here — resuming it is the goal.
+   * Resumes the PERSISTENT AudioContext (creating it only once).
+   * Never creates a new AudioContext per click — that would accumulate zombie contexts.
    */
   const handleUnlockAudio = async () => {
     try {
@@ -595,15 +601,17 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
         }
       }
 
-      // Resume any suspended AudioContext — do NOT close it, that defeats the purpose
+      // Resume the persistent AudioContext (create only once per component lifetime)
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       if (AudioContextClass) {
         try {
-          const ctx = new AudioContextClass();
-          if (ctx.state === 'suspended') {
-            await ctx.resume();
+          if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+            audioCtxRef.current = new AudioContextClass();
           }
-          // Leave context open so audio continues to flow
+          if (audioCtxRef.current.state === 'suspended') {
+            await audioCtxRef.current.resume();
+          }
+          // Leave context open — closing it defeats the purpose
         } catch {
           // ignore
         }

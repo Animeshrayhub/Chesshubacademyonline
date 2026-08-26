@@ -1664,6 +1664,8 @@ export default function ClassroomWorkspace({
                 {rightTab === 'quiz' && (
                   <ClassroomQuizTab
                     isCoach={isCoach}
+                    classId={classId}
+                    userId={userId || userName}
                     activeQuiz={activeQuiz}
                     quizAnswers={quizAnswers}
                     myQuizAnswer={myQuizAnswer}
