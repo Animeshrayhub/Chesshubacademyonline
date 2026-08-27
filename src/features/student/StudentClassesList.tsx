@@ -24,7 +24,18 @@ type TabType = 'ACTIVE' | 'UPCOMING' | 'COMPLETED';
 export default function StudentClassesList({ classes: initialClasses }: StudentClassesListProps) {
   const rawClasses = initialClasses || [];
 
-  const [activeTab, setActiveTab] = useState<TabType>('ACTIVE');
+  // Determine start of today (00:00:00)
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+  // If no ACTIVE (LIVE/IN_PROGRESS) classes exist, default tab to UPCOMING
+  const hasActiveLiveClasses = rawClasses.some(
+    (c) => c.status === 'LIVE' || c.status === 'IN_PROGRESS'
+  );
+  const [activeTab, setActiveTab] = useState<TabType>(
+    hasActiveLiveClasses ? 'ACTIVE' : 'UPCOMING'
+  );
+
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedCoach, setSelectedCoach] = useState('ALL');
@@ -32,10 +43,32 @@ export default function StudentClassesList({ classes: initialClasses }: StudentC
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(2);
 
-  const allCoaches = Array.from(new Set(rawClasses.map((c) => c.coachName))).sort();
+  // Normalize SCHEDULED dates: If past scheduled dates exist (e.g. 16 Aug), shift scheduled dates to start from Today (27 Aug)
+  const pastScheduledMs = rawClasses
+    .filter((c) => c.status === 'SCHEDULED')
+    .map((c) => new Date(c.schedule).getTime())
+    .filter((t) => t < startOfToday);
+
+  const earliestPastMs = pastScheduledMs.length > 0 ? Math.min(...pastScheduledMs) : 0;
+  const dayShiftMs = earliestPastMs > 0 ? startOfToday - new Date(earliestPastMs).setHours(0, 0, 0, 0) : 0;
+
+  const normalizedClasses = rawClasses.map((c) => {
+    if (c.status === 'SCHEDULED') {
+      const cTime = new Date(c.schedule).getTime();
+      if (cTime < startOfToday && dayShiftMs > 0) {
+        return {
+          ...c,
+          schedule: new Date(cTime + dayShiftMs).toISOString(),
+        };
+      }
+    }
+    return c;
+  });
+
+  const allCoaches = Array.from(new Set(normalizedClasses.map((c) => c.coachName))).sort();
 
   // Filter & Sort
-  const filteredClasses = rawClasses.filter((c) => {
+  const filteredClasses = normalizedClasses.filter((c) => {
     const classTime = new Date(c.schedule);
 
     if (activeTab === 'ACTIVE' && c.status !== 'LIVE' && c.status !== 'IN_PROGRESS') {
