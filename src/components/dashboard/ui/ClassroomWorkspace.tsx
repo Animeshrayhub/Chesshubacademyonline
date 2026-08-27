@@ -437,6 +437,16 @@ export default function ClassroomWorkspace({
     boardVersionRef.current = version;
     const controller = newControllerId !== undefined ? newControllerId : boardControllerId;
 
+    const activePosData = activePosition ? {
+      id: activePosition.id,
+      title: activePosition.title,
+      description: activePosition.description,
+      solution: activePosition.solution,
+      explanation: activePosition.explanation,
+      chapterTitle: activePosition.chapterTitle,
+      boardOrientation: activePosition.boardOrientation || 'white',
+    } : null;
+
     const payload = {
       type: 'BOARD_POSITION',
       classId,
@@ -447,6 +457,7 @@ export default function ClassroomWorkspace({
       currentMoveIndex: newMoveIdx,
       version,
       controllerId: controller,
+      activePosition: activePosData,
       sourceUserId: userId || userName,
       sourceRole: role,
       updatedBy: userId || userName,
@@ -463,6 +474,8 @@ export default function ClassroomWorkspace({
           moves: newMoves,
           current_move_index: newMoveIdx,
           board_controller_id: controller,
+          allow_illegal_moves: allowIllegalMoves,
+          active_position: activePosData,
           updated_by: userId || null,
           updated_at: new Date().toISOString(),
         },
@@ -483,7 +496,7 @@ export default function ClassroomWorkspace({
       event: 'board-position',
       payload,
     });
-  }, [classId, activeSessionId, userId, userName, role, boardControllerId]);
+  }, [classId, activeSessionId, userId, userName, role, boardControllerId, activePosition, allowIllegalMoves]);
 
   // Callback passed to ChessWorkspace to capture live board moves
   const handleBoardMove = useCallback((fen: string, pgn: string) => {
@@ -648,7 +661,26 @@ export default function ClassroomWorkspace({
           if (boardData.allow_illegal_moves !== undefined) {
             setAllowIllegalMoves(boardData.allow_illegal_moves);
           }
-          setBoardKey((k) => k + 1);
+          if (boardData.active_position) {
+            const p = boardData.active_position;
+            setActivePosition({
+              id: p.id || 'persisted_pos',
+              lessonId: '',
+              title: p.title || 'Teaching Position',
+              description: p.description || '',
+              solution: p.solution || '',
+              explanation: p.explanation || '',
+              chapterTitle: p.chapterTitle || '',
+              fen: boardData.fen,
+              difficulty: 'Beginner',
+              tags: [],
+              boardOrientation: p.boardOrientation || 'white',
+              defaultBoardLock: false,
+              orderNumber: 1,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            });
+          }
         }
       } catch (err) {
         console.warn('[classroom] Initial board sync warning:', err);
@@ -674,20 +706,16 @@ export default function ClassroomWorkspace({
       })
       .on('broadcast', { event: 'board-move' }, ({ payload }: any) => {
         if (payload?.classId && payload.classId !== classId) return;
-        if (payload?.sourceUserId && payload.sourceUserId === userId) return;
+        if (payload?.sourceUserId && (payload.sourceUserId === userId || payload.sourceUserId === userName)) return;
         if (payload?.fen) {
-          // Students always accept incoming moves without version filtering
-          // (version filtering only matters for preventing coach's own echoed events)
-          if (payload?.sourceUserId && payload.sourceUserId === userId) return;
           if (payload.version) boardVersionRef.current = Math.max(boardVersionRef.current, payload.version);
           setCurrentFen(payload.fen);
-          if (Array.isArray(payload.moves) && payload.moves.length >= 0) {
+          if (Array.isArray(payload.moves)) {
             setGameMoves(payload.moves);
             setCurrentMoveIndex(payload.currentMoveIndex ?? payload.moves.length - 1);
           }
           if (payload.controllerId) setBoardControllerId(payload.controllerId);
-          // Only increment boardKey if FEN actually changed to avoid wiping move history
-          setCurrentFen((prev) => { if (prev !== payload.fen) setBoardKey((k) => k + 1); return payload.fen; });
+          if (payload.activePosition) setActivePosition(payload.activePosition);
           setLastRealtimeLog(`board-move: ${payload.fen.slice(0, 20)}…`);
         }
       })
@@ -721,18 +749,17 @@ export default function ClassroomWorkspace({
       })
       .on('broadcast', { event: 'board-position' }, ({ payload }: any) => {
         if (payload?.classId && payload.classId !== classId) return;
-        if (payload?.sourceUserId && payload.sourceUserId === userId) return;
+        if (payload?.sourceUserId && (payload.sourceUserId === userId || payload.sourceUserId === userName)) return;
         if (payload?.fen) {
-          if (payload?.sourceUserId && payload.sourceUserId === userId) return;
           if (payload.version && payload.version < boardVersionRef.current) return;
           if (payload.version) boardVersionRef.current = Math.max(boardVersionRef.current, payload.version);
           setCurrentFen(payload.fen);
-          if (Array.isArray(payload.moves) && payload.moves.length >= 0) {
+          if (Array.isArray(payload.moves)) {
             setGameMoves(payload.moves);
             setCurrentMoveIndex(payload.currentMoveIndex ?? payload.moves.length - 1);
           }
           if (payload.controllerId) setBoardControllerId(payload.controllerId);
-          setCurrentFen((prev) => { if (prev !== payload.fen) setBoardKey((k) => k + 1); return payload.fen; });
+          if (payload.activePosition) setActivePosition(payload.activePosition);
         }
       })
       .on('broadcast', { event: 'board-lock' }, ({ payload }: any) => {

@@ -396,8 +396,7 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
     }
   }, [classId, cleanMeetingId, isCoach, passcode, refreshParticipants, startWithMutedAudio, startWithVideoOff, syncCurrentUserAudio, userEmail, userName]);
 
-  // ── Mount / Unmount ──────────────────────────────────────────────────────
-
+  // ── Mount / Unmount: Run connection flow ONCE for the session ──────────
   useEffect(() => {
     if (initStartedRef.current) return;
     initStartedRef.current = true;
@@ -419,7 +418,8 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
       }
       initStartedRef.current = false;
     };
-  }, [startConnection]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [classId, cleanMeetingId]);
 
   // Sync fullscreen state with browser fullscreenchange event
   useEffect(() => {
