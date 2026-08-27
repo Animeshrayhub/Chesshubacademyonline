@@ -1408,6 +1408,7 @@ export default function ClassroomWorkspace({
                 meetingNumber={effectiveMeetingNumber}
                 passcode={zoomPasscode}
                 userName={userName}
+                studentName={students[0] ? `${students[0].firstName || ''} ${students[0].lastName || ''}`.trim() : 'Student'}
                 role={role}
                 startWithMutedAudio={joinWithMutedAudio}
                 startWithVideoOff={joinWithVideoOff}

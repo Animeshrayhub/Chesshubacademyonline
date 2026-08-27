@@ -16,6 +16,7 @@ interface ZoomClassroomVideoProps {
   meetingNumber: string;
   passcode?: string;
   userName: string;
+  studentName?: string;
   userEmail?: string;
   role: 'admin' | 'coach' | 'student';
   /** If true, Zoom join() will start with mic muted (from pre-join modal) */
@@ -56,6 +57,7 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
       meetingNumber,
       passcode = 'chesshub',
       userName,
+      studentName,
       userEmail,
       role,
       startWithMutedAudio = false,
@@ -876,23 +878,52 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
           className="absolute inset-0 w-full h-full"
         />
 
-        {/* React Overlay: Avatar Card when Camera is OFF or disconnected */}
+        {/* ── React Overlay: 2-Tile Stage Layout matching Reference UI ── */}
         {(!localVideoOn || connectionState !== 'connected') && connectionState !== 'connecting' && connectionState !== 'error' && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#28282c] p-4 pointer-events-none">
-            {/* Centered Green Circle Avatar */}
-            <div className="w-20 h-20 rounded-full bg-[#16a34a] border-2 border-emerald-400/40 flex items-center justify-center text-white text-3xl font-extrabold shadow-xl">
-              {(userName || 'A').charAt(0).toUpperCase()}
+          <div className="absolute inset-0 z-10 p-2 flex items-center gap-2.5 bg-[#181820] pointer-events-auto">
+            {/* Tile 1 (Left): Coach / Local User Card */}
+            <div className="flex-1 h-full relative rounded-xl overflow-hidden bg-[#242430] border border-white/10 flex flex-col items-center justify-center shadow-lg">
+              {/* Warm gradient background pattern matching reference image */}
+              <div className="absolute inset-0 bg-gradient-to-br from-[#d97706]/90 via-[#b45309]/80 to-[#78350f] opacity-90" />
+              <div className="relative z-10 flex flex-col items-center gap-1.5">
+                <div className="w-16 h-16 rounded-full bg-[#1e1e28] border-2 border-amber-400/50 flex items-center justify-center text-amber-300 text-2xl font-extrabold shadow-2xl">
+                  {(userName || 'C').charAt(0).toUpperCase()}
+                </div>
+              </div>
+              {/* Bottom-Left Name Badge */}
+              <div className="absolute bottom-2 left-2 z-20 px-2 py-0.5 bg-black/80 backdrop-blur rounded-md border border-white/10 text-[10px] font-bold text-white flex items-center gap-1 shadow-md">
+                <span>{userName || 'Coach'} (You)</span>
+                <span className={localMuted ? 'text-red-400' : 'text-emerald-400'}>
+                  {localMuted ? '🎙️❌' : '🎙️'}
+                </span>
+              </div>
+            </div>
+
+            {/* Tile 2 (Right): Student Card — Green Active Border & Orange Circle Avatar matching screenshot */}
+            <div className="flex-1 h-full relative rounded-xl overflow-hidden bg-[#242430] border-2 border-emerald-500 flex flex-col items-center justify-center shadow-lg">
+              <div className="relative z-10 flex flex-col items-center gap-1.5">
+                {/* Centered Orange Circle Avatar */}
+                <div className="w-16 h-16 rounded-full bg-[#ea580c] border-2 border-orange-400/40 flex items-center justify-center text-white text-2xl font-extrabold shadow-2xl">
+                  {(studentName || audioDiag.participants.find(p => p.userName !== userName)?.userName || 'Umar farooq').charAt(0).toUpperCase()}
+                </div>
+              </div>
+              {/* Bottom-Left Name Badge */}
+              <div className="absolute bottom-2 left-2 z-20 px-2 py-0.5 bg-black/80 backdrop-blur rounded-md border border-white/10 text-[10px] font-bold text-white flex items-center gap-1 shadow-md">
+                <span>{studentName || audioDiag.participants.find(p => p.userName !== userName)?.userName || 'Umar farooq'}</span>
+              </div>
             </div>
           </div>
         )}
 
-        {/* React Overlay: Bottom-Left Name Badge */}
-        <div className="absolute bottom-3 left-3 z-20 px-2.5 py-1 bg-black/80 backdrop-blur rounded-lg border border-white/10 text-[11px] font-bold text-white flex items-center gap-1.5 shadow-md pointer-events-auto">
-          <span>{userName || 'You'} (You)</span>
-          <span className={localMuted ? 'text-red-400' : 'text-emerald-400'}>
-            {localMuted ? '🎙️❌' : '🎙️'}
-          </span>
-        </div>
+        {/* Floating Fullscreen Icon Button in Bottom-Right Corner matching reference UI */}
+        <button
+          type="button"
+          onClick={handleToggleFullscreen}
+          className="absolute bottom-3 right-3 z-30 p-1.5 bg-black/70 hover:bg-black/90 text-white rounded-lg border border-white/20 transition-all cursor-pointer shadow-xl flex items-center justify-center pointer-events-auto"
+          title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+        >
+          <span className="text-xs font-bold leading-none">{isFullscreen ? '🗗' : '⛶'}</span>
+        </button>
       </div>
 
       {/* ── Bottom Controls Bar ── */}
