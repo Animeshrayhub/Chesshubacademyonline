@@ -867,14 +867,18 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
           display: none !important;
         }
       ` }} />
-      <div
-        ref={containerRef}
-        id="zoom-embedded-video-container"
-        className="w-full h-full flex-1 min-h-[220px] bg-[#28282c] rounded-xl overflow-hidden relative border border-[#38383e] shadow-inner"
-      >
-        {/* Avatar Card when Camera is OFF or not yet connected */}
+      {/* ── Zoom Embedded Stage & Overlays Wrapper ── */}
+      <div className="w-full h-full flex-1 min-h-[220px] bg-[#28282c] rounded-xl overflow-hidden relative border border-[#38383e] shadow-inner">
+        {/* Dedicated empty DOM node for Zoom SDK appRoot — NO React children inside */}
+        <div
+          ref={containerRef}
+          id="zoom-embedded-video-container"
+          className="absolute inset-0 w-full h-full"
+        />
+
+        {/* React Overlay: Avatar Card when Camera is OFF or disconnected */}
         {(!localVideoOn || connectionState !== 'connected') && connectionState !== 'connecting' && connectionState !== 'error' && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#28282c] p-4">
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#28282c] p-4 pointer-events-none">
             {/* Centered Green Circle Avatar */}
             <div className="w-20 h-20 rounded-full bg-[#16a34a] border-2 border-emerald-400/40 flex items-center justify-center text-white text-3xl font-extrabold shadow-xl">
               {(userName || 'A').charAt(0).toUpperCase()}
@@ -882,7 +886,7 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
           </div>
         )}
 
-        {/* Bottom-Left Name Badge */}
+        {/* React Overlay: Bottom-Left Name Badge */}
         <div className="absolute bottom-3 left-3 z-20 px-2.5 py-1 bg-black/80 backdrop-blur rounded-lg border border-white/10 text-[11px] font-bold text-white flex items-center gap-1.5 shadow-md pointer-events-auto">
           <span>{userName || 'You'} (You)</span>
           <span className={localMuted ? 'text-red-400' : 'text-emerald-400'}>
