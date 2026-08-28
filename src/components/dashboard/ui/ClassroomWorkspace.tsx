@@ -874,22 +874,25 @@ export default function ClassroomWorkspace({
       })
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState();
-        const onlineIds = Object.values(state).flat().flatMap((p: any) => [
-          p.displayName, p.userId, p.authUserId, p.profileId
+        const rawFlat = Object.values(state).flat();
+        const onlineIds = rawFlat.flatMap((p: any) => [
+          p.displayName, p.userId, p.authUserId, p.profileId, p.role === 'COACH' ? 'COACH_ONLINE' : null
         ].filter(Boolean));
         setOnlineUserIds(onlineIds);
       })
       .on('presence', { event: 'join' }, () => {
         const state = channel.presenceState();
-        const onlineIds = Object.values(state).flat().flatMap((p: any) => [
-          p.displayName, p.userId, p.authUserId, p.profileId
+        const rawFlat = Object.values(state).flat();
+        const onlineIds = rawFlat.flatMap((p: any) => [
+          p.displayName, p.userId, p.authUserId, p.profileId, p.role === 'COACH' ? 'COACH_ONLINE' : null
         ].filter(Boolean));
         setOnlineUserIds(onlineIds);
       })
       .on('presence', { event: 'leave' }, () => {
         const state = channel.presenceState();
-        const onlineIds = Object.values(state).flat().flatMap((p: any) => [
-          p.displayName, p.userId, p.authUserId, p.profileId
+        const rawFlat = Object.values(state).flat();
+        const onlineIds = rawFlat.flatMap((p: any) => [
+          p.displayName, p.userId, p.authUserId, p.profileId, p.role === 'COACH' ? 'COACH_ONLINE' : null
         ].filter(Boolean));
         setOnlineUserIds(onlineIds);
       })
@@ -1333,7 +1336,7 @@ export default function ClassroomWorkspace({
               showCoordinates={showCoordinates}
               spotlightedStudentId={spotlightedStudentId}
               spotlightedStudentName={spotlightedStudentName}
-              readOnly={!isCoach && (!isStudentControlGranted() || isBoardLocked)}
+              readOnly={!isCoach && !isStudentControlGranted()}
               isEditorOpen={showSetPositionModal}
               onToggleEditorOpen={setShowSetPositionModal}
               allowIllegalMovesExternal={allowIllegalMoves}
@@ -1435,7 +1438,7 @@ export default function ClassroomWorkspace({
                 meetingNumber={effectiveMeetingNumber}
                 passcode={zoomPasscode}
                 userName={userName}
-                studentName={students[0] ? `${students[0].firstName || ''} ${students[0].lastName || ''}`.trim() : 'Student'}
+                studentName={isCoach ? (students[0] ? `${students[0].firstName || ''} ${students[0].lastName || ''}`.trim() : 'Student') : (coachName || 'Coach')}
                 role={role}
                 startWithMutedAudio={joinWithMutedAudio}
                 startWithVideoOff={joinWithVideoOff}
@@ -1614,10 +1617,14 @@ export default function ClassroomWorkspace({
                         <p className="text-[9px] text-amber-500 font-semibold">Assigned Coach (Controller)</p>
                       </div>
                       {(() => {
-                        const isCoachOnline = isCoach || onlineUserIds.some((id) => {
+                        const isCoachOnline = isCoach || onlineUserIds.includes('COACH_ONLINE') || onlineUserIds.some((id) => {
                           if (!id || typeof id !== 'string') return false;
-                          const lower = id.toLowerCase();
-                          return lower === coachName.toLowerCase() || lower.includes('coach') || id === userId;
+                          const cleanId = id.trim().toLowerCase();
+                          const cleanCoach = (coachName || '').trim().toLowerCase();
+                          if (!cleanId || !cleanCoach) return false;
+                          if (cleanId === cleanCoach || cleanCoach.includes(cleanId) || cleanId.includes(cleanCoach)) return true;
+                          const coachParts = cleanCoach.split(/\s+/).filter((p) => p.length >= 3);
+                          return coachParts.some((part) => cleanId.includes(part));
                         });
                         return (
                           <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${isCoachOnline ? 'bg-green-400 animate-pulse' : 'bg-[#444466]'}`} title={isCoachOnline ? 'Coach Online' : 'Coach Offline'} />

@@ -685,14 +685,16 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
         </div>
 
         <div className="flex items-center gap-1">
-          {/* Diagnostics toggle */}
-          <button
-            type="button"
-            onClick={() => setShowDiagnostics(!showDiagnostics)}
-            className="px-2 py-0.5 bg-slate-900/90 hover:bg-slate-800 text-[10px] text-slate-300 font-mono rounded border border-slate-700 transition-colors shadow"
-          >
-            {showDiagnostics ? 'Hide Diag' : '🛠️ Diag'}
-          </button>
+          {/* Diagnostics toggle (Dev mode only) */}
+          {process.env.NODE_ENV !== 'production' && (
+            <button
+              type="button"
+              onClick={() => setShowDiagnostics(!showDiagnostics)}
+              className="px-2 py-0.5 bg-slate-900/90 hover:bg-slate-800 text-[10px] text-slate-300 font-mono rounded border border-slate-700 transition-colors shadow"
+            >
+              {showDiagnostics ? 'Hide Diag' : '🛠️ Diag'}
+            </button>
+          )}
 
           {/* Fullscreen toggle — uses real browser Fullscreen API */}
           <button
