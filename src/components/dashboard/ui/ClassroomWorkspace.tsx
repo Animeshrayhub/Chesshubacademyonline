@@ -398,33 +398,47 @@ export default function ClassroomWorkspace({
   const isStudentControlGranted = useCallback(() => {
     if (isCoach) return true;
     if (!boardControllerId) return false;
-    const target = boardControllerId.trim().toLowerCase();
+
+    const controller = boardControllerId.trim().toLowerCase();
+    const coachClean = (coachName || '').trim().toLowerCase();
+
+    // If controller is explicitly set to coach, student does NOT have control
+    if (controller === coachClean || (coachClean && coachClean.includes(controller)) || controller.includes('coach')) {
+      return false;
+    }
+
     const myId = (userId || '').trim().toLowerCase();
     const myName = (userName || '').trim().toLowerCase();
 
-    if (myId && target === myId) return true;
-    if (myName && target === myName) return true;
-    if (myName && (target.includes(myName) || myName.includes(target))) return true;
+    // Direct match with student's user ID or display name
+    if (myId && (controller === myId || controller.includes(myId) || myId.includes(controller))) return true;
+    if (myName && (controller === myName || controller.includes(myName) || myName.includes(controller))) return true;
 
-    const currentStudent = students.find(
-      (s: any) =>
-        (s.userId && s.userId.trim().toLowerCase() === target) ||
-        (s.studentProfileId && s.studentProfileId.trim().toLowerCase() === target) ||
-        (`${s.firstName} ${s.lastName}`.trim().toLowerCase() === target) ||
-        (s.firstName && s.firstName.length >= 2 && target.includes(s.firstName.toLowerCase()))
-    );
+    // Check if controller matches any attribute of student in room
+    const myStudentObj = students.find((s: any) => {
+      const sUser = (s.userId || '').trim().toLowerCase();
+      const sProf = (s.studentProfileId || s.id || '').trim().toLowerCase();
+      const sName = `${s.firstName || ''} ${s.lastName || ''}`.trim().toLowerCase();
+      return (myId && (myId === sUser || myId === sProf)) ||
+             (myName && (myName === sName || (s.firstName && myName.includes(s.firstName.toLowerCase()))));
+    });
 
-    if (currentStudent) {
-      const matchUserId = (currentStudent.userId || '').trim().toLowerCase();
-      const matchProfileId = (currentStudent.studentProfileId || '').trim().toLowerCase();
-      const matchName = `${currentStudent.firstName} ${currentStudent.lastName}`.trim().toLowerCase();
+    if (myStudentObj) {
+      const sUser = ((myStudentObj as any).userId || '').trim().toLowerCase();
+      const sProf = ((myStudentObj as any).studentProfileId || (myStudentObj as any).id || '').trim().toLowerCase();
+      const sEmail = ((myStudentObj as any).email || '').trim().toLowerCase();
+      const sName = `${(myStudentObj as any).firstName || ''} ${(myStudentObj as any).lastName || ''}`.trim().toLowerCase();
 
-      if (myId && (myId === matchUserId || myId === matchProfileId)) return true;
-      if (myName && (myName === matchName || myName.toLowerCase().includes(currentStudent.firstName.toLowerCase()))) return true;
+      if (sUser && (controller === sUser || controller.includes(sUser))) return true;
+      if (sProf && (controller === sProf || controller.includes(sProf))) return true;
+      if (sEmail && (controller === sEmail || controller.includes(sEmail))) return true;
+      if (sName && (controller === sName || controller.includes(sName))) return true;
+      if (myStudentObj.firstName && controller.includes(myStudentObj.firstName.toLowerCase())) return true;
     }
 
-    return false;
-  }, [isCoach, boardControllerId, userId, userName, students]);
+    // Fallback: If controller is not coach, grant move permission to the active student
+    return true;
+  }, [isCoach, boardControllerId, userId, userName, coachName, students]);
 
   // Board State Persistence Helper: Persists authoritative state to DB and broadcasts to canonical channel
   const persistAndBroadcastBoardState = useCallback(async (
