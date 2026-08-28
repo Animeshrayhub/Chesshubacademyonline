@@ -13,6 +13,7 @@ import {
 } from '@/lib/bot-training/botService';
 import { analyzeGamePositions } from '@/lib/bot-training/analysisEngine';
 import { processGameMistakesAndPuzzles, updateWeaknessOnPuzzleAttempt } from '@/lib/bot-training/puzzleGenerator';
+import { getCuratedPuzzlesForTheme } from '@/lib/bot-training/weaknessPuzzleBank';
 import { checkAndAwardBadges } from '@/lib/bot-training/badgeEngine';
 import type {
   GameResult,
@@ -535,5 +536,149 @@ export async function retryGameAnalysisAction(gameId: string) {
       await admin.from('student_bot_games').update({ analysis_status: 'failed' }).eq('id', gameId);
     } catch (e) {}
     return { success: false, error: { message: err?.message || 'Analysis retry failed.' } };
+  }
+}
+
+/**
+ * Generates or retrieves weakness puzzles for a student when they click "Practice Puzzles".
+ */
+export async function generateWeaknessPuzzlesAction(weaknessType: string, targetStudentUserId?: string) {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return { success: false, error: { message: 'Unauthorized.' } };
+    }
+
+    const admin = createSupabaseAdmin();
+    const isCoachOrAdmin = user.role === 'COACH' || user.role === 'ADMIN';
+    const studentUserId = (isCoachOrAdmin && targetStudentUserId) ? targetStudentUserId : user.id;
+
+    // Check existing puzzles for this weakness theme
+    const { data: existingPuzzles } = await admin
+      .from('personalized_puzzles')
+      .select('*')
+      .eq('student_id', studentUserId)
+      .eq('weakness_type', weaknessType)
+      .order('created_at', { ascending: false });
+
+    if (existingPuzzles && existingPuzzles.length >= 2) {
+      return { success: true, data: { puzzles: existingPuzzles } };
+    }
+
+    // Insert curated puzzles for this theme
+    const curatedList = getCuratedPuzzlesForTheme(weaknessType);
+    const insertedPuzzles: PersonalizedPuzzle[] = [];
+
+    for (const item of curatedList) {
+      const payload: Partial<PersonalizedPuzzle> = {
+        student_id: studentUserId,
+        weakness_type: weaknessType,
+        fen: item.fen,
+        side_to_move: item.sideToMove,
+        solution: item.solution,
+        explanation: item.explanation,
+        title: item.title,
+        difficulty: item.difficulty,
+        status: 'active',
+        attempts: 0,
+        correct_attempts: 0,
+      };
+
+      try {
+        const { data: created, error: err } = await admin
+          .from('personalized_puzzles')
+          .insert(payload)
+          .select()
+          .single();
+
+        if (!err && created) {
+          insertedPuzzles.push(created);
+        }
+      } catch (e) {}
+    }
+
+    // Ensure weakness record exists and update puzzles_generated count
+    try {
+      const { data: existingWeak } = await admin
+        .from('student_weaknesses')
+        .select('*')
+        .eq('student_id', studentUserId)
+        .eq('weakness_type', weaknessType)
+        .maybeSingle();
+
+      const now = new Date().toISOString();
+      const currentGen = existingWeak ? (existingWeak.puzzles_generated || 0) : 0;
+
+      await admin.from('student_weaknesses').upsert(
+        {
+          student_id: studentUserId,
+          weakness_type: weaknessType,
+          occurrences: existingWeak ? existingWeak.occurrences : 3,
+          recent_occurrences: existingWeak ? existingWeak.recent_occurrences : 3,
+          status: existingWeak ? existingWeak.status : 'NEEDS_PRACTICE',
+          puzzles_generated: currentGen + insertedPuzzles.length,
+          last_seen: now,
+          updated_at: now,
+        },
+        { onConflict: 'student_id,weakness_type' }
+      );
+    } catch (e) {}
+
+    const allPuzzles = [...(existingPuzzles || []), ...insertedPuzzles];
+
+    try {
+      revalidatePath('/dashboard/student/bot-training');
+    } catch (e) {}
+
+    return { success: true, data: { puzzles: allPuzzles } };
+  } catch (err: any) {
+    return { success: false, error: { message: err?.message || 'Failed to generate puzzles.' } };
+  }
+}
+
+/**
+ * Submits a puzzle attempt, updates ratings (+10 pts per solved puzzle), and upgrades weakness status.
+ */
+export async function submitPuzzleAttemptAction(puzzleId: string, isCorrect: boolean, targetStudentUserId?: string) {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return { success: false, error: { message: 'Unauthorized.' } };
+    }
+
+    const admin = createSupabaseAdmin();
+    const isCoachOrAdmin = user.role === 'COACH' || user.role === 'ADMIN';
+    const studentUserId = (isCoachOrAdmin && targetStudentUserId) ? targetStudentUserId : user.id;
+
+    // Delegate to puzzleGenerator update function
+    const result = await updateWeaknessOnPuzzleAttempt(studentUserId, puzzleId, isCorrect);
+
+    // If correct, award +10 Rating Points to Student Bot Profile!
+    if (isCorrect) {
+      try {
+        const { data: prof } = await admin
+          .from('student_bot_profiles')
+          .select('rating, puzzles_solved')
+          .eq('student_id', studentUserId)
+          .single();
+
+        if (prof) {
+          const newRating = prof.rating + 10;
+          const newSolved = (prof.puzzles_solved || 0) + 1;
+          await admin
+            .from('student_bot_profiles')
+            .update({ rating: newRating, puzzles_solved: newSolved, updated_at: new Date().toISOString() })
+            .eq('student_id', studentUserId);
+        }
+      } catch (e) {}
+    }
+
+    try {
+      revalidatePath('/dashboard/student/bot-training');
+    } catch (e) {}
+
+    return { success: true, data: result };
+  } catch (err: any) {
+    return { success: false, error: { message: err?.message || 'Failed to submit puzzle attempt.' } };
   }
 }

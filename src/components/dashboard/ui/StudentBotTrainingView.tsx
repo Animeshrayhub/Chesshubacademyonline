@@ -12,7 +12,10 @@ import {
   startBotGameAction,
   finishBotGameAction,
   solvePersonalizedPuzzleAction,
+  generateWeaknessPuzzlesAction,
+  submitPuzzleAttemptAction,
 } from '@/actions/botTraining';
+import { playChessSound } from '@/utils/chessAudio';
 import type {
   StudentColor,
   TimeControlOption,
@@ -500,36 +503,75 @@ export default function StudentBotTrainingView() {
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  // Solve Personalized Puzzle
+  // ── Practice & Solve Weakness Puzzles ────────────────────────────────────
+  const [loadingPuzzleType, setLoadingPuzzleType] = useState<string | null>(null);
+
+  const handlePracticeWeaknessPuzzles = async (weaknessType: string) => {
+    setLoadingPuzzleType(weaknessType);
+    const res = await generateWeaknessPuzzlesAction(weaknessType);
+    setLoadingPuzzleType(null);
+
+    if (res.success && res.data?.puzzles && res.data.puzzles.length > 0) {
+      setPuzzles(res.data.puzzles);
+      const targetPuz = res.data.puzzles.find((p: any) => p.status !== 'solved') || res.data.puzzles[0];
+      handleStartPuzzle(targetPuz);
+    } else {
+      alert(res.error?.message || 'Could not load puzzles for this weakness theme.');
+    }
+  };
+
   const handleStartPuzzle = (p: PersonalizedPuzzle) => {
     setActivePuzzle(p);
     setPuzzleFen(p.fen);
-    setPuzzleMsg('Find the best move for your training topic!');
     setPuzzleSolved(false);
+    const side = (p.side_to_move || 'white').toUpperCase();
+    setPuzzleMsg(p.explanation || `🧩 ${p.title || 'Solve Tactical Position'}: Find the best move for ${side}!`);
   };
 
-  const handlePuzzleDrop = (source: string, target: string): boolean => {
+  const handlePuzzleDrop = (sourceOrObj: any, targetArg?: string): boolean => {
     if (!activePuzzle || puzzleSolved) return false;
 
-    const pGame = new Chess(puzzleFen);
+    const { source, target } = extractDropSquares(sourceOrObj, targetArg);
+    if (!source || !target) return false;
+
     try {
+      const pGame = new Chess(puzzleFen);
       const m = pGame.move({ from: source, to: target, promotion: 'q' });
       if (!m) return false;
 
-      const isCorrect = m.san.toLowerCase() === activePuzzle.solution.toLowerCase() ||
-        `${m.from}${m.to}`.toLowerCase() === activePuzzle.solution.toLowerCase();
+      const playedSan = m.san;
+      const playedUci = `${source}${target}`;
+      const targetSolution = (activePuzzle.solution || '').trim().toLowerCase();
+
+      // Flexible move validation: solution string match, move SAN match, checkmate or tactical check
+      const isCorrect =
+        !targetSolution ||
+        targetSolution === playedSan.toLowerCase() ||
+        targetSolution.includes(playedSan.toLowerCase()) ||
+        targetSolution === playedUci ||
+        targetSolution.includes(target) ||
+        pGame.isCheckmate() ||
+        pGame.inCheck();
 
       setPuzzleFen(pGame.fen());
 
       if (isCorrect) {
-        setPuzzleMsg('🎉 Excellent! You solved this weakness puzzle!');
+        playChessSound('quiz_correct');
+        setPuzzleMsg('🎉 Correct Move! +10 Rating Points Awarded! ⭐');
         setPuzzleSolved(true);
-        solvePersonalizedPuzzleAction({ puzzleId: activePuzzle.id, isCorrect: true }).then(() => fetchProfile());
+
+        submitPuzzleAttemptAction(activePuzzle.id, true).then(() => fetchProfile());
+
+        setTimeout(() => {
+          setActivePuzzle(null);
+        }, 2200);
+        return true;
       } else {
-        setPuzzleMsg('❌ Not quite right. Try again or view explanation.');
-        solvePersonalizedPuzzleAction({ puzzleId: activePuzzle.id, isCorrect: false });
+        playChessSound('quiz_wrong');
+        setPuzzleMsg('❌ Incorrect move — try again!');
+        submitPuzzleAttemptAction(activePuzzle.id, false);
+        return false;
       }
-      return true;
     } catch {
       return false;
     }
@@ -941,25 +983,41 @@ export default function StudentBotTrainingView() {
                     : 'bg-rose-500/20 text-rose-300 border-rose-500/40';
 
                 return (
-                  <div key={w.id || Math.random()} className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="font-extrabold text-sm text-white">{typeLabel}</span>
-                      <span className={`text-[10px] font-black px-2 py-0.5 rounded border ${statusColor}`}>
-                        {status}
-                      </span>
+                  <div key={w.id || Math.random()} className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3 flex flex-col justify-between">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-sm text-white">{typeLabel}</span>
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded border ${statusColor}`}>
+                          {status}
+                        </span>
+                      </div>
+
+                      <div className="text-xs text-slate-400 space-y-1 font-medium">
+                        <div>Occurrences: <strong className="text-slate-200">{w.occurrences ?? 1} games</strong></div>
+                        <div>Puzzles Solved: <strong className="text-slate-200">{w.puzzles_correct ?? 0} / {w.puzzles_completed ?? 0}</strong></div>
+                      </div>
                     </div>
 
-                    <div className="text-xs text-slate-400 space-y-1 font-medium">
-                      <div>Occurrences: <strong className="text-slate-200">{w.occurrences ?? 1} games</strong></div>
-                      <div>Puzzles Solved: <strong className="text-slate-200">{w.puzzles_correct ?? 0} / {w.puzzles_completed ?? 0}</strong></div>
-                    </div>
+                    <Button
+                      onClick={() => handlePracticeWeaknessPuzzles(w.weakness_type)}
+                      disabled={loadingPuzzleType === w.weakness_type}
+                      className="w-full py-2.5 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-extrabold text-xs shadow-lg rounded-xl flex items-center justify-center gap-1.5"
+                    >
+                      {loadingPuzzleType === w.weakness_type ? '⏳ Generating Puzzles...' : '🧩 Practice Puzzles'}
+                    </Button>
                   </div>
                 );
               })}
             </div>
           ) : (
-            <div className="p-8 text-center text-slate-400 text-xs">
-              No weaknesses detected yet. As you play bot matches, Stockfish will automatically track mistake patterns here!
+            <div className="p-8 text-center text-slate-400 text-xs space-y-4">
+              <p>No weaknesses detected yet. As you play bot matches, Stockfish will automatically track mistake patterns here!</p>
+              <Button
+                onClick={() => handlePracticeWeaknessPuzzles('hanging_pieces')}
+                className="py-2 px-4 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl"
+              >
+                🧩 Practice Sample Hanging Pieces Puzzles
+              </Button>
             </div>
           )}
         </div>
@@ -1006,8 +1064,22 @@ export default function StudentBotTrainingView() {
               })}
             </div>
           ) : (
-            <div className="p-8 text-center text-slate-400 text-xs">
-              No custom puzzles generated yet. When Stockfish detects repeated mistake patterns (3 occurrences), custom puzzles are created automatically!
+            <div className="p-8 text-center text-slate-400 text-xs space-y-4">
+              <p>No custom puzzles loaded yet. Click below to generate instant tactical training puzzles for your weaknesses!</p>
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <Button
+                  onClick={() => handlePracticeWeaknessPuzzles('hanging_pieces')}
+                  className="py-2 px-4 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl"
+                >
+                  🧩 Practice Hanging Pieces Puzzles
+                </Button>
+                <Button
+                  onClick={() => handlePracticeWeaknessPuzzles('pawn_structure')}
+                  className="py-2 px-4 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl"
+                >
+                  ♟️ Practice Pawn Structure Puzzles
+                </Button>
+              </div>
             </div>
           )}
         </div>
