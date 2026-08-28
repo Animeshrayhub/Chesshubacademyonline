@@ -16,6 +16,7 @@ import {
 } from '@/lib/puzzles/progress';
 
 import { wrapChessboard } from '@/components/dashboard/ui/ChessboardWrapper';
+import { playChessSound } from '@/utils/chessAudio';
 
 const ChessboardComponent = dynamic(
   () =>
@@ -261,64 +262,113 @@ export default function PuzzleBoard({ puzzle, onSolveComplete, token }: PuzzleBo
     return () => clearTimeout(introTimeout);
   }, [currentPuzzle]);
 
+  // ── Unified Move Validation Helper ──────────────────────────────────────────
+  const validatePuzzleMove = (from: string, to: string) => {
+    if (!currentPuzzle?.solution || solutionIndex >= currentPuzzle.solution.length) {
+      return { isCorrect: false, from, to };
+    }
+
+    const expectedMove = (currentPuzzle.solution[solutionIndex] || '').trim();
+    if (!expectedMove) return { isCorrect: false, from, to };
+
+    // Try playing move on a cloned game instance to inspect SAN & UCI
+    let playedSan = '';
+    let playedUci = `${from}${to}`;
+    let appliedMove: any = null;
+
+    try {
+      const clone = new Chess(gameRef.current.fen());
+      appliedMove = clone.move({ from, to, promotion: 'q' });
+      if (appliedMove) {
+        playedSan = appliedMove.san.toLowerCase();
+        playedUci = `${appliedMove.from}${appliedMove.to}${appliedMove.promotion || ''}`.toLowerCase();
+      }
+    } catch {}
+
+    const exp = expectedMove.toLowerCase();
+    const cleanFromTo = `${from}${to}`.toLowerCase();
+
+    // Check if played move matches expected move in any representation
+    const isCorrect =
+      playedUci === exp ||
+      playedUci.slice(0, 4) === exp.slice(0, 4) ||
+      cleanFromTo === exp ||
+      cleanFromTo === exp.slice(0, 4) ||
+      (playedSan && (playedSan === exp || exp.includes(playedSan) || playedSan.includes(exp)));
+
+    return { isCorrect, expectedMove, appliedMove };
+  };
+
+  const handleCorrectPuzzleMove = (targetSquare: string) => {
+    playChessSound('quiz_correct');
+    setRightSquareGold(targetSquare);
+    setWrongSquareRed(null);
+
+    const nextIndex = solutionIndex + 1;
+
+    if (nextIndex >= currentPuzzle.solution.length) {
+      // Solved!
+      handlePuzzleSolved(attempts, mistakes);
+    } else {
+      // Play opponent reply
+      setSolutionIndex(nextIndex);
+      setMessage({ text: 'Correct! Opponent responding...', type: 'success' });
+
+      setTimeout(() => {
+        const oppMove = currentPuzzle.solution[nextIndex];
+        if (oppMove) {
+          const oppFrom = oppMove.substring(0, 2);
+          const oppTo = oppMove.substring(2, 4);
+          const oppPromo = oppMove.substring(4, 5) || undefined;
+
+          try {
+            gameRef.current.move({ from: oppFrom, to: oppTo, promotion: oppPromo });
+            syncState();
+          } catch (e) {}
+        }
+
+        setSolutionIndex(nextIndex + 1);
+        setMessage({ text: 'Find the next move...', type: 'info' });
+      }, 800);
+    }
+  };
+
+  const handleIncorrectPuzzleMove = (targetSquare: string, uciMove: string) => {
+    playChessSound('quiz_wrong');
+    setAttempts((a) => a + 1);
+    setMistakes((m) => m + 1);
+    setWrongSquareRed(targetSquare);
+    setLastWrongMove(uciMove);
+    setAiExplanation(null);
+    setMessage({ text: 'Incorrect move, try again.', type: 'error' });
+  };
+
   // Selection & option squares for legal move dots
   const handleSquareClick = (square: string) => {
-    if (status !== 'solving') return;
+    if (status !== 'solving' && status !== 'intro') return;
 
     // 1. If clicked on a valid move square, make the move
-    if (optionSquares[square]) {
-      const uciMove = `${selectedSquare}${square}`;
-      const expectedMove = currentPuzzle.solution[solutionIndex];
-
-      const isCorrect = 
-        uciMove.toLowerCase() === expectedMove.toLowerCase() ||
-        `${uciMove}q`.toLowerCase() === expectedMove.toLowerCase();
+    if (optionSquares[square] && selectedSquare) {
+      const { isCorrect, expectedMove } = validatePuzzleMove(selectedSquare, square);
 
       if (isCorrect) {
         try {
-          const from = expectedMove.substring(0, 2);
-          const to = expectedMove.substring(2, 4);
-          const promotion = expectedMove.substring(4, 5) || undefined;
-          
+          const safeExp = expectedMove || '';
+          const from = safeExp.substring(0, 2) || selectedSquare;
+          const to = safeExp.substring(2, 4) || square;
+          const promotion = safeExp.substring(4, 5) || undefined;
+
           gameRef.current.move({ from, to, promotion });
           syncState();
-          setRightSquareGold(square);
-          setWrongSquareRed(null);
           setSelectedSquare(null);
           setOptionSquares({});
-
-          const nextIndex = solutionIndex + 1;
-
-          if (nextIndex >= currentPuzzle.solution.length) {
-            handlePuzzleSolved(attempts, mistakes);
-          } else {
-            setSolutionIndex(nextIndex);
-            setMessage({ text: 'Correct! Opponent responding...', type: 'success' });
-            
-            setTimeout(() => {
-              const oppMove = currentPuzzle.solution[nextIndex];
-              const oppFrom = oppMove.substring(0, 2);
-              const oppTo = oppMove.substring(2, 4);
-              const oppPromo = oppMove.substring(4, 5) || undefined;
-              
-              gameRef.current.move({ from: oppFrom, to: oppTo, promotion: oppPromo });
-              syncState();
-              
-              setSolutionIndex(nextIndex + 1);
-              setMessage({ text: 'Find the next move...', type: 'info' });
-            }, 800);
-          }
+          handleCorrectPuzzleMove(square);
           return;
         } catch (err) {
           console.error(err);
         }
       } else {
-        setAttempts((a) => a + 1);
-        setMistakes((m) => m + 1);
-        setWrongSquareRed(square);
-        setLastWrongMove(uciMove);
-        setAiExplanation(null);
-        setMessage({ text: 'Incorrect move, try again.', type: 'error' });
+        handleIncorrectPuzzleMove(square, `${selectedSquare}${square}`);
         setSelectedSquare(null);
         setOptionSquares({});
         return;
@@ -330,11 +380,9 @@ export default function PuzzleBoard({ puzzle, onSolveComplete, token }: PuzzleBo
     if (piece && piece.color === gameRef.current.turn()) {
       setSelectedSquare(square);
 
-      // Find legal moves
       const moves = gameRef.current.moves({ square: square as any, verbose: true });
       const newOptionSquares: Record<string, React.CSSProperties> = {};
 
-      // Selection highlight (Chess.com style blue border/glow)
       newOptionSquares[square] = {
         boxShadow: 'inset 0 0 0 3.5px #3b82f6',
         backgroundColor: 'rgba(59, 130, 246, 0.15)',
@@ -377,63 +425,25 @@ export default function PuzzleBoard({ puzzle, onSolveComplete, token }: PuzzleBo
     setSelectedSquare(null);
     setOptionSquares({});
 
-    const uciMove = `${sourceSquare}${targetSquare}`;
-    const expectedMove = currentPuzzle?.solution?.[solutionIndex];
-    if (!expectedMove) return false;
-
-    // Check if it is the correct move (e.g. matching uci or with promotion q fallback)
-    const isCorrect = 
-      uciMove.toLowerCase() === expectedMove.toLowerCase() ||
-      `${uciMove}q`.toLowerCase() === expectedMove.toLowerCase();
+    const { isCorrect, expectedMove } = validatePuzzleMove(sourceSquare, targetSquare);
 
     if (isCorrect) {
-      // Apply the correct move
       try {
-        const from = expectedMove.substring(0, 2);
-        const to = expectedMove.substring(2, 4);
-        const promotion = expectedMove.substring(4, 5) || undefined;
-        
+        const safeExp = expectedMove || '';
+        const from = safeExp.substring(0, 2) || sourceSquare;
+        const to = safeExp.substring(2, 4) || targetSquare;
+        const promotion = safeExp.substring(4, 5) || undefined;
+
         gameRef.current.move({ from, to, promotion });
         syncState();
-        setRightSquareGold(targetSquare);
-        setWrongSquareRed(null);
-
-        const nextIndex = solutionIndex + 1;
-
-        if (nextIndex >= currentPuzzle.solution.length) {
-          // Solved!
-          handlePuzzleSolved(attempts, mistakes);
-        } else {
-          // Play opponent reply
-          setSolutionIndex(nextIndex);
-          setMessage({ text: 'Correct! Opponent responding...', type: 'success' });
-          
-          setTimeout(() => {
-            const oppMove = currentPuzzle.solution[nextIndex];
-            const oppFrom = oppMove.substring(0, 2);
-            const oppTo = oppMove.substring(2, 4);
-            const oppPromo = oppMove.substring(4, 5) || undefined;
-            
-            gameRef.current.move({ from: oppFrom, to: oppTo, promotion: oppPromo });
-            syncState();
-            
-            setSolutionIndex(nextIndex + 1);
-            setMessage({ text: 'Find the next move...', type: 'info' });
-          }, 800);
-        }
+        handleCorrectPuzzleMove(targetSquare);
         return true;
       } catch (err) {
         console.error('Correct move application error:', err);
         return false;
       }
     } else {
-      // Incorrect move
-      setAttempts((a) => a + 1);
-      setMistakes((m) => m + 1);
-      setWrongSquareRed(targetSquare);
-      setLastWrongMove(uciMove);
-      setAiExplanation(null);
-      setMessage({ text: 'Incorrect move, try again.', type: 'error' });
+      handleIncorrectPuzzleMove(targetSquare, `${sourceSquare}${targetSquare}`);
       return false;
     }
   };
