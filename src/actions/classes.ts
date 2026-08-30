@@ -81,6 +81,10 @@ export async function endClassAction(id: string) {
 
 export async function startClassAction(id: string) {
   try {
+    const { getCurrentUser } = await import('@/lib/supabase/auth');
+    const user = await getCurrentUser();
+    const role = user?.role || 'COACH';
+    await classesService.getOrCreateActiveLiveSession(id, user?.id || '', role);
     const result = await classesService.setClassStatus(id, 'LIVE');
     if (result && result.success) {
       revalidatePath(`/classroom/${id}`);

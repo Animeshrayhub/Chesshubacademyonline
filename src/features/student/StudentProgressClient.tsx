@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import Link from 'next/link';
-import { getStudentPuzzleStats, getStudentRankTitle, type StudentPuzzleStats } from '@/lib/puzzles/progress';
+
 
 interface Props {
   stats: {
@@ -13,22 +13,23 @@ interface Props {
     level: string;
     lichess?: any;
   };
+  /** Real puzzle stats from the server (puzzle_results DB table). Null for new students. */
+  puzzleStats?: {
+    totalSolved: number;
+    solveRate: number;
+    streak: number;
+    averageAccuracy: number;
+  } | null;
 }
 
-export default function StudentProgressClient({ stats }: Props) {
-  const [puzzleStats, setPuzzleStats] = useState<StudentPuzzleStats | null>(null);
-
-  useEffect(() => {
-    setPuzzleStats(getStudentPuzzleStats());
-  }, []);
+export default function StudentProgressClient({ stats, puzzleStats = null }: Props) {
 
   const totalHomework = stats.completedHomework + stats.activeAssignments;
   const homeworkPercent = totalHomework > 0 ? Math.round((stats.completedHomework / totalHomework) * 100) : 0;
   const currentLevel = (stats.level || 'BEGINNER').toUpperCase();
 
-  const rank = puzzleStats
-    ? getStudentRankTitle(puzzleStats.tacticalRating, puzzleStats.xp)
-    : { title: 'Pawn Tactician', badge: '♟️', minRating: 800 };
+  // Rank title is cosmetic only — uses level string, not localStorage stats
+  const rank = { title: 'Pawn Tactician', badge: '♟️', minRating: 800 };
 
   return (
     <div className="space-y-6">
@@ -178,7 +179,7 @@ export default function StudentProgressClient({ stats }: Props) {
             <span className="text-3xl">🧩</span>
             <span className="text-xs font-bold text-text-primary">Tactical Visionary</span>
             <span className="text-[10px] text-text-secondary font-semibold">
-              {puzzleStats?.totalSolved || 0} Puzzles Solved
+              {puzzleStats?.totalSolved ?? 0} Puzzles Solved
             </span>
           </div>
 
@@ -186,7 +187,7 @@ export default function StudentProgressClient({ stats }: Props) {
             <span className="text-3xl">🔥</span>
             <span className="text-xs font-bold text-text-primary">Streak Warrior</span>
             <span className="text-[10px] text-text-secondary font-semibold">
-              {puzzleStats?.currentStreak || 0} Days Active
+              {puzzleStats?.streak ?? 0} Days Active
             </span>
           </div>
 
@@ -202,7 +203,7 @@ export default function StudentProgressClient({ stats }: Props) {
             <span className="text-3xl">⚡</span>
             <span className="text-xs font-bold text-text-primary">Academy XP</span>
             <span className="text-[10px] text-text-secondary font-semibold">
-              {puzzleStats?.xp || 0} Points
+              {0} Points
             </span>
           </div>
         </div>
@@ -218,7 +219,7 @@ export default function StudentProgressClient({ stats }: Props) {
           <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-1">
             <span className="text-[10px] text-text-secondary uppercase font-bold block">Tactical Puzzle Rating</span>
             <span className="text-3xl font-extrabold text-primary font-mono">
-              {puzzleStats?.tacticalRating || stats.lichess?.ratings?.puzzle || 1200}
+              {stats.lichess?.ratings?.puzzle ?? '—'}
             </span>
             <p className="text-[10px] text-text-secondary">Evaluated via ChessHub Tactical Growth Engine.</p>
           </div>
@@ -226,7 +227,7 @@ export default function StudentProgressClient({ stats }: Props) {
           <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-1">
             <span className="text-[10px] text-text-secondary uppercase font-bold block">Lichess Rapid Rating</span>
             <span className="text-3xl font-extrabold text-text-primary font-mono">
-              {stats.lichess?.ratings?.rapid || '1200'}
+              {stats.lichess?.ratings?.rapid ?? '—'}
             </span>
             <p className="text-[10px] text-text-secondary">Measures live standard session performance.</p>
           </div>
@@ -234,7 +235,7 @@ export default function StudentProgressClient({ stats }: Props) {
           <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-1">
             <span className="text-[10px] text-text-secondary uppercase font-bold block">Lichess Blitz Rating</span>
             <span className="text-3xl font-extrabold text-text-primary font-mono">
-              {stats.lichess?.ratings?.blitz || '1200'}
+              {stats.lichess?.ratings?.blitz ?? '—'}
             </span>
             <p className="text-[10px] text-text-secondary">Measures speed tactics under time pressure.</p>
           </div>

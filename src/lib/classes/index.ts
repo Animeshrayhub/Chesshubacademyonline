@@ -489,18 +489,7 @@ export async function setClassStatus(id: string, status: ClassStatus): Promise<R
       updated_at: nowISO,
     };
 
-    if (status === 'LIVE') {
-      const { data: existing } = await admin
-        .from('classes')
-        .select('started_at')
-        .eq('id', id)
-        .maybeSingle();
-
-      if (!existing?.started_at) {
-        updatePayload.started_at = nowISO;
-      }
-    } else if (status === 'COMPLETED') {
-      updatePayload.ended_at = nowISO;
+    if (status === 'COMPLETED') {
       try {
         await admin
           .from('live_sessions')
@@ -529,11 +518,9 @@ export async function setClassStatus(id: string, status: ClassStatus): Promise<R
           {
             id,
             status,
-            class_type: 'INDIVIDUAL',
+            class_type: 'PRIVATE',
             scheduled_start: nowISO,
             duration_minutes: 60,
-            started_at: status === 'LIVE' ? nowISO : undefined,
-            ended_at: status === 'COMPLETED' ? nowISO : undefined,
             updated_at: nowISO,
           },
           { onConflict: 'id' }
@@ -1029,36 +1016,10 @@ export async function getOrCreateActiveLiveSession(
 ): Promise<Result<{ sessionId: string; classId: string; className: string; status: string; startedAt: string }>> {
   try {
     const admin = createSupabaseAdmin();
+    const userRole = (role || '').toLowerCase();
+    const isCoachOrAdmin = userRole === 'coach' || userRole === 'admin';
 
-    // 1. Try calling atomic RPC function get_or_create_active_live_session
-    const { data: rpcData, error: rpcErr } = await admin.rpc('get_or_create_active_live_session', {
-      p_class_id: classId,
-      p_user_id: userId || null,
-      p_role: role.toLowerCase(),
-    });
-
-    if (!rpcErr && rpcData?.session_id) {
-      return {
-        success: true,
-        data: {
-          sessionId: rpcData.session_id,
-          classId: rpcData.class_id,
-          className: rpcData.class_name || 'Chess Classroom Session',
-          status: rpcData.status || 'active',
-          startedAt: rpcData.started_at || new Date().toISOString(),
-        },
-      };
-    }
-
-    // Fallback query if RPC initializing
-    const { data: cls } = await admin
-      .from('classes')
-      .select('topic, title, name')
-      .eq('id', classId)
-      .maybeSingle();
-
-    const className = cls?.title || cls?.topic || cls?.name || 'Chess Classroom Session';
-
+    // 1. Check for existing active session first
     let { data: existingSession } = await admin
       .from('live_sessions')
       .select('*')
@@ -1066,12 +1027,51 @@ export async function getOrCreateActiveLiveSession(
       .eq('status', 'active')
       .maybeSingle();
 
-    if (!existingSession) {
-      const { data: newSession } = await admin
+    // 2. Try calling atomic RPC function if available
+    if (!existingSession && isCoachOrAdmin) {
+      const { data: rpcData, error: rpcErr } = await admin.rpc('get_or_create_active_live_session', {
+        p_class_id: classId,
+        p_user_id: userId || null,
+        p_role: userRole,
+      });
+
+      if (rpcErr) {
+        console.warn('[getOrCreateActiveLiveSession] RPC warning/fallback:', rpcErr.message);
+      }
+
+      if (!rpcErr && rpcData?.session_id) {
+        return {
+          success: true,
+          data: {
+            sessionId: rpcData.session_id,
+            classId: rpcData.class_id,
+            className: rpcData.class_name || 'Chess Classroom Session',
+            status: rpcData.status || 'active',
+            startedAt: rpcData.started_at || new Date().toISOString(),
+          },
+        };
+      }
+    }
+
+    // 3. Fallback query for class title
+    const { data: cls } = await admin
+      .from('classes')
+      .select('title, name')
+      .eq('id', classId)
+      .maybeSingle();
+
+    const className = cls?.title || cls?.topic || cls?.name || 'Chess Classroom Session';
+
+    // If no session exists and Coach/Admin enters, create exactly one active session
+    if (!existingSession && isCoachOrAdmin) {
+      const { data: newSession, error: insErr } = await admin
         .from('live_sessions')
         .insert({ class_id: classId, status: 'active', started_at: new Date().toISOString() })
         .select()
         .single();
+      if (insErr) {
+        console.error('[getOrCreateActiveLiveSession] Insert fallback error:', insErr.message, insErr.details);
+      }
       existingSession = newSession;
     }
 
@@ -1081,7 +1081,7 @@ export async function getOrCreateActiveLiveSession(
           {
             session_id: existingSession.id,
             user_id: userId,
-            role: role.toLowerCase(),
+            role: userRole,
             is_online: true,
             last_seen: new Date().toISOString(),
           },
@@ -1101,9 +1101,16 @@ export async function getOrCreateActiveLiveSession(
       };
     }
 
+    // Student entering when no coach has started the session yet
     return {
-      success: false,
-      error: new DatabaseError('Could not resolve active live session', rpcErr),
+      success: true,
+      data: {
+        sessionId: classId,
+        classId,
+        className,
+        status: 'scheduled',
+        startedAt: '',
+      },
     };
   } catch (err: any) {
     return {

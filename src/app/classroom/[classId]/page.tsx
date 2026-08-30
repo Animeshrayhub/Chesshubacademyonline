@@ -118,36 +118,18 @@ export default async function ClassroomPage({ params }: { params: { classId: str
     }
 
     if (sp) {
-      // Check existing enrollment in class_students
+      // Check existing enrollment in class_students (strict enrollment check)
       const { data: enrollment } = await admin
         .from('class_students')
         .select('id')
         .eq('class_id', params.classId)
         .eq('student_id', sp.id)
+        .is('archived_at', null)
         .maybeSingle();
 
       if (enrollment) {
-        // Already enrolled — allow
+        // Enrolled in class_students — allow access
         isAuthorized = true;
-      } else {
-        // Check coach_student_assignments — student is assigned to the coach of this class
-        if (cls.coach_id) {
-          const { data: assignment } = await admin
-            .from('coach_student_assignments')
-            .select('id')
-            .or(`student_id.eq.${sp.id},student_id.eq.${user.id}`)
-            .limit(1)
-            .maybeSingle();
-
-          if (assignment) {
-            // Auto-enroll assigned student into this class
-            await admin.from('class_students').upsert(
-              { class_id: params.classId, student_id: sp.id },
-              { onConflict: 'class_id,student_id' }
-            );
-            isAuthorized = true;
-          }
-        }
       }
     }
 

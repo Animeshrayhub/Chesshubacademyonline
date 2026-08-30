@@ -27,6 +27,8 @@ export async function convertBookingToStudentAction(bookingId: string, passwordC
     revalidatePath('/dashboard/admin/bookings');
     revalidatePath('/dashboard/admin/students');
     revalidatePath('/dashboard/admin');
+    // Revalidate the student dashboard so the new student starts with real (empty) data
+    revalidatePath('/dashboard/student');
   }
   return JSON.parse(JSON.stringify(result));
 }

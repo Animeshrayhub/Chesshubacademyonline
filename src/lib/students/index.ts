@@ -11,6 +11,7 @@ import type { AdminStudentRow, DbStudentProfile } from '@/types/dashboard';
 import { DB_TO_APP_TRACK } from '../homework';
 import { getStudentPuzzleStats } from '../puzzles/results';
 import { calculateAndProtectStreak } from '../puzzles/properties';
+import { parseStudentStats } from './stats';
 
 // ─── Internal Helper: Resolve profile ID from user ID ────────────────────────
 
@@ -441,8 +442,8 @@ export async function getStudentDashboardStats(): Promise<Result<{
   totalEnrolledClasses: number;
   attendanceRate: number;
   level: string;
+  xp: number;
   lichess: {
-
     username: string;
     ratings: {
       blitz: number;
@@ -481,31 +482,13 @@ export async function getStudentDashboardStats(): Promise<Result<{
       studentProfile = newProfile;
     }
 
-    if (studentProfile) {
-      // Ensure student has enrollments in real classes table
-      const { data: existingEnrollments } = await admin
-        .from('class_students')
-        .select('class_id')
-        .eq('student_id', studentProfile.id);
+    // NOTE: A student with zero class enrollments should see zero classes.
+    // Do NOT auto-enroll students into classes they were not assigned to.
 
-      if (!existingEnrollments || existingEnrollments.length === 0) {
-        const { data: allDBClasses } = await admin
-          .from('classes')
-          .select('id')
-          .is('archived_at', null)
-          .limit(10);
 
-        if (allDBClasses && allDBClasses.length > 0) {
-          const enrollmentsToInsert = allDBClasses.map((c: any) => ({
-            class_id: c.id,
-            student_id: studentProfile.id,
-            first_joined_at: new Date().toISOString(),
-          }));
-          await admin.from('class_students').upsert(enrollmentsToInsert, { onConflict: 'class_id,student_id' });
-        }
-      }
-    }
-
+    // Extract XP from student profile notes (real DB-backed stat)
+    const dbStats = parseStudentStats(studentProfile?.notes ?? null);
+    const realXp = dbStats.xp;
 
     // Extract Lichess JSON if available
     let lichess = null;
@@ -596,6 +579,7 @@ export async function getStudentDashboardStats(): Promise<Result<{
         totalEnrolledClasses: totalEnrolled,
         attendanceRate,
         level: studentProfile.level || 'Beginner',
+        xp: realXp,
         lichess,
         nextClass: nextClassStr,
         puzzleStats: pStats ? {
@@ -634,18 +618,15 @@ export async function getStudentClasses(): Promise<Result<any[]>> {
     const enrollmentMap = new Map<string, any>((enrollments || []).map((e: any) => [e.class_id, e]));
     let classIds = (enrollments || []).map((e: any) => e.class_id).filter(Boolean);
 
-    const studentProfileIds = Array.from(new Set([studentProfileId, user.id])).filter(Boolean);
-    const { data: coachAssignments } = await admin
-      .from('coach_student_assignments')
-      .select('coach_id')
-      .in('student_id', studentProfileIds);
+    // Only show classes the student is actually enrolled in
+    if (classIds.length === 0) {
+      return { success: true, data: [] };
+    }
 
-    const assignedCoachIds = (coachAssignments || []).map((a: any) => a.coach_id).filter(Boolean);
-
-    // Fetch all non-archived classes to guarantee Coach & Student join the exact same Admin-created classes
     const { data: classes, error: cErr } = await admin
       .from('classes')
       .select('*')
+      .in('id', classIds)
       .is('archived_at', null)
       .order('scheduled_start', { ascending: true });
 
@@ -654,6 +635,15 @@ export async function getStudentClasses(): Promise<Result<any[]>> {
     }
 
     if (classes.length === 0) return { success: true, data: [] };
+
+    // Query active live_sessions to check which classes currently have an active classroom
+    const { data: activeLiveSessions } = await admin
+      .from('live_sessions')
+      .select('id, class_id, status, started_at')
+      .in('class_id', classIds)
+      .eq('status', 'active');
+
+    const activeLiveMap = new Map<string, any>((activeLiveSessions || []).map((ls: any) => [ls.class_id, ls]));
 
     // Resolve coach names
     const rawCoachIds = [...new Set(classes.map((c: any) => c.coach_id))].filter(Boolean);
@@ -683,17 +673,29 @@ export async function getStudentClasses(): Promise<Result<any[]>> {
       const coachUserId = coachProfileToUserId.get(c.coach_id) || c.coach_id;
       const coachUser = coachUserMap.get(coachUserId);
       const enr = enrollmentMap.get(c.id);
-      const wasPresent = !!enr?.first_joined_at || c.status === 'COMPLETED';
+      const activeSession = activeLiveMap.get(c.id);
+
+      let computedStatus = c.status || 'SCHEDULED';
+      if (activeSession) {
+        computedStatus = 'LIVE';
+      } else if (c.status === 'COMPLETED' || c.status === 'RECORDING_AVAILABLE') {
+        computedStatus = 'COMPLETED';
+      } else {
+        computedStatus = 'SCHEDULED';
+      }
+
+      const wasPresent = !!enr?.first_joined_at || computedStatus === 'COMPLETED';
 
       return {
         ...c,
+        status: computedStatus,
+        liveSessionId: activeSession?.id || null,
         schedule: c.scheduled_start,
         coachName: coachUser ? `${coachUser.first_name} ${coachUser.last_name}` : 'FIDE Instructor',
         firstJoinedAt: enr?.first_joined_at || null,
         wasPresent,
       };
     });
-
 
     return { success: true, data: result };
   } catch (error) {

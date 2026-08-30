@@ -6,26 +6,41 @@ interface DailyStreakWidgetProps {
   currentStreak?: number;
   totalXp?: number;
   todaySolved?: boolean;
+  /** ISO date strings (YYYY-MM-DD) on which the student solved at least one puzzle */
+  solvedDates?: string[];
+}
+
+function getWeekDays(solvedDates: string[]): { day: string; solved: boolean }[] {
+  const solvedSet = new Set(solvedDates);
+  const today = new Date();
+  const days = [];
+
+  // Build Mon→Sun of the current week
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - ((today.getDay() + 6) % 7)); // Monday of this week
+
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const iso = d.toISOString().split('T')[0];
+    const dayName = d.toLocaleString('en-US', { weekday: 'short' });
+    days.push({ day: dayName, solved: solvedSet.has(iso) });
+  }
+
+  return days;
 }
 
 export default function DailyStreakWidget({
-  currentStreak = 5,
-  totalXp = 450,
+  currentStreak = 0,
+  totalXp = 0,
   todaySolved = false,
+  solvedDates = [],
 }: DailyStreakWidgetProps) {
   const [solved, setSolved] = useState(todaySolved);
   const [streak, setStreak] = useState(currentStreak);
   const [xp, setXp] = useState(totalXp);
 
-  const weekDays = [
-    { day: 'Mon', solved: true },
-    { day: 'Tue', solved: true },
-    { day: 'Wed', solved: true },
-    { day: 'Thu', solved: true },
-    { day: 'Fri', solved: true },
-    { day: 'Sat', solved: solved },
-    { day: 'Sun', solved: false },
-  ];
+  const weekDays = getWeekDays(solvedDates);
 
   const handleClaimDailyPuzzle = () => {
     if (!solved) {
@@ -49,9 +64,11 @@ export default function DailyStreakWidget({
           <div>
             <h3 className="font-heading font-bold text-sm text-amber-300 flex items-center gap-2">
               <span>{streak} Day Puzzle Streak</span>
-              <span className="text-[10px] bg-amber-500/20 border border-amber-500/40 text-amber-300 px-2 py-0.5 rounded-full font-bold">
-                Active
-              </span>
+              {streak > 0 && (
+                <span className="text-[10px] bg-amber-500/20 border border-amber-500/40 text-amber-300 px-2 py-0.5 rounded-full font-bold">
+                  Active
+                </span>
+              )}
             </h3>
             <p className="text-xs text-slate-400">Solve 1 puzzle daily to maintain your streak!</p>
           </div>

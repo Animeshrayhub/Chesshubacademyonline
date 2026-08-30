@@ -575,15 +575,70 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
     }
   };
 
-  const handleToggleView = (targetView: 'gallery' | 'speaker') => {
-    setViewTypeState(targetView);
-    if (zoomClientRef.current && typeof zoomClientRef.current.setViewType === 'function') {
-      try {
-        zoomClientRef.current.setViewType(targetView);
-      } catch {
-        // ignore
-      }
+  /** Helper: Detect mobile or tablet device */
+  const isMobileOrTablet = useCallback(() => {
+    if (typeof window === 'undefined') return false;
+    const ua = navigator.userAgent || navigator.vendor || (window as any).opera || '';
+    return /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|tablet/i.test(ua) ||
+      (navigator.maxTouchPoints && navigator.maxTouchPoints > 2);
+  }, []);
+
+  /**
+   * Safe Zoom SDK View Type setter with capability detection & fallback.
+   * Priority: speaker (desktop only if supported) -> gallery (preferred) -> minimized (final)
+   * Handles both synchronous errors and async Promise rejections without crashing React.
+   */
+  const safeSetZoomViewType = useCallback(async (targetView: 'speaker' | 'gallery' | 'minimized') => {
+    const client = zoomClientRef.current;
+    if (!client || typeof client.setViewType !== 'function') {
+      setViewTypeState(targetView === 'minimized' ? 'gallery' : (targetView as 'gallery' | 'speaker'));
+      return;
     }
+
+    // On mobile or tablet, automatically prefer gallery over speaker to prevent SDK multi-video error
+    let viewToTry: 'speaker' | 'gallery' | 'minimized' = targetView;
+    if (viewToTry === 'speaker' && isMobileOrTablet()) {
+      viewToTry = 'gallery';
+    }
+
+    const tryApplyView = async (v: 'speaker' | 'gallery' | 'minimized'): Promise<boolean> => {
+      try {
+        const result = client.setViewType(v);
+        if (result && typeof (result as any).then === 'function') {
+          await result;
+        } else if (result && typeof result === 'object' && (result as any).type === 'ExecutedFailure') {
+          return false;
+        }
+        return true;
+      } catch (err: any) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(`[zoom] View type "${v}" not supported on this device/browser (falling back):`, err?.message || err);
+        }
+        return false;
+      }
+    };
+
+    // 1. Try initial target view (or gallery on mobile)
+    let success = await tryApplyView(viewToTry);
+    let appliedView: 'speaker' | 'gallery' | 'minimized' = viewToTry;
+
+    // 2. Fallback: speaker -> gallery
+    if (!success && viewToTry === 'speaker') {
+      appliedView = 'gallery';
+      success = await tryApplyView('gallery');
+    }
+
+    // 3. Fallback: gallery -> minimized
+    if (!success && appliedView === 'gallery') {
+      appliedView = 'minimized';
+      await tryApplyView('minimized');
+    }
+
+    setViewTypeState(appliedView === 'minimized' ? 'gallery' : appliedView);
+  }, [isMobileOrTablet]);
+
+  const handleToggleView = (targetView: 'gallery' | 'speaker') => {
+    safeSetZoomViewType(targetView);
   };
 
   /**
@@ -901,19 +956,33 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
               </div>
             </div>
 
-            {/* Tile 2 (Right): Student Card — Green Active Border & Orange Circle Avatar matching screenshot */}
-            <div className="flex-1 h-full relative rounded-xl overflow-hidden bg-[#242430] border-2 border-emerald-500 flex flex-col items-center justify-center shadow-lg">
-              <div className="relative z-10 flex flex-col items-center gap-1.5">
-                {/* Centered Orange Circle Avatar */}
-                <div className="w-16 h-16 rounded-full bg-[#ea580c] border-2 border-orange-400/40 flex items-center justify-center text-white text-2xl font-extrabold shadow-2xl">
-                  {(studentName || audioDiag.participants.find(p => p.userName !== userName)?.userName || 'Umar farooq').charAt(0).toUpperCase()}
+            {/* Tile 2 (Right): Second Participant Card or Waiting Indicator */}
+            {(() => {
+              const remoteParticipant = audioDiag.participants.find(p => p.userName && p.userName.toLowerCase() !== (userName || '').toLowerCase());
+              const isRemoteConnected = Boolean(remoteParticipant) || participantCount > 1;
+              const displayName = remoteParticipant?.userName || (studentName && studentName !== 'Student' && studentName !== 'Umar farooq' ? studentName : (isCoach ? 'Student' : 'Coach'));
+              const isWaiting = !isRemoteConnected;
+
+              return (
+                <div className={`flex-1 h-full relative rounded-xl overflow-hidden bg-[#242430] border-2 flex flex-col items-center justify-center shadow-lg transition-all ${isWaiting ? 'border-slate-700/60 opacity-85' : 'border-emerald-500'}`}>
+                  <div className="relative z-10 flex flex-col items-center gap-1.5">
+                    {/* Centered Circle Avatar */}
+                    <div className={`w-16 h-16 rounded-full border-2 flex items-center justify-center text-2xl font-extrabold shadow-2xl ${isWaiting ? 'bg-slate-800 border-slate-600/50 text-slate-400' : 'bg-[#ea580c] border-orange-400/40 text-white'}`}>
+                      {isWaiting ? '👤' : displayName.charAt(0).toUpperCase()}
+                    </div>
+                  </div>
+                  {/* Bottom-Left Name Badge */}
+                  <div className="absolute bottom-2 left-2 z-20 px-2 py-0.5 bg-black/80 backdrop-blur rounded-md border border-white/10 text-[10px] font-bold text-white flex items-center gap-1.5 shadow-md">
+                    <span className={isWaiting ? 'text-slate-400' : 'text-white'}>
+                      {isWaiting ? (isCoach ? 'Waiting for Student…' : 'Waiting for Coach…') : displayName}
+                    </span>
+                    {isWaiting && (
+                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Waiting for user to join" />
+                    )}
+                  </div>
                 </div>
-              </div>
-              {/* Bottom-Left Name Badge */}
-              <div className="absolute bottom-2 left-2 z-20 px-2 py-0.5 bg-black/80 backdrop-blur rounded-md border border-white/10 text-[10px] font-bold text-white flex items-center gap-1 shadow-md">
-                <span>{studentName || audioDiag.participants.find(p => p.userName !== userName)?.userName || 'Umar farooq'}</span>
-              </div>
-            </div>
+              );
+            })()}
           </div>
         )}
 

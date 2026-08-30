@@ -41,8 +41,9 @@ export default async function StudentOverviewPage() {
     certificates: 0,
     completedClasses: 0,
     totalEnrolledClasses: 0,
-    attendanceRate: 100,
+    attendanceRate: 0,
     level: 'Beginner',
+    xp: 0,
     lichess: null,
     nextClass: 'None',
     puzzleStats: null,
@@ -273,7 +274,7 @@ export default async function StudentOverviewPage() {
       )}
 
       {/* 🏆 Student Level XP Progress Badge */}
-      <StudentXpBadge totalXp={750} streakDays={stats.puzzleStats?.streak || 5} />
+      <StudentXpBadge totalXp={stats.xp ?? 0} streakDays={stats.puzzleStats?.streak ?? 0} />
 
       {/* 🔥 Daily 3-Puzzle Challenge Streak */}
       <DailyPuzzleChallengeWidget />
@@ -293,7 +294,7 @@ export default async function StudentOverviewPage() {
 
       {/* 🏆 Daily Streak Habit Tracker & ⚔️ 1v1 Speed Duel Arena Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <DailyStreakWidget currentStreak={stats.puzzleStats?.streak || 5} />
+        <DailyStreakWidget currentStreak={stats.puzzleStats?.streak ?? 0} totalXp={stats.xp ?? 0} />
         <StudentBattleArena studentName={user?.firstName || 'Student'} />
       </div>
 

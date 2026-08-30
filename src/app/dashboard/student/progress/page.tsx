@@ -13,7 +13,9 @@ export default async function StudentProgressPage() {
     activeAssignments: 0,
     certificates: 0,
     level: 'Beginner',
+    xp: 0,
     lichess: null,
+    puzzleStats: null,
   };
 
   return (
@@ -23,7 +25,10 @@ export default async function StudentProgressPage() {
         subtitle="Track your curriculum milestone achievements, workbook submission history, and ratings progression."
       />
 
-      <StudentProgressClient stats={stats} />
+      <StudentProgressClient
+        stats={stats}
+        puzzleStats={stats.puzzleStats ?? null}
+      />
     </div>
   );
 }

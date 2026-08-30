@@ -302,17 +302,15 @@ export default function ChessWorkspace({
 
   // Re-sync chessboard when initialFen prop changes (lessons/puzzles load)
   useEffect(() => {
+    if (!initialFen || initialFen === gameRef.current.fen()) return;
     const safe = safeChessInstance(initialFen);
     gameRef.current = safe.chess;
     setFen(safe.validFen);
-    setFenHistory([safe.validFen]);
-    setMoveHistory([]);
-    setHistoryIndex(0);
-    setReviewIndex(null);
-    setArrows([]);
-    setHighlights({});
-    setEngineLines({});
-    undoneMovesRef.current = [];
+    setFenHistory((prev) => (prev[prev.length - 1] === safe.validFen ? prev : [...prev, safe.validFen]));
+    const newHist = safe.chess.history();
+    if (newHist.length > 0) {
+      setMoveHistory(newHist);
+    }
   }, [initialFen]);
 
   // On mount: if editor is already open (e.g. after boardKey remount), sync the piece map
@@ -324,40 +322,11 @@ export default function ChessWorkspace({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // run once on mount only
 
-  // Load saved PGN / FEN position for this classId on initial mount!
+  // Load saved PGN / FEN position for this classId on initial mount (standalone mode only; classroom uses DB state)
   useEffect(() => {
     if (typeof window === 'undefined' || !classId) return;
-    // Skip loading stale PGN if initialFen is a custom position setup
-    if (initialFen && initialFen !== DEFAULT_START_FEN) {
-      return;
-    }
-    try {
-      const savedPgn = localStorage.getItem(`classroom_pgn_${classId}`);
-      const savedFen = localStorage.getItem(`classroom_fen_${classId}`);
-      if (savedPgn || savedFen) {
-        const c = new Chess();
-        let loaded = false;
-        if (savedPgn && savedPgn.trim()) {
-          try {
-            c.loadPgn(savedPgn);
-            loaded = true;
-          } catch {}
-        }
-        if (!loaded && savedFen && savedFen.trim()) {
-          try {
-            c.load(savedFen);
-            loaded = true;
-          } catch {}
-        }
-        if (loaded) {
-          gameRef.current = c;
-          setFen(c.fen());
-          setMoveHistory(c.history());
-        }
-      }
-    } catch (e) {
-      console.error('Failed to load saved classroom PGN:', e);
-    }
+    // In Classroom mode, database (live_session_board_state) is the authoritative single source of truth.
+    // LocalStorage fallback is bypassed to prevent stale client cache from overwriting live classroom state.
   }, [classId, initialFen]);
 
   // In a classroom (classId present), start unlocked (false) so students can move unless coach locks.
@@ -579,15 +548,15 @@ export default function ChessWorkspace({
       // Format: pgn + '\n\n__HISTORY__:' + JSON.stringify(history)
       const historyJson = JSON.stringify(g.history());
       onMove(nextFen, `${g.pgn()}\n\n__HISTORY__:${historyJson}`);
-    }
-
-    const canBroadcast = isCoach || (!isCoach && !isBoardLocked);
-    if (classId && canBroadcast) {
-      channelRef.current?.send({
-        type: 'broadcast',
-        event: 'move',
-        payload: { fen: nextFen, history: g.history(), sentAt: Date.now() },
-      });
+    } else if (!classId) {
+      const canBroadcast = isCoach || (!isCoach && !isBoardLocked);
+      if (canBroadcast) {
+        channelRef.current?.send({
+          type: 'broadcast',
+          event: 'move',
+          payload: { fen: nextFen, history: g.history(), sentAt: Date.now() },
+        });
+      }
     }
   }, [onMove, classId, isCoach, isBoardLocked, fenHistory, historyIndex]);
 

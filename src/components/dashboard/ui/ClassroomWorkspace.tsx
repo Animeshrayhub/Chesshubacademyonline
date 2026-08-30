@@ -301,7 +301,7 @@ export default function ClassroomWorkspace({
       setBoardKey((k) => k + 1);
       setGameMoves([]);
       setCurrentMoveIndex(-1);
-      persistAndBroadcastBoardState(pos.fen, [], -1);
+      persistAndBroadcastBoardState(pos.fen, [], -1, undefined, pos, lessonPositions, index);
 
       mainChannelRef.current?.send({
         type: 'broadcast',
@@ -397,13 +397,15 @@ export default function ClassroomWorkspace({
 
   const isStudentControlGranted = useCallback(() => {
     if (isCoach) return true;
-    if (!boardControllerId) return false;
+    if (isBoardLocked) return false;
+
+    if (!boardControllerId) return true;
 
     const controller = boardControllerId.trim().toLowerCase();
     const coachClean = (coachName || '').trim().toLowerCase();
 
     // If controller is explicitly set to coach, student does NOT have control
-    if (controller === coachClean || (coachClean && coachClean.includes(controller)) || controller.includes('coach')) {
+    if (controller === coachClean || (coachClean && coachClean.includes(controller)) || controller === 'coach') {
       return false;
     }
 
@@ -414,55 +416,41 @@ export default function ClassroomWorkspace({
     if (myId && (controller === myId || controller.includes(myId) || myId.includes(controller))) return true;
     if (myName && (controller === myName || controller.includes(myName) || myName.includes(controller))) return true;
 
-    // Check if controller matches any attribute of student in room
-    const myStudentObj = students.find((s: any) => {
-      const sUser = (s.userId || '').trim().toLowerCase();
-      const sProf = (s.studentProfileId || s.id || '').trim().toLowerCase();
-      const sName = `${s.firstName || ''} ${s.lastName || ''}`.trim().toLowerCase();
-      return (myId && (myId === sUser || myId === sProf)) ||
-             (myName && (myName === sName || (s.firstName && myName.includes(s.firstName.toLowerCase()))));
-    });
-
-    if (myStudentObj) {
-      const sUser = ((myStudentObj as any).userId || '').trim().toLowerCase();
-      const sProf = ((myStudentObj as any).studentProfileId || (myStudentObj as any).id || '').trim().toLowerCase();
-      const sEmail = ((myStudentObj as any).email || '').trim().toLowerCase();
-      const sName = `${(myStudentObj as any).firstName || ''} ${(myStudentObj as any).lastName || ''}`.trim().toLowerCase();
-
-      if (sUser && (controller === sUser || controller.includes(sUser))) return true;
-      if (sProf && (controller === sProf || controller.includes(sProf))) return true;
-      if (sEmail && (controller === sEmail || controller.includes(sEmail))) return true;
-      if (sName && (controller === sName || controller.includes(sName))) return true;
-      if (myStudentObj.firstName && controller.includes(myStudentObj.firstName.toLowerCase())) return true;
-    }
-
-    // Fallback: If controller is not coach, grant move permission to the active student
     return true;
-  }, [isCoach, boardControllerId, userId, userName, coachName, students]);
+  }, [isCoach, isBoardLocked, boardControllerId, userId, userName, coachName]);
 
   // Board State Persistence Helper: Persists authoritative state to DB and broadcasts to canonical channel
   const persistAndBroadcastBoardState = useCallback(async (
     newFen: string,
     newMoves: string[],
     newMoveIdx: number,
-    newControllerId?: string
+    newControllerId?: string,
+    customActivePosition?: TeachingPosition | null,
+    customLessonPositions?: TeachingPosition[],
+    customPositionIndex?: number
   ) => {
     const version = boardVersionRef.current + 1;
     boardVersionRef.current = version;
     const controller = newControllerId !== undefined ? newControllerId : boardControllerId;
+    const activePos = customActivePosition !== undefined ? customActivePosition : activePosition;
+    const lessonPositions = customLessonPositions !== undefined ? customLessonPositions : activeLessonPositions;
+    const posIndex = customPositionIndex !== undefined ? customPositionIndex : activePositionIndex;
 
-    const activePosData = activePosition ? {
-      id: activePosition.id,
-      title: activePosition.title,
-      description: activePosition.description,
-      solution: activePosition.solution,
-      explanation: activePosition.explanation,
-      chapterTitle: activePosition.chapterTitle,
-      boardOrientation: activePosition.boardOrientation || 'white',
+    const activePosData = activePos ? {
+      id: activePos.id,
+      title: activePos.title,
+      description: activePos.description,
+      solution: activePos.solution,
+      explanation: activePos.explanation,
+      chapterTitle: activePos.chapterTitle,
+      boardOrientation: activePos.boardOrientation || 'white',
+      lesson_positions: lessonPositions,
+      position_index: posIndex,
+      is_board_locked: isBoardLocked,
     } : null;
 
     const payload = {
-      type: 'BOARD_POSITION',
+      type: 'BOARD_STATE',
       classId,
       sessionId: activeSessionId,
       fen: newFen,
@@ -471,13 +459,25 @@ export default function ClassroomWorkspace({
       currentMoveIndex: newMoveIdx,
       version,
       controllerId: controller,
+      isBoardLocked,
+      allowIllegalMoves,
       activePosition: activePosData,
+      activeLessonPositions: lessonPositions,
+      activePositionIndex: posIndex,
       sourceUserId: userId || userName,
       sourceRole: role,
       updatedBy: userId || userName,
       timestamp: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[BOARD SEND]', {
+        version,
+        fen: newFen,
+        updatedBy: userId || userName,
+      });
+    }
 
     // 1. Persist to DB (live_session_board_state keyed by activeSessionId / sessionId for shared state)
     try {
@@ -495,11 +495,33 @@ export default function ClassroomWorkspace({
         },
         { onConflict: 'session_id' }
       );
+
+      if (classId && activeSessionId !== classId) {
+        await supabase.from('live_session_board_state').upsert(
+          {
+            session_id: classId,
+            fen: newFen,
+            moves: newMoves,
+            current_move_index: newMoveIdx,
+            board_controller_id: controller,
+            allow_illegal_moves: allowIllegalMoves,
+            active_position: activePosData,
+            updated_by: userId || null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'session_id' }
+        );
+      }
     } catch (err) {
       console.warn('[classroom] Board state DB persistence warning:', err);
     }
 
     // 2. Broadcast on Canonical Realtime Channel (live-session:${classId})
+    mainChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'BOARD_STATE',
+      payload,
+    });
     mainChannelRef.current?.send({
       type: 'broadcast',
       event: 'board-move',
@@ -510,7 +532,7 @@ export default function ClassroomWorkspace({
       event: 'board-position',
       payload,
     });
-  }, [classId, activeSessionId, userId, userName, role, boardControllerId, activePosition, allowIllegalMoves]);
+  }, [classId, activeSessionId, userId, userName, role, boardControllerId, activePosition, activeLessonPositions, activePositionIndex, isBoardLocked, allowIllegalMoves]);
 
   // Callback passed to ChessWorkspace to capture live board moves
   const handleBoardMove = useCallback((fen: string, pgn: string) => {
@@ -652,16 +674,26 @@ export default function ClassroomWorkspace({
   };
 
   // Initial Board State Hydration from DB on Mount
-  // Uses activeSessionId (which is live_sessions.id)
+  // Uses activeSessionId (which is live_sessions.id) with classId fallback
   useEffect(() => {
     if (!activeSessionId) return;
     const fetchInitialBoardState = async () => {
       try {
-        const { data: boardData } = await supabase
+        let { data: boardData } = await supabase
           .from('live_session_board_state')
           .select('*')
           .eq('session_id', activeSessionId)
           .maybeSingle();
+
+        // Fallback: Check if board state was persisted with session_id = classId
+        if (!boardData && classId && classId !== activeSessionId) {
+          const { data: fallbackData } = await supabase
+            .from('live_session_board_state')
+            .select('*')
+            .eq('session_id', classId)
+            .maybeSingle();
+          if (fallbackData) boardData = fallbackData;
+        }
 
         if (boardData && boardData.fen) {
           setCurrentFen(boardData.fen);
@@ -694,6 +726,15 @@ export default function ClassroomWorkspace({
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
             });
+            if (Array.isArray(p.lesson_positions)) {
+              setActiveLessonPositions(p.lesson_positions);
+            }
+            if (p.position_index !== undefined) {
+              setActivePositionIndex(p.position_index);
+            }
+            if (p.is_board_locked !== undefined && !isCoach) {
+              setIsBoardLocked(p.is_board_locked);
+            }
           }
         }
       } catch (err) {
@@ -701,7 +742,7 @@ export default function ClassroomWorkspace({
       }
     };
     fetchInitialBoardState();
-  }, [activeSessionId]);
+  }, [activeSessionId, classId, isCoach]);
 
   /* ── Canonical Realtime Channel Setup (live-session:${classId}) ── */
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
@@ -711,32 +752,68 @@ export default function ClassroomWorkspace({
   useEffect(() => {
     const channelTopic = `live-session:${classId}`;
     if (process.env.NODE_ENV !== 'production') {
-      console.log(`[CLASSROOM REALTIME] classId=${classId} channel=${channelTopic} role=${role}`);
+      console.log('[classroom-debug]', {
+        role,
+        classId,
+        liveSessionId: activeSessionId,
+        channel: channelTopic,
+        userId: userId || userName,
+      });
     }
+
+    const handleIncomingBoardState = (payload: any) => {
+      if (payload?.classId && payload.classId !== classId) return;
+      if (payload?.sourceUserId && (payload.sourceUserId === userId || payload.sourceUserId === userName)) return;
+      if (payload?.version && payload.version < boardVersionRef.current) return;
+      if (payload?.version) boardVersionRef.current = Math.max(boardVersionRef.current, payload.version);
+
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[BOARD RECEIVE]', {
+          version: payload?.version,
+          fen: payload?.fen,
+          updatedBy: payload?.updatedBy || payload?.sourceUserId,
+        });
+      }
+
+      if (payload?.fen) {
+        setCurrentFen(payload.fen);
+      }
+      if (Array.isArray(payload?.moves)) {
+        setGameMoves(payload.moves);
+        setCurrentMoveIndex(payload.currentMoveIndex ?? payload.moves.length - 1);
+      }
+      if (payload?.controllerId !== undefined) {
+        setBoardControllerId(payload.controllerId);
+      }
+      if (payload?.isBoardLocked !== undefined && !isCoach) {
+        setIsBoardLocked(payload.isBoardLocked);
+      }
+      if (payload?.allowIllegalMoves !== undefined && !isCoach) {
+        setAllowIllegalMoves(payload.allowIllegalMoves);
+      }
+      if (payload?.activePosition !== undefined) {
+        setActivePosition(payload.activePosition);
+      }
+      if (Array.isArray(payload?.activeLessonPositions)) {
+        setActiveLessonPositions(payload.activeLessonPositions);
+      }
+      if (payload?.activePositionIndex !== undefined) {
+        setActivePositionIndex(payload.activePositionIndex);
+      }
+      setLastRealtimeLog(`BOARD_STATE: ${payload.fen?.slice(0, 20)}… (v${payload.version || 1})`);
+    };
 
     const channel = supabase
       .channel(channelTopic, {
         config: { broadcast: { self: false }, presence: { key: userId || userName } },
       })
-      .on('broadcast', { event: 'board-move' }, ({ payload }: any) => {
-        if (payload?.classId && payload.classId !== classId) return;
-        if (payload?.sourceUserId && (payload.sourceUserId === userId || payload.sourceUserId === userName)) return;
-        if (payload?.fen) {
-          if (payload.version) boardVersionRef.current = Math.max(boardVersionRef.current, payload.version);
-          setCurrentFen(payload.fen);
-          if (Array.isArray(payload.moves)) {
-            setGameMoves(payload.moves);
-            setCurrentMoveIndex(payload.currentMoveIndex ?? payload.moves.length - 1);
-          }
-          if (payload.controllerId) setBoardControllerId(payload.controllerId);
-          if (payload.activePosition) setActivePosition(payload.activePosition);
-          setLastRealtimeLog(`board-move: ${payload.fen.slice(0, 20)}…`);
-        }
-      })
+      .on('broadcast', { event: 'BOARD_STATE' }, ({ payload }: any) => handleIncomingBoardState(payload))
+      .on('broadcast', { event: 'board-move' }, ({ payload }: any) => handleIncomingBoardState(payload))
+      .on('broadcast', { event: 'board-position' }, ({ payload }: any) => handleIncomingBoardState(payload))
       .on('broadcast', { event: 'board-load' }, ({ payload }: any) => {
         if (payload?.classId && payload.classId !== classId) return;
         if (payload?.fen) {
-          if (payload.version) boardVersionRef.current = payload.version;
+          if (payload.version) boardVersionRef.current = Math.max(boardVersionRef.current, payload.version);
           setCurrentFen(payload.fen);
           setGameMoves(payload.moves || []);
           setCurrentMoveIndex(-1);
@@ -759,21 +836,6 @@ export default function ClassroomWorkspace({
           });
           setBoardKey((k) => k + 1);
           setLastRealtimeLog(`board-load: ${payload.title || 'Position'}`);
-        }
-      })
-      .on('broadcast', { event: 'board-position' }, ({ payload }: any) => {
-        if (payload?.classId && payload.classId !== classId) return;
-        if (payload?.sourceUserId && (payload.sourceUserId === userId || payload.sourceUserId === userName)) return;
-        if (payload?.fen) {
-          if (payload.version && payload.version < boardVersionRef.current) return;
-          if (payload.version) boardVersionRef.current = Math.max(boardVersionRef.current, payload.version);
-          setCurrentFen(payload.fen);
-          if (Array.isArray(payload.moves)) {
-            setGameMoves(payload.moves);
-            setCurrentMoveIndex(payload.currentMoveIndex ?? payload.moves.length - 1);
-          }
-          if (payload.controllerId) setBoardControllerId(payload.controllerId);
-          if (payload.activePosition) setActivePosition(payload.activePosition);
         }
       })
       .on('broadcast', { event: 'board-lock' }, ({ payload }: any) => {
@@ -1375,6 +1437,7 @@ export default function ClassroomWorkspace({
             onToggleBoardLock={() => {
               const next = !isBoardLocked;
               setIsBoardLocked(next);
+              persistAndBroadcastBoardState(currentFen, gameMoves, currentMoveIndex);
               mainChannelRef.current?.send({
                 type: 'broadcast',
                 event: 'board-lock',
@@ -1384,6 +1447,7 @@ export default function ClassroomWorkspace({
             onToggleIllegalMoves={() => {
               const next = !allowIllegalMoves;
               setAllowIllegalMoves(next);
+              persistAndBroadcastBoardState(currentFen, gameMoves, currentMoveIndex);
               mainChannelRef.current?.send({
                 type: 'broadcast',
                 event: 'free-moves',
@@ -1452,7 +1516,7 @@ export default function ClassroomWorkspace({
                 meetingNumber={effectiveMeetingNumber}
                 passcode={zoomPasscode}
                 userName={userName}
-                studentName={isCoach ? (students[0] ? `${students[0].firstName || ''} ${students[0].lastName || ''}`.trim() : 'Student') : (coachName || 'Coach')}
+                studentName={isCoach ? (students[0] && students[0].firstName ? `${students[0].firstName} ${students[0].lastName || ''}`.trim() : '') : (coachName || '')}
                 role={role}
                 startWithMutedAudio={joinWithMutedAudio}
                 startWithVideoOff={joinWithVideoOff}

@@ -7,22 +7,19 @@ const envSchema = z.object({
   NEXT_PUBLIC_MOCK_AUTH: z.string().optional(),
 });
 
-const getEnv = () => {
-  const env = {
-    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key',
-    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
-    NEXT_PUBLIC_MOCK_AUTH: process.env.NEXT_PUBLIC_MOCK_AUTH || 'false',
-  };
-
-  // Perform validation
-  const parsed = envSchema.safeParse(env);
-  
-  if (!parsed.success) {
-    console.warn('Environment configuration warning:', parsed.error.format());
-  }
-
-  return env;
-};
+const getEnv = () => ({
+  get NEXT_PUBLIC_SUPABASE_URL() {
+    return process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
+  },
+  get NEXT_PUBLIC_SUPABASE_ANON_KEY() {
+    return process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key';
+  },
+  get SUPABASE_SERVICE_ROLE_KEY() {
+    return process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  },
+  get NEXT_PUBLIC_MOCK_AUTH() {
+    return process.env.NEXT_PUBLIC_MOCK_AUTH || 'false';
+  },
+});
 
 export const env = getEnv();

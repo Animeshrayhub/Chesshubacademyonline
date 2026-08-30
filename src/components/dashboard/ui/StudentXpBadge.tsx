@@ -8,7 +8,7 @@ interface StudentXpBadgeProps {
   streakDays?: number;
 }
 
-export default function StudentXpBadge({ totalXp = 750, streakDays = 5 }: StudentXpBadgeProps) {
+export default function StudentXpBadge({ totalXp = 0, streakDays = 0 }: StudentXpBadgeProps) {
   const rank = calculateStudentRank(totalXp);
 
   return (

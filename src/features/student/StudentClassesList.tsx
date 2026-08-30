@@ -1,7 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { createSupabaseClient } from '@/lib/supabase/client';
 
 export interface ClassData {
   id: string;
@@ -22,13 +24,10 @@ interface StudentClassesListProps {
 type TabType = 'ACTIVE' | 'UPCOMING' | 'COMPLETED';
 
 export default function StudentClassesList({ classes: initialClasses }: StudentClassesListProps) {
+  const router = useRouter();
   const rawClasses = initialClasses || [];
 
-  // Determine start of today (00:00:00)
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-
-  // If no ACTIVE (LIVE/IN_PROGRESS) classes exist, default tab to UPCOMING
+  // Determine initial active tab: Default to ACTIVE if any live/in_progress classes exist, otherwise UPCOMING
   const hasActiveLiveClasses = rawClasses.some(
     (c) => c.status === 'LIVE' || c.status === 'IN_PROGRESS'
   );
@@ -41,34 +40,57 @@ export default function StudentClassesList({ classes: initialClasses }: StudentC
   const [selectedCoach, setSelectedCoach] = useState('ALL');
   const [sortBy, setSortBy] = useState<'date-asc' | 'date-desc' | 'duration'>('date-asc');
   const [showNotifications, setShowNotifications] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(2);
+  const [unreadCount, setUnreadCount] = useState(0);
 
-  // Normalize SCHEDULED dates: If past scheduled dates exist (e.g. 16 Aug), shift scheduled dates to start from Today (27 Aug)
-  const pastScheduledMs = rawClasses
-    .filter((c) => c.status === 'SCHEDULED')
-    .map((c) => new Date(c.schedule).getTime())
-    .filter((t) => t < startOfToday);
+  // Re-fetch authoritative DB state when live_sessions or classes status changes
+  const refreshClassData = useCallback(() => {
+    router.refresh();
+  }, [router]);
 
-  const earliestPastMs = pastScheduledMs.length > 0 ? Math.min(...pastScheduledMs) : 0;
-  const dayShiftMs = earliestPastMs > 0 ? startOfToday - new Date(earliestPastMs).setHours(0, 0, 0, 0) : 0;
+  // Realtime listener for live_sessions & classes status changes
+  useEffect(() => {
+    const supabase = createSupabaseClient();
+    const channel = supabase
+      .channel('student-classes-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'live_sessions' },
+        () => {
+          refreshClassData();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'classes' },
+        () => {
+          refreshClassData();
+        }
+      )
+      .subscribe();
 
-  const normalizedClasses = rawClasses.map((c) => {
-    if (c.status === 'SCHEDULED') {
-      const cTime = new Date(c.schedule).getTime();
-      if (cTime < startOfToday && dayShiftMs > 0) {
-        return {
-          ...c,
-          schedule: new Date(cTime + dayShiftMs).toISOString(),
-        };
-      }
+    const handleFocus = () => refreshClassData();
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') refreshClassData();
+    });
+
+    return () => {
+      supabase.removeChannel(channel);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [refreshClassData]);
+
+  // If live session state transitions to LIVE, automatically switch tab to ACTIVE
+  useEffect(() => {
+    if (hasActiveLiveClasses && activeTab !== 'ACTIVE') {
+      setActiveTab('ACTIVE');
     }
-    return c;
-  });
+  }, [hasActiveLiveClasses, activeTab]);
 
-  const allCoaches = Array.from(new Set(normalizedClasses.map((c) => c.coachName))).sort();
+  const allCoaches = Array.from(new Set(rawClasses.map((c) => c.coachName))).sort();
 
   // Filter & Sort
-  const filteredClasses = normalizedClasses.filter((c) => {
+  const filteredClasses = rawClasses.filter((c) => {
     const classTime = new Date(c.schedule);
 
     if (activeTab === 'ACTIVE' && c.status !== 'LIVE' && c.status !== 'IN_PROGRESS') {
