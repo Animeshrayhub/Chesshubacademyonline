@@ -328,3 +328,28 @@ img, iframe, canvas, video, .protect-media {
   max-width: 100% !important;
   max-height: 100% !important;
 }
+
+/* ─── Zoom SDK Floating Notification / Toast Containment ───────────────────
+   Ensures host reclaim prompts and SDK toasts stay small and unobtrusive,
+   and never cover the chessboard or interfere with piece dragging.
+   ──────────────────────────────────────────────────────────────────────────── */
+.zm-modal,
+.zm-toast,
+.zm-notification,
+.zm-tooltip,
+[class*="reclaim-host"],
+[class*="reclaim_host"] {
+  max-width: 280px !important;
+  font-size: 11px !important;
+  z-index: 40 !important;
+}
+
+/* If Zoom SDK injects global toasts into document root, prevent them from centering over board */
+#zmmtg-root .zm-toast-wrap,
+#zmmtg-root .zm-modal-wrap {
+  top: 10px !important;
+  right: 10px !important;
+  left: auto !important;
+  transform: none !important;
+}
+

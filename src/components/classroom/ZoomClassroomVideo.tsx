@@ -157,25 +157,39 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
           },
         });
 
-        await zoomClient.join({
-          sdkKey,
-          signature,
-          meetingNumber: String(finalMeetingNumber).trim(),
-          password: passCode,
-          userName,
-          userEmail: userEmail || `${userName.toLowerCase().replace(/\s+/g, '')}@chesshub.academy`,
-          zak: zak || undefined,
-        });
+        // Clear loading state after init finishes, with a 5s safety timeout
+        const safetyTimeout = setTimeout(() => {
+          setIsLoading(false);
+        }, 5000);
+
+        try {
+          await zoomClient.join({
+            sdkKey,
+            signature,
+            meetingNumber: String(finalMeetingNumber).trim(),
+            password: passCode,
+            userName,
+            userEmail: userEmail || `${userName.toLowerCase().replace(/\s+/g, '')}@chesshub.academy`,
+            zak: zak || undefined,
+          });
+        } finally {
+          clearTimeout(safetyTimeout);
+          setIsLoading(false);
+        }
 
         isJoinedRef.current = true;
         setIsJoined(true);
-        setIsLoading(false);
         onMeetingJoin?.();
         onConnectionChange?.('connected');
 
         try {
           zoomClient.on('user-updated', () => {
             updateMediaStateFromClient();
+          });
+          zoomClient.on('connection-change', (status: any) => {
+            if (status?.state === 'Connected' || status?.state === 'Joined') {
+              setIsLoading(false);
+            }
           });
         } catch {}
 
@@ -220,11 +234,11 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
 
     return (
       <div className={`relative w-full h-full bg-slate-950 flex flex-col items-center justify-center overflow-hidden rounded-2xl ${className}`}>
+        {/* Non-blocking sleek progress pill — never obscures video canvas */}
         {isLoading && (
-          <div className="absolute inset-0 z-20 bg-slate-950/90 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center">
-            <div className="w-10 h-10 border-3 border-blue-500 border-t-transparent rounded-full animate-spin mb-3" />
-            <p className="text-xs font-bold text-slate-300">{statusText}</p>
-            <p className="text-[10px] text-slate-500 mt-1">Connecting camera and microphone…</p>
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 bg-slate-900/90 border border-slate-700/60 backdrop-blur-md px-3 py-1 rounded-full flex items-center gap-2 shadow-xl pointer-events-none transition-opacity">
+            <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            <span className="text-[10px] font-bold text-slate-200">{statusText}</span>
           </div>
         )}
 

@@ -370,10 +370,22 @@ export function ClassroomStateProvider({
       reconcileSnapshot();
     };
 
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('focus', handleFocus);
+    // Periodic background chat sync (every 6 seconds) to guarantee zero message loss
+    const chatSyncInterval = setInterval(() => {
+      getClassroomChatHistoryAction(classId).then((res) => {
+        if (res.success && Array.isArray(res.messages) && res.messages.length > 0) {
+          setMessages((prev) => {
+            const existingIds = new Set(prev.map((m) => m.id));
+            const toAdd = res.messages.filter((m: any) => !existingIds.has(m.id));
+            if (toAdd.length === 0) return prev;
+            return [...prev, ...toAdd];
+          });
+        }
+      }).catch(() => {});
+    }, 6000);
 
     return () => {
+      clearInterval(chatSyncInterval);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('focus', handleFocus);
       supabase.removeChannel(channel);
