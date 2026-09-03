@@ -1,180 +1,299 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { Chess } from 'chess.js';
-import { getPuzzleBankAction, saveSpeedRunScoreAction } from '@/actions/puzzles';
-import type { DbHomeworkPuzzle } from '@/lib/puzzles/puzzleBankService';
+import { wrapChessboard } from '@/components/dashboard/ui/ChessboardWrapper';
+import { recordStudentActivityAction } from '@/actions/activity';
+import { playChessSound } from '@/utils/chessAudio';
+
+const ChessboardComponent = dynamic(
+  () => import('react-chessboard').then((mod) => wrapChessboard(mod.Chessboard)),
+  { ssr: false }
+) as any;
+
+export type PuzzleCategory = 'TACTICS' | 'CHECKMATE' | 'CALCULATION' | 'ENDGAME' | 'MIXED';
+
+export interface LichessPuzzle {
+  id: string;
+  rating: number;
+  fen: string;
+  solution: string[];
+  themes: string[];
+  category: string;
+  sideToMove: 'white' | 'black';
+  title?: string;
+}
 
 export default function StudentPuzzleTrainer() {
-  const [puzzles, setPuzzles] = useState<DbHomeworkPuzzle[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [selectedTheme, setSelectedTheme] = useState('ALL');
+  const [practiceMode, setPracticeMode] = useState<'daily' | 'unlimited'>('daily');
+  const [selectedCategory, setSelectedCategory] = useState<PuzzleCategory>('TACTICS');
+  const [categoryIndex, setCategoryIndex] = useState(0);
 
-  // Interactive Game State
+  const [currentPuzzle, setCurrentPuzzle] = useState<LichessPuzzle | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Chessboard state
+  const [boardFen, setBoardFen] = useState('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+  const [solutionStep, setSolutionStep] = useState(0);
   const [userMoveInput, setUserMoveInput] = useState('');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'neutral'; text: string }>({
     type: 'neutral',
-    text: 'Analyze the position and enter your best move in UCI format (e.g. f3f7 or e2e4).',
+    text: 'Analyze the position and play your move on the board or enter UCI notation (e.g. f3f7).',
   });
 
-  // Hints & Stats
-  const [hintLevel, setHintLevel] = useState(0);
+  // Solving stats & metrics
+  const [attempts, setAttempts] = useState(1);
+  const [solveStartTime, setSolveStartTime] = useState<number>(Date.now());
+  const [isSolved, setIsSolved] = useState(false);
   const [streak, setStreak] = useState(0);
   const [puzzlesSolved, setPuzzlesSolved] = useState(0);
-  const [studentRating, setStudentRating] = useState(1200);
+  const [studentRating, setStudentRating] = useState<number>(1200);
 
-  // 60-Second Speed Run Mode
-  const [isSpeedRun, setIsSpeedRun] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(60);
-  const [speedRunScore, setSpeedRunScore] = useState(0);
-  const [speedRunBest, setSpeedRunBest] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return Number(localStorage.getItem('chesshub_speedrun_best') || '0');
-    }
-    return 0;
-  });
-  const [speedRunActive, setSpeedRunActive] = useState(false);
+  const chessRef = useRef<Chess>(new Chess());
 
-  // Speed run countdown interval
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (isSpeedRun && speedRunActive && timeLeft > 0) {
-      timer = setInterval(() => {
-        setTimeLeft((prev) => prev - 1);
-      }, 1000);
-    } else if (timeLeft === 0 && speedRunActive) {
-      setSpeedRunActive(false);
-      const newBest = Math.max(speedRunBest, speedRunScore);
-      setSpeedRunBest(newBest);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('chesshub_speedrun_best', String(newBest));
-      }
-      saveSpeedRunScoreAction(speedRunScore);
-      setFeedback({
-        type: 'success',
-        text: `⚡ SPEED RUN COMPLETE! You solved ${speedRunScore} puzzles in 60s! Best: ${newBest}`,
-      });
-    }
-    return () => clearInterval(timer);
-  }, [isSpeedRun, speedRunActive, timeLeft, speedRunScore, speedRunBest]);
-
-  const startSpeedRun = () => {
-    setIsSpeedRun(true);
-    setSpeedRunScore(0);
-    setTimeLeft(60);
-    setSpeedRunActive(true);
-    setCurrentIndex(0);
-    setUserMoveInput('');
-    setFeedback({
-      type: 'neutral',
-      text: '⚡ SPEED RUN ACTIVE! Solve as many puzzles as you can in 60 seconds!',
-    });
-  };
-
-  useEffect(() => {
+  // Fetch puzzle from Lichess proxy route
+  const fetchPuzzle = useCallback(async (mode: 'daily' | 'unlimited', category: PuzzleCategory, idx: number) => {
     setLoading(true);
-    getPuzzleBankAction({
-      theme: selectedTheme,
-      limit: 50,
-    }).then((res) => {
-      if (res.success && res.puzzles && res.puzzles.length > 0) {
-        setPuzzles(res.puzzles);
-        setCurrentIndex(0);
+    setIsSolved(false);
+    setSolutionStep(0);
+    setAttempts(1);
+    setUserMoveInput('');
+
+    try {
+      const url = mode === 'daily'
+        ? '/api/puzzles/lichess?type=daily'
+        : `/api/puzzles/lichess?category=${category}&index=${idx}`;
+
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (data.success && data.puzzle) {
+        const p: LichessPuzzle = data.puzzle;
+        setCurrentPuzzle(p);
+        setBoardFen(p.fen);
+
+        try {
+          chessRef.current = new Chess(p.fen);
+        } catch (e) {
+          chessRef.current = new Chess();
+        }
+
+        setSolveStartTime(Date.now());
         setFeedback({
           type: 'neutral',
-          text: 'Analyze the position and enter your best move in UCI format (e.g. f3f7 or e2e4).',
+          text: `Find the best move for ${p.sideToMove === 'white' ? 'White ⚪' : 'Black ⬛'}!`,
         });
-        setHintLevel(0);
-      } else {
-        setPuzzles([]);
       }
-      setLoading(false);
-    });
-  }, [selectedTheme]);
-
-  const currentPuzzle = puzzles[currentIndex];
-
-  const handleNextPuzzle = () => {
-    if (puzzles.length === 0) return;
-    const nextIdx = (currentIndex + 1) % puzzles.length;
-    setCurrentIndex(nextIdx);
-    setUserMoveInput('');
-    setHintLevel(0);
-    setFeedback({
-      type: 'neutral',
-      text: 'Analyze the position and enter your best move in UCI format (e.g. f3f7 or e2e4).',
-    });
-  };
-
-  const handleCheckMove = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!currentPuzzle || !userMoveInput.trim()) return;
-
-    const moveClean = userMoveInput.trim().toLowerCase();
-    const expectedMove = currentPuzzle.solution[0]?.toLowerCase();
-
-    if (moveClean === expectedMove || moveClean === currentPuzzle.solution.join('').toLowerCase()) {
-      setFeedback({
-        type: 'success',
-        text: `🎉 Correct move (${currentPuzzle.solution.join(' ')})! Exceptional tactical vision!`,
-      });
-      setStreak((prev) => prev + 1);
-      setPuzzlesSolved((prev) => prev + 1);
-      setStudentRating((prev) => prev + 15);
-
-      if (isSpeedRun && speedRunActive) {
-        setSpeedRunScore((s) => s + 1);
-        setTimeout(() => handleNextPuzzle(), 300);
-      }
-    } else {
+    } catch (err) {
       setFeedback({
         type: 'error',
-        text: `❌ Incorrect move "${userMoveInput}". Try again or request a hint below!`,
+        text: 'Failed to load puzzle. Please check your connection.',
       });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Initial load
+  useEffect(() => {
+    fetchPuzzle(practiceMode, selectedCategory, categoryIndex);
+  }, [practiceMode, selectedCategory, categoryIndex, fetchPuzzle]);
+
+  // Handle move validation
+  const checkMoveUci = (uciMove: string): boolean => {
+    if (!currentPuzzle || isSolved) return false;
+
+    const cleanMove = uciMove.trim().toLowerCase();
+    const expectedMove = currentPuzzle.solution[solutionStep]?.toLowerCase();
+
+    if (!expectedMove) return false;
+
+    if (cleanMove === expectedMove) {
+      // Execute move on chess engine
+      try {
+        const from = cleanMove.substring(0, 2);
+        const to = cleanMove.substring(2, 4);
+        const promotion = cleanMove.length > 4 ? cleanMove.substring(4, 5) : undefined;
+        chessRef.current.move({ from: from as any, to: to as any, promotion: promotion as any });
+        setBoardFen(chessRef.current.fen());
+        playChessSound('move');
+      } catch (e) {}
+
+      const nextStep = solutionStep + 1;
+      setSolutionStep(nextStep);
+
+      // Check if puzzle is fully solved
+      if (nextStep >= currentPuzzle.solution.length) {
+        handlePuzzleSolved();
+        return true;
+      }
+
+      // Play opponent automated reply if there are more moves in solution
+      const opponentReply = currentPuzzle.solution[nextStep];
+      if (opponentReply) {
+        setTimeout(() => {
+          try {
+            const oppFrom = opponentReply.substring(0, 2);
+            const oppTo = opponentReply.substring(2, 4);
+            const oppProm = opponentReply.length > 4 ? opponentReply.substring(4, 5) : undefined;
+            chessRef.current.move({ from: oppFrom as any, to: oppTo as any, promotion: oppProm as any });
+            setBoardFen(chessRef.current.fen());
+            setSolutionStep(nextStep + 1);
+            playChessSound('capture');
+          } catch (e) {}
+        }, 400);
+      }
+
+      setFeedback({
+        type: 'success',
+        text: 'Best move! Continue the combination...',
+      });
+      return true;
+    } else {
+      setAttempts((a) => a + 1);
       setStreak(0);
-      setStudentRating((prev) => Math.max(800, prev - 10));
+      setFeedback({
+        type: 'error',
+        text: `❌ Move ${uciMove} is not the best. Try again!`,
+      });
+      return false;
+    }
+  };
+
+  // On Complete Solve
+  const handlePuzzleSolved = async () => {
+    setIsSolved(true);
+    playChessSound('victory');
+
+    const durationSec = Math.max(1, Math.round((Date.now() - solveStartTime) / 1000));
+    const accuracyVal = attempts === 1 ? 100 : Math.max(50, Math.round(100 / attempts));
+
+    setFeedback({
+      type: 'success',
+      text: `🎉 PUZZLE SOLVED in ${durationSec}s! Perfect tactical vision!`,
+    });
+
+    setStreak((s) => s + 1);
+    setPuzzlesSolved((p) => p + 1);
+    setStudentRating((r) => r + (attempts === 1 ? 12 : 5));
+
+    // Record real activity in database
+    if (currentPuzzle) {
+      await recordStudentActivityAction({
+        activityType: practiceMode === 'daily' ? 'DAILY_PUZZLE' : 'PUZZLE',
+        activityId: currentPuzzle.id,
+        durationSeconds: durationSec,
+        result: 'SOLVED',
+        accuracy: accuracyVal,
+        metadata: {
+          puzzleRating: currentPuzzle.rating,
+          category: selectedCategory,
+          attempts,
+          themes: currentPuzzle.themes,
+        },
+      });
+    }
+  };
+
+  // Piece drop handler on board
+  const handlePieceDrop = (sourceOrObj: any, targetArg?: string): boolean => {
+    if (isSolved || loading || !currentPuzzle) return false;
+
+    let source = '';
+    let target = '';
+    if (sourceOrObj && typeof sourceOrObj === 'object' && sourceOrObj.sourceSquare) {
+      source = sourceOrObj.sourceSquare;
+      target = sourceOrObj.targetSquare;
+    } else if (typeof sourceOrObj === 'string' && targetArg) {
+      source = sourceOrObj;
+      target = targetArg;
+    }
+
+    if (!source || !target) return false;
+
+    const uci = `${source}${target}`.toLowerCase();
+    return checkMoveUci(uci);
+  };
+
+  const handleNextPuzzle = () => {
+    if (practiceMode === 'daily') {
+      // Switch to unlimited for continuous practice
+      setPracticeMode('unlimited');
+      setCategoryIndex((prev) => prev + 1);
+    } else {
+      setCategoryIndex((prev) => prev + 1);
     }
   };
 
   return (
     <div className="space-y-6">
-      {/* 60-Second Speed Run Banner */}
-      <div className="bg-gradient-to-r from-amber-500/10 via-purple-500/10 to-blue-500/10 border border-amber-500/30 p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center text-xl font-extrabold shadow-gold animate-pulse">
-            ⚡
-          </div>
-          <div>
-            <h4 className="font-heading font-bold text-sm text-white">60-Second Tactical Speed Run</h4>
-            <p className="text-xs text-slate-400">
-              Personal Best: <strong className="text-amber-400 font-mono">{speedRunBest} Puzzles</strong> | Solved Today: <strong className="text-emerald-400 font-mono">{speedRunScore}</strong>
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {speedRunActive && (
-            <div className="px-4 py-2 bg-red-500/20 border border-red-500/40 text-red-300 font-mono font-bold text-sm rounded-xl animate-pulse">
-              ⏱️ {timeLeft}s Left
-            </div>
-          )}
+      {/* Mode & Category Bar */}
+      <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4">
+        {/* Mode Selector */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setPracticeMode('daily');
+              fetchPuzzle('daily', selectedCategory, 0);
+            }}
+            className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1.5 ${
+              practiceMode === 'daily'
+                ? 'bg-amber-500 text-slate-950 shadow-gold'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+          >
+            <span>⭐</span>
+            <span>Daily Puzzle</span>
+          </button>
 
           <button
             type="button"
-            onClick={startSpeedRun}
-            disabled={speedRunActive}
-            className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-extrabold text-xs rounded-xl shadow-gold transition-all"
+            onClick={() => {
+              setPracticeMode('unlimited');
+              fetchPuzzle('unlimited', selectedCategory, categoryIndex);
+            }}
+            className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1.5 ${
+              practiceMode === 'unlimited'
+                ? 'bg-purple-600 text-white shadow-lg'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
           >
-            {speedRunActive ? '🔥 Speed Run Active' : '🚀 Start 60s Speed Run'}
+            <span>♾️</span>
+            <span>Unlimited Practice</span>
           </button>
         </div>
+
+        {/* Category Selector */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {(['TACTICS', 'CHECKMATE', 'CALCULATION', 'ENDGAME', 'MIXED'] as PuzzleCategory[]).map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => {
+                setSelectedCategory(cat);
+                setPracticeMode('unlimited');
+                setCategoryIndex(0);
+                fetchPuzzle('unlimited', cat, 0);
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                selectedCategory === cat && practiceMode === 'unlimited'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'bg-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
       </div>
-      {/* Top Stats Bar */}
+
+      {/* KPI Stats Bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center justify-between">
           <div>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Puzzle Rating</p>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Tactics Rating</p>
             <p className="text-xl font-extrabold font-mono text-amber-400 mt-0.5">{studentRating}</p>
           </div>
           <span className="text-2xl">⭐</span>
@@ -198,178 +317,128 @@ export default function StudentPuzzleTrainer() {
 
         <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center justify-between">
           <div>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Current Category</p>
-            <select
-              value={selectedTheme}
-              onChange={(e) => setSelectedTheme(e.target.value)}
-              className="bg-slate-950 border border-slate-800 rounded-lg text-xs text-white font-bold px-2 py-1 mt-1 focus:outline-none"
-            >
-              <option value="ALL">🌟 All Themes</option>
-              <option value="mate">Checkmate</option>
-              <option value="fork">Fork</option>
-              <option value="pin">Pin</option>
-              <option value="skewer">Skewer</option>
-              <option value="endgame">Endgame</option>
-            </select>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Puzzle Difficulty</p>
+            <p className="text-xl font-extrabold font-mono text-purple-400 mt-0.5">
+              {currentPuzzle?.rating || '—'}
+            </p>
           </div>
+          <span className="text-2xl">⚡</span>
         </div>
       </div>
 
-      {loading ? (
-        <div className="p-16 text-center text-slate-400 text-xs font-bold space-y-2">
-          <span className="text-3xl animate-spin inline-block">⏳</span>
-          <p>Loading Tactical Puzzle Trainer...</p>
-        </div>
-      ) : !currentPuzzle ? (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center text-slate-400 space-y-3">
-          <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center mx-auto text-xl">
-            🧩
+      {/* Main Solver Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Interactive Board Column */}
+        <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-3xl p-5 flex flex-col items-center justify-center">
+          <div className="w-full max-w-[500px] aspect-square relative rounded-xl overflow-hidden shadow-2xl">
+            {loading ? (
+              <div className="absolute inset-0 bg-slate-950/80 flex flex-col items-center justify-center text-slate-400 text-xs font-bold gap-3 z-10">
+                <span className="text-3xl animate-spin">⏳</span>
+                <span>Loading real position from Lichess...</span>
+              </div>
+            ) : null}
+
+            <ChessboardComponent
+              position={boardFen}
+              onPieceDrop={handlePieceDrop}
+              boardOrientation={currentPuzzle?.sideToMove === 'black' ? 'black' : 'white'}
+              customBoardStyle={{ borderRadius: '0.75rem', boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }}
+            />
           </div>
-          <p className="text-sm font-bold text-white">No Puzzles Available in Selected Category</p>
-          <p className="text-xs text-slate-400 max-w-sm mx-auto">
-            Switch your theme filter to &quot;All Themes&quot; to practice puzzles from your coach.
-          </p>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Board & Solution Card */}
-          <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-6 flex flex-col justify-between">
-            <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-4">
-                <div>
-                  <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest block">
-                    Puzzle #{currentIndex + 1} of {puzzles.length}
-                  </span>
-                  <h3 className="font-heading font-extrabold text-lg text-white">
-                    {currentPuzzle.title}
-                  </h3>
-                </div>
 
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 font-mono text-xs font-bold uppercase">
-                    {currentPuzzle.difficulty} ({currentPuzzle.rating})
-                  </span>
-                  <span className="px-2.5 py-1 rounded-full bg-blue-950 text-blue-300 font-semibold text-xs">
-                    🎯 {currentPuzzle.theme}
-                  </span>
-                </div>
-              </div>
-
-              {/* FEN Display Area */}
-              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 text-center space-y-3">
-                <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mx-auto text-3xl">
-                  ♟️
-                </div>
-                <div className="font-mono text-xs text-amber-300 bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 select-all overflow-x-auto">
-                  {currentPuzzle.fen}
-                </div>
-                <p className="text-[11px] text-slate-400">
-                  {currentPuzzle.fen.includes(' w ') ? '⚪ White to Move' : '⬛ Black to Move'}
-                </p>
-              </div>
-
-              {/* Move Input Form */}
-              <form onSubmit={handleCheckMove} className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={userMoveInput}
-                    onChange={(e) => setUserMoveInput(e.target.value)}
-                    placeholder="Enter move in UCI format (e.g. f3f7)..."
-                    className="flex-grow px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono text-sm focus:outline-none focus:border-amber-400"
-                  />
-                  <button
-                    type="submit"
-                    className="px-6 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs shadow-gold transition-all shrink-0"
-                  >
-                    Submit Move
-                  </button>
-                </div>
-              </form>
-
-              {/* Feedback Alert */}
-              <div
-                className={`p-3.5 rounded-xl text-xs font-semibold ${
-                  feedback.type === 'success'
-                    ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-300'
-                    : feedback.type === 'error'
-                    ? 'bg-red-500/10 border border-red-500/30 text-red-300'
-                    : 'bg-slate-800/60 border border-slate-700/60 text-slate-300'
-                }`}
-              >
-                {feedback.text}
-              </div>
-            </div>
-
-            <div className="flex justify-between items-center pt-4 border-t border-slate-800">
-              <button
-                type="button"
-                onClick={() => setHintLevel((prev) => Math.min(3, prev + 1))}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors"
-              >
-                💡 Need a Hint? ({hintLevel}/3)
-              </button>
-
-              <button
-                type="button"
-                onClick={handleNextPuzzle}
-                className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5"
-              >
-                <span>Next Puzzle →</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Hint & Explanation Sidebar */}
+        {/* Puzzle Details & Controls */}
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col justify-between space-y-6">
           <div className="space-y-4">
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
-              <h4 className="font-heading font-bold text-sm text-white flex items-center gap-2">
-                <span>💡 Tactical Hints</span>
-              </h4>
-
-              {hintLevel === 0 ? (
-                <p className="text-xs text-slate-400 leading-relaxed italic">
-                  Click &quot;Need a Hint?&quot; above if you get stuck on this tactical position.
-                </p>
-              ) : (
-                <div className="space-y-3 text-xs">
-                  {hintLevel >= 1 && (
-                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 text-amber-200 rounded-xl space-y-1">
-                      <p className="font-bold text-[10px] uppercase tracking-wider text-amber-400">Hint #1:</p>
-                      <p>{currentPuzzle.hint_1 || `Focus on forcing moves for ${currentPuzzle.fen.includes(' w ') ? 'White' : 'Black'}.`}</p>
-                    </div>
-                  )}
-
-                  {hintLevel >= 2 && (
-                    <div className="p-3 bg-blue-500/10 border border-blue-500/30 text-blue-200 rounded-xl space-y-1">
-                      <p className="font-bold text-[10px] uppercase tracking-wider text-blue-400">Hint #2:</p>
-                      <p>Target tactical motif: <strong className="text-white">{currentPuzzle.theme}</strong>.</p>
-                    </div>
-                  )}
-
-                  {hintLevel >= 3 && (
-                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-200 rounded-xl space-y-1 font-mono">
-                      <p className="font-bold text-[10px] uppercase tracking-wider text-emerald-400 font-sans">Full Solution:</p>
-                      <p>{currentPuzzle.solution.join(' → ')}</p>
-                    </div>
-                  )}
-                </div>
-              )}
+            <div className="border-b border-slate-800 pb-4">
+              <span className="text-[10px] font-extrabold text-amber-400 uppercase tracking-widest block">
+                {practiceMode === 'daily' ? 'Official Lichess Daily Challenge' : `${selectedCategory} Practice`}
+              </span>
+              <h3 className="font-heading font-extrabold text-lg text-white mt-1">
+                {currentPuzzle?.sideToMove === 'white' ? 'White to Play & Win' : 'Black to Play & Win'}
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Puzzle ID: <strong className="text-slate-300 font-mono">{currentPuzzle?.id || '—'}</strong>
+              </p>
             </div>
 
-            {currentPuzzle.explanation && (
-              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-2">
-                <h4 className="font-heading font-bold text-sm text-white flex items-center gap-2">
-                  <span>📖 Tactical Explanation</span>
-                </h4>
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  {currentPuzzle.explanation}
-                </p>
+            {/* Themes */}
+            {currentPuzzle?.themes && currentPuzzle.themes.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {currentPuzzle.themes.slice(0, 4).map((th) => (
+                  <span key={th} className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 text-[10px] font-semibold">
+                    #{th}
+                  </span>
+                ))}
               </div>
             )}
+
+            {/* Move Input Form (Alternative to drag & drop) */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                checkMoveUci(userMoveInput);
+              }}
+              className="space-y-2"
+            >
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={userMoveInput}
+                  onChange={(e) => setUserMoveInput(e.target.value)}
+                  placeholder="Or enter move (e.g. e2e4)..."
+                  className="flex-grow px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono text-xs focus:outline-none focus:border-amber-400"
+                />
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold rounded-xl text-xs"
+                >
+                  Submit
+                </button>
+              </div>
+            </form>
+
+            {/* Feedback Alert */}
+            <div
+              className={`p-3.5 rounded-xl text-xs font-semibold ${
+                feedback.type === 'success'
+                  ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300'
+                  : feedback.type === 'error'
+                  ? 'bg-red-500/15 border border-red-500/30 text-red-300'
+                  : 'bg-slate-800/60 border border-slate-700/60 text-slate-300'
+              }`}
+            >
+              {feedback.text}
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="pt-4 border-t border-slate-800 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                if (currentPuzzle?.solution[solutionStep]) {
+                  setFeedback({
+                    type: 'neutral',
+                    text: `💡 Hint: Focus on piece starting at ${currentPuzzle.solution[solutionStep].substring(0, 2).toUpperCase()}`,
+                  });
+                }
+              }}
+              className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold"
+            >
+              💡 Hint
+            </button>
+
+            <button
+              type="button"
+              onClick={handleNextPuzzle}
+              className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold rounded-xl text-xs shadow-gold transition-all flex items-center gap-1.5"
+            >
+              <span>Next Puzzle →</span>
+            </button>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import QuickActionCard from '@/components/dashboard/ui/QuickActionCard';
 import ActivityFeed from '@/components/dashboard/ui/ActivityFeed';
 import DashboardTable from '@/components/dashboard/ui/DashboardTable';
 import { getStudentDashboardStats, getStudentHomework } from '@/lib/students';
+import { getStudentActivities } from '@/lib/activity';
 import { getCurrentUser } from '@/lib/supabase/auth';
 import type { StatCardData, QuickAction, ActivityItem, TableColumn } from '@/types/dashboard';
 
@@ -27,11 +28,12 @@ export const dynamic = 'force-dynamic';
 
 export default async function StudentOverviewPage() {
   const user = await getCurrentUser();
-  const [statsRes, homeworkRes, activeAnnouncement, tournaments] = await Promise.all([
+  const [statsRes, homeworkRes, activeAnnouncement, tournaments, activitiesRes] = await Promise.all([
     getStudentDashboardStats(),
     getStudentHomework(),
     getLatestPublishedAnnouncement(),
     getAcademyTournaments(),
+    getStudentActivities(user?.id || '', 8),
   ]);
 
   const stats = statsRes.success && statsRes.data ? statsRes.data : {
@@ -123,15 +125,14 @@ export default async function StudentOverviewPage() {
     },
   ];
 
-  const ACTIVITIES: ActivityItem[] = [
-    {
-      id: 'act-1',
-      type: 'system',
-      description: 'Student Portal workspace activated successfully.',
-      timestamp: 'Just now',
-      iconKey: 'settings',
-    },
-  ];
+  const rawActivities = activitiesRes.success && activitiesRes.data ? activitiesRes.data : [];
+  const ACTIVITIES: ActivityItem[] = rawActivities.map((act) => ({
+    id: act.id,
+    type: (act.activityType.toLowerCase() === 'class' ? 'class' : act.activityType.toLowerCase() === 'homework' ? 'homework' : 'puzzle') as any,
+    description: act.description,
+    timestamp: act.timestamp,
+    iconKey: act.iconKey as any,
+  }));
 
   const COLUMNS: TableColumn[] = [
     { key: 'category', label: 'Curriculum Focus' },

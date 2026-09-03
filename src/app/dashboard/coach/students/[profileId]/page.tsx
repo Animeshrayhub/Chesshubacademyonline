@@ -7,6 +7,7 @@ import StatCard from '@/components/dashboard/ui/StatCard';
 import { getCurrentUser } from '@/lib/supabase/auth';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { getStudentPuzzleStats } from '@/lib/puzzles/results';
+import { getCoachStudentActivitySummary } from '@/lib/activity';
 import type { StatCardData } from '@/types/dashboard';
 
 export const dynamic = 'force-dynamic';
@@ -57,8 +58,12 @@ export default async function CoachStudentDetailsPage({ params }: StudentDetails
     ? `${studentUser.first_name} ${studentUser.last_name}`
     : 'Unknown Student';
 
-  // 2. Fetch puzzle stats
-  const statsRes = await getStudentPuzzleStats(profileId);
+  // 2. Fetch puzzle stats and activity summary
+  const [statsRes, actSummaryRes] = await Promise.all([
+    getStudentPuzzleStats(profileId),
+    getCoachStudentActivitySummary(profile.user_id),
+  ]);
+
   const stats = statsRes.success && statsRes.data ? statsRes.data : {
     totalAttempts: 0,
     totalSolved: 0,
@@ -67,6 +72,12 @@ export default async function CoachStudentDetailsPage({ params }: StudentDetails
     averageAccuracy: 0,
     solvedToday: 0,
     recentResults: [],
+  };
+
+  const actSummary = actSummaryRes.success && actSummaryRes.data ? actSummaryRes.data : {
+    botGames: { total: 0, wins: 0, losses: 0, draws: 0, recentGames: [] },
+    puzzles: { solved: 0, attempted: 0, accuracy: 0 },
+    classes: { totalAttended: 0 },
   };
 
   // Get current Lichess puzzle rating if synced in notes
@@ -241,29 +252,47 @@ export default async function CoachStudentDetailsPage({ params }: StudentDetails
           )}
         </div>
 
-        {/* Coach assigned puzzles section */}
-        <div className="bg-white border border-border rounded-2xl shadow-card p-6 flex flex-col justify-between min-h-[300px]">
+        {/* Student Training Activity Overview */}
+        <div className="bg-white border border-border rounded-2xl shadow-card p-6 flex flex-col justify-between min-h-[300px] space-y-4">
           <div>
-            <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider mb-4 border-b border-border pb-2.5">
-              Assigned Custom Training
+            <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider mb-4 border-b border-border pb-2.5 flex items-center justify-between">
+              <span>Training Activity Overview</span>
+              <span className="text-[10px] font-bold text-purple-700">Real DB Data</span>
             </h3>
-            <div className="text-center py-6 text-slate-400 text-xs">
-              <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-2.5">
-                <DashboardIcon iconKey="graduationCap" className="w-4 h-4 text-text-secondary" />
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between">
+                <div>
+                  <span className="font-bold text-slate-800 block">Bot Matches</span>
+                  <span className="text-[10px] text-slate-500">Record: {actSummary.botGames.wins}W / {actSummary.botGames.draws}D / {actSummary.botGames.losses}L</span>
+                </div>
+                <span className="text-sm font-extrabold text-purple-700 font-mono">{actSummary.botGames.total}</span>
               </div>
-              <p className="font-semibold text-text-primary">No assigned puzzle lists</p>
-              <p className="text-[10px] text-text-secondary mt-1 max-w-[180px] mx-auto">
-                ChessHub custom imports and category assigners will launch in Phase 2.
-              </p>
+
+              <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between">
+                <div>
+                  <span className="font-bold text-slate-800 block">Tactical Puzzles</span>
+                  <span className="text-[10px] text-slate-500">{actSummary.puzzles.accuracy}% Accuracy</span>
+                </div>
+                <span className="text-sm font-extrabold text-emerald-600 font-mono">{actSummary.puzzles.solved} Solved</span>
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between">
+                <div>
+                  <span className="font-bold text-slate-800 block">Live Classes</span>
+                  <span className="text-[10px] text-slate-500">Attended Sessions</span>
+                </div>
+                <span className="text-sm font-extrabold text-blue-600 font-mono">{actSummary.classes.totalAttended}</span>
+              </div>
             </div>
           </div>
           
-          <button
-            disabled
-            className="w-full py-2.5 bg-slate-100 text-slate-400 text-center font-bold text-xs rounded-xl cursor-not-allowed uppercase tracking-wider focus:outline-none"
+          <Link
+            href={`/dashboard/coach/students/${params.profileId}/bot-training`}
+            className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-center font-bold text-xs rounded-xl uppercase tracking-wider transition-all shadow-md block"
           >
-            Assign ChessHub Puzzle
-          </button>
+            ♟️ View Full Bot Analytics & Puzzles →
+          </Link>
         </div>
       </div>
     </div>

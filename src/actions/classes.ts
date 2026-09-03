@@ -64,8 +64,6 @@ export async function endClassAction(id: string) {
   try {
     const result = await classesService.setClassStatus(id, 'COMPLETED');
     if (result && result.success) {
-      revalidatePath(`/classroom/${id}`);
-      revalidatePath(`/classroom/${id}/review`);
       revalidatePath('/dashboard/coach/classes');
       revalidatePath('/dashboard/student/classes');
       revalidatePath('/dashboard/admin/classes');
@@ -87,7 +85,6 @@ export async function startClassAction(id: string) {
     await classesService.getOrCreateActiveLiveSession(id, user?.id || '', role);
     const result = await classesService.setClassStatus(id, 'LIVE');
     if (result && result.success) {
-      revalidatePath(`/classroom/${id}`);
       revalidatePath('/dashboard/coach/classes');
       revalidatePath('/dashboard/student/classes');
       revalidatePath('/dashboard/admin/classes');
@@ -106,7 +103,7 @@ export async function saveSessionNotesAction(classId: string, notes: string) {
   try {
     const result = await classesService.saveSessionNotes(classId, notes);
     if (result.success) {
-      revalidatePath(`/classroom/${classId}/review`);
+      revalidatePath('/dashboard/coach/classes');
     }
     return serializeResult(result);
   } catch (err: any) {
@@ -131,7 +128,6 @@ export async function recordStudentClassJoinAction(classId: string, studentUserI
 export async function updateStudentAttendanceAction(classId: string, studentProfileId: string, attended: boolean) {
   const result = await classesService.updateStudentAttendance(classId, studentProfileId, attended);
   if (result.success) {
-    revalidatePath(`/classroom/${classId}/review`);
     revalidatePath('/dashboard/coach/classes');
     revalidatePath('/dashboard/coach');
   }
@@ -165,17 +161,8 @@ export async function submitClassEndReportAction(data: {
     }
 
     const result = await classesService.setClassStatus(data.classId, 'COMPLETED');
-    try {
-      const { createSupabaseAdmin } = await import('@/lib/supabase/admin');
-      const admin = createSupabaseAdmin();
-      await admin.from('classroom_chat').delete().eq('class_id', data.classId);
-    } catch (chatErr) {
-      console.warn('Classroom chat cleanup note:', chatErr);
-    }
 
     try {
-      revalidatePath(`/classroom/${data.classId}`);
-      revalidatePath(`/classroom/${data.classId}/review`);
       revalidatePath('/dashboard/coach/classes');
       revalidatePath('/dashboard/student/classes');
       revalidatePath('/dashboard/admin/classes');
@@ -198,8 +185,6 @@ export async function saveLiveClassRecordingAction(
   try {
     const result = await classesService.saveLiveClassRecording(classId, recordingUrl, durationSeconds);
     if (result && result.success) {
-      revalidatePath(`/classroom/${classId}`);
-      revalidatePath(`/classroom/${classId}/review`);
       revalidatePath('/dashboard/admin/classes');
       revalidatePath('/dashboard/admin/reports');
       revalidatePath('/dashboard/coach/recordings');
@@ -218,8 +203,6 @@ export async function completeClassSessionAction(input: classesService.CompleteC
   try {
     const result = await classesService.completeClassSession(input);
     if (result && result.success) {
-      revalidatePath(`/classroom/${input.classId}`);
-      revalidatePath(`/classroom/${input.classId}/review`);
       revalidatePath('/dashboard/coach/classes');
       revalidatePath('/dashboard/student/classes');
       revalidatePath('/dashboard/admin/classes');

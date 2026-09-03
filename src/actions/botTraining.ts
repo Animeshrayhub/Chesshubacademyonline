@@ -15,6 +15,7 @@ import { analyzeGamePositions } from '@/lib/bot-training/analysisEngine';
 import { processGameMistakesAndPuzzles, updateWeaknessOnPuzzleAttempt } from '@/lib/bot-training/puzzleGenerator';
 import { getCuratedPuzzlesForTheme } from '@/lib/bot-training/weaknessPuzzleBank';
 import { checkAndAwardBadges } from '@/lib/bot-training/badgeEngine';
+import { recordStudentActivity } from '@/lib/activity';
 import type {
   GameResult,
   GameTermination,
@@ -376,6 +377,32 @@ export async function finishBotGameAction(data: {
     // 7. Check Badges
     const latestRes = data.result === 'in_progress' ? undefined : data.result;
     const awardedBadges = await checkAndAwardBadges(user.id, updatedProfile, latestRes);
+
+    // 8. Record real student activity in database
+    try {
+      const durationSeconds = existingGame?.started_at
+        ? Math.max(1, Math.round((new Date(nowISO).getTime() - new Date(existingGame.started_at).getTime()) / 1000))
+        : Math.max(60, data.moveCount * 5);
+
+      await recordStudentActivity({
+        studentId: user.id,
+        activityType: 'BOT_GAME',
+        activityId: data.gameId,
+        startedAt: existingGame?.started_at || nowISO,
+        completedAt: nowISO,
+        durationSeconds,
+        result: data.result,
+        score: delta,
+        metadata: {
+          botLevel: data.botLevel,
+          moves: data.moveCount,
+          ratingAfter: afterRating,
+          termination: data.termination,
+        },
+      });
+    } catch (actErr) {
+      console.warn('[finishBotGameAction] Activity recording warning:', actErr);
+    }
 
     try {
       revalidatePath('/dashboard/student/bot-training');

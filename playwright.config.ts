@@ -2,10 +2,10 @@ import { defineConfig, devices } from '@playwright/test';
 import * as dotenv from 'dotenv';
 import path from 'path';
 
-// Read from .env file
-dotenv.config({ path: path.resolve(__dirname, '.env') });
+// Read from .env file without overriding existing environment variables
+dotenv.config({ path: path.resolve(__dirname, '.env'), override: false });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 
 export default defineConfig({

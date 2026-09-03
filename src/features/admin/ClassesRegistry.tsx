@@ -243,6 +243,19 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
           window.open(`/classroom/${cls.id}`, '_blank');
         },
       },
+      ...(cls.zoom_join_url
+        ? [
+            {
+              label: 'Open Zoom Direct Link',
+              iconKey: 'video',
+              onClick: () => {
+                if (cls.zoom_join_url) {
+                  window.open(cls.zoom_join_url, '_blank');
+                }
+              },
+            },
+          ]
+        : []),
       {
         label: cls.recording_url ? '🎥 View / Play Recording' : '🎥 Play / Attach Recording',
         iconKey: 'video',

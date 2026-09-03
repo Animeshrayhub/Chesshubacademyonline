@@ -3,6 +3,8 @@ import { createServerClient } from '@/utils/supabaseServer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { getSystemConfig, saveSystemConfig } from '@/utils/systemConfig';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/admin/config
  * Retrieves system settings config. Admin only.

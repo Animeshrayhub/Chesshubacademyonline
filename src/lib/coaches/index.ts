@@ -759,7 +759,19 @@ export async function getCoachClasses(): Promise<Result<any[]>> {
       }
     }
 
-    // Map student names and attendance counts to each class
+    // Fetch class reports for class feedback and attendance notes
+    const { data: reports } = await admin
+      .from('class_reports')
+      .select('class_id, notes, submitted_at')
+      .in('class_id', classIds);
+    const reportMap = new Map<string, { notes: string; submitted_at: string }>();
+    if (reports) {
+      for (const r of reports) {
+        if (r.class_id) reportMap.set(r.class_id, r);
+      }
+    }
+
+    // Map student names, attendance counts, and reports to each class
     const mapped = classes.map((c: any) => {
       const classMappings = mappings?.filter((m: any) => m.class_id === c.id) ?? [];
       const studentNames = classMappings.map((m: any) => {
@@ -774,6 +786,7 @@ export async function getCoachClasses(): Promise<Result<any[]>> {
 
       const totalStudents = Math.max(1, classMappings.length);
       const attendanceCount = Math.max(1, classMappings.filter((m: any) => !!m.first_joined_at).length);
+      const report = reportMap.get(c.id);
 
       return {
         ...c,
@@ -785,6 +798,8 @@ export async function getCoachClasses(): Promise<Result<any[]>> {
         country: c.country || null,
         attendanceCount,
         totalStudents,
+        reportNotes: report?.notes || c.session_notes || null,
+        reportSubmittedAt: report?.submitted_at || null,
       };
     });
 

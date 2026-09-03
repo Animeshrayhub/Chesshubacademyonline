@@ -178,18 +178,22 @@ export async function signIn(email: string, password: string): Promise<SignInRes
         : env.NEXT_PUBLIC_SUPABASE_URL;
       const projectRef = urlHost ? urlHost.split('.')[0] || 'placeholder' : 'placeholder';
       const cookieName = `sb-${projectRef}-auth-token`;
-      const cookieStore = cookies();
-      cookieStore.set(cookieName, JSON.stringify([
-        authData.session.access_token,
-        authData.session.refresh_token,
-        null,
-        null
-      ]), {
-        path: '/',
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: authData.session.expires_in,
-      });
+      try {
+        const cookieStore = cookies();
+        cookieStore.set(cookieName, JSON.stringify([
+          authData.session.access_token,
+          authData.session.refresh_token,
+          null,
+          null
+        ]), {
+          path: '/',
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: authData.session.expires_in,
+        });
+      } catch (cookieErr) {
+        // May be called in test / non-HTTP context
+      }
     }
 
     return {

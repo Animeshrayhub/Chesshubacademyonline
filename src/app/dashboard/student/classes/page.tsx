@@ -5,8 +5,15 @@ import { getStudentClasses } from '@/lib/students';
 
 export const dynamic = 'force-dynamic';
 
-export default async function StudentClassesPage() {
-  const classesRes = await getStudentClasses();
+export default async function StudentClassesPage({
+  searchParams,
+}: {
+  searchParams?: { startDate?: string; endDate?: string };
+}) {
+  const classesRes = await getStudentClasses({
+    startDate: searchParams?.startDate,
+    endDate: searchParams?.endDate,
+  });
   const classes = classesRes.success && classesRes.data ? classesRes.data : [];
 
   return (

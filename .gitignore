@@ -48,4 +48,7 @@ lichess_db_puzzle.csv.zst
 # Playwright test reports
 /playwright/reports/
 
+# IDE / Agent artifacts
+brain/
+
 

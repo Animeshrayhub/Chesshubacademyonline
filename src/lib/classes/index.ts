@@ -612,6 +612,7 @@ export async function getClassStudents(classId: string): Promise<Result<any[]>> 
       const u = uId ? userMap.get(uId) : null;
       return {
         studentProfileId: p.id,
+        userId: uId || '',
         firstName: u?.first_name || '',
         lastName: u?.last_name || '',
         email: u?.email || '',
@@ -895,8 +896,6 @@ export async function completeClassSession(
 
     const updatePayload: any = {
       status: classStatus,
-      session_notes: input.sessionNotes,
-      recording_url: input.recordingUrl?.trim() || null,
       updated_at: new Date().toISOString(),
     };
 
@@ -985,7 +984,7 @@ export async function completeClassSession(
       }
     }
 
-    // 3. Save to class_recordings if recordingUrl provided
+    // 3. Save or update class_recordings if recordingUrl provided
     if (input.recordingUrl?.trim()) {
       await admin.from('class_recordings').upsert(
         {
@@ -993,11 +992,45 @@ export async function completeClassSession(
           recording_url: input.recordingUrl.trim(),
           recording_source: 'GOOGLE_DRIVE',
           recorded_date: new Date().toISOString().split('T')[0],
-          duration_seconds: 3600,
+          duration_seconds: (input.actualDurationMinutes || 45) * 60,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'class_id' }
       );
+    }
+
+    // 4. Create real in-app notifications for enrolled students
+    try {
+      const { data: enrollments } = await admin
+        .from('class_students')
+        .select('student_id')
+        .eq('class_id', input.classId)
+        .is('archived_at', null);
+
+      if (enrollments && enrollments.length > 0) {
+        const studentProfileIds = enrollments.map((e: any) => e.student_id);
+        const { data: studentProfiles } = await admin
+          .from('student_profiles')
+          .select('id, user_id')
+          .in('id', studentProfileIds);
+
+        const profileToUser = new Map((studentProfiles || []).map((sp: any) => [sp.id, sp.user_id]));
+        const studentUserIds = studentProfileIds.map((id: any) => profileToUser.get(id) || id);
+
+        const notifRows = studentUserIds.map((uid: any) => ({
+          user_id: uid,
+          title: 'Class Session Completed & Feedback Available',
+          message: input.sessionNotes
+            ? `Coach lesson feedback and topics learned have been submitted for your class.`
+            : `Your class session has concluded. View your learning report!`,
+          is_read: false,
+          created_at: new Date().toISOString(),
+        }));
+
+        await admin.from('notifications').insert(notifRows);
+      }
+    } catch (notifErr) {
+      console.warn('[completeClassSession] Notifications insert warning:', notifErr);
     }
 
     return { success: true, data: updatedClass };
@@ -1056,11 +1089,11 @@ export async function getOrCreateActiveLiveSession(
     // 3. Fallback query for class title
     const { data: cls } = await admin
       .from('classes')
-      .select('title, name')
+      .select('id, class_type')
       .eq('id', classId)
       .maybeSingle();
 
-    const className = cls?.title || cls?.topic || cls?.name || 'Chess Classroom Session';
+    const className = cls?.class_type ? `${cls.class_type} Chess Class` : 'Chess Classroom Session';
 
     // If no session exists and Coach/Admin enters, create exactly one active session
     if (!existingSession && isCoachOrAdmin) {

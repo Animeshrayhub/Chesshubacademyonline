@@ -602,7 +602,11 @@ export async function getStudentDashboardStats(): Promise<Result<{
 /**
  * Returns list of scheduled classes the active student is enrolled in.
  */
-export async function getStudentClasses(): Promise<Result<any[]>> {
+export async function getStudentClasses(filters?: {
+  startDate?: string;
+  endDate?: string;
+  status?: string;
+}): Promise<Result<any[]>> {
   try {
     const user = await assertStudent();
     const admin = createSupabaseAdmin();
@@ -623,11 +627,20 @@ export async function getStudentClasses(): Promise<Result<any[]>> {
       return { success: true, data: [] };
     }
 
-    const { data: classes, error: cErr } = await admin
+    let classQuery = admin
       .from('classes')
       .select('*')
       .in('id', classIds)
-      .is('archived_at', null)
+      .is('archived_at', null);
+
+    if (filters?.startDate) {
+      classQuery = classQuery.gte('scheduled_start', `${filters.startDate}T00:00:00.000Z`);
+    }
+    if (filters?.endDate) {
+      classQuery = classQuery.lte('scheduled_start', `${filters.endDate}T23:59:59.999Z`);
+    }
+
+    const { data: classes, error: cErr } = await classQuery
       .order('scheduled_start', { ascending: true });
 
     if (cErr || !classes) {
@@ -635,6 +648,15 @@ export async function getStudentClasses(): Promise<Result<any[]>> {
     }
 
     if (classes.length === 0) return { success: true, data: [] };
+
+    // Query class recordings for enrolled classes
+    const { data: recordings } = await admin
+      .from('class_recordings')
+      .select('*')
+      .in('class_id', classIds)
+      .is('archived_at', null);
+
+    const recordingMap = new Map<string, any>((recordings || []).map((r: any) => [r.class_id, r]));
 
     // Query active live_sessions to check which classes currently have an active classroom
     const { data: activeLiveSessions } = await admin
@@ -644,6 +666,27 @@ export async function getStudentClasses(): Promise<Result<any[]>> {
       .eq('status', 'active');
 
     const activeLiveMap = new Map<string, any>((activeLiveSessions || []).map((ls: any) => [ls.class_id, ls]));
+
+    // Query class reports and attendance for lesson reviews
+    const { data: reports } = await admin
+      .from('class_reports')
+      .select('id, class_id, notes, submitted_at')
+      .in('class_id', classIds);
+
+    const reportMap = new Map<string, any>((reports || []).map((r: any) => [r.class_id, r]));
+    const reportIds = (reports || []).map((r: any) => r.id);
+
+    let attendanceMap = new Map<string, any>();
+    if (reportIds.length > 0) {
+      const studentIdsToCheck = [studentProfileId, user.id].filter(Boolean);
+      const { data: attendance } = await admin
+        .from('class_attendance')
+        .select('class_report_id, status, feedback')
+        .in('class_report_id', reportIds)
+        .in('student_id', studentIdsToCheck);
+
+      attendanceMap = new Map<string, any>((attendance || []).map((a: any) => [a.class_report_id, a]));
+    }
 
     // Resolve coach names
     const rawCoachIds = [...new Set(classes.map((c: any) => c.coach_id))].filter(Boolean);
@@ -674,6 +717,8 @@ export async function getStudentClasses(): Promise<Result<any[]>> {
       const coachUser = coachUserMap.get(coachUserId);
       const enr = enrollmentMap.get(c.id);
       const activeSession = activeLiveMap.get(c.id);
+      const report = reportMap.get(c.id);
+      const att = report ? attendanceMap.get(report.id) : null;
 
       let computedStatus = c.status || 'SCHEDULED';
       if (activeSession) {
@@ -684,7 +729,9 @@ export async function getStudentClasses(): Promise<Result<any[]>> {
         computedStatus = 'SCHEDULED';
       }
 
-      const wasPresent = !!enr?.first_joined_at || computedStatus === 'COMPLETED';
+      const wasPresent = att?.status === 'PRESENT' || !!enr?.first_joined_at || computedStatus === 'COMPLETED';
+      const rec = recordingMap.get(c.id);
+      const recordingUrl = rec?.recording_url || c.recording_url || null;
 
       return {
         ...c,
@@ -694,6 +741,26 @@ export async function getStudentClasses(): Promise<Result<any[]>> {
         coachName: coachUser ? `${coachUser.first_name} ${coachUser.last_name}` : 'FIDE Instructor',
         firstJoinedAt: enr?.first_joined_at || null,
         wasPresent,
+        attendanceStatus: att?.status || (computedStatus === 'COMPLETED' ? 'PRESENT' : null),
+        coachFeedback: att?.feedback || null,
+        reportNotes: report?.notes || null,
+        reportSubmittedAt: report?.submitted_at || null,
+        recording_url: recordingUrl,
+        recording: rec ? {
+          id: rec.id,
+          url: recordingUrl,
+          title: rec.title || 'Class Recording',
+          source: rec.recording_source || 'GOOGLE_DRIVE',
+          durationSeconds: rec.duration_seconds || (c.duration_minutes || 45) * 60,
+          createdAt: rec.created_at,
+        } : (recordingUrl ? {
+          id: `rec-${c.id}`,
+          url: recordingUrl,
+          title: 'Class Recording',
+          source: 'GOOGLE_DRIVE',
+          durationSeconds: (c.duration_minutes || 45) * 60,
+          createdAt: c.updated_at || c.scheduled_start,
+        } : null),
       };
     });
 

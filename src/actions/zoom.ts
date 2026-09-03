@@ -207,7 +207,8 @@ export async function endZoomMeetingAction(classId: string, meetingNumber?: stri
       .update({ status: 'COMPLETED', ended_at: new Date().toISOString() })
       .eq('id', classId);
 
-    revalidatePath(`/classroom/${classId}`);
+    revalidatePath('/dashboard/coach/classes');
+    revalidatePath('/dashboard/student/classes');
     return { success: true };
   } catch (err: any) {
     return {

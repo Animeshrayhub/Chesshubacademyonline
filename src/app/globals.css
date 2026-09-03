@@ -248,3 +248,83 @@ img, iframe, canvas, video, .protect-media {
     padding: 50px;
   }
 }
+
+/* ─── Zoom Embedded SDK Modal Isolation ───────────────────────────────────── */
+/* Prevent Zoom Web SDK Material-UI fullscreen modal backdrops and alerts from blocking clicks on classroom UI */
+.zoom-MuiModal-root,
+.zoom-MuiDialog-root,
+.zoom-MuiBackdrop-root {
+  display: none !important;
+  pointer-events: none !important;
+}
+
+/* ─── Zoom Video Rendering & Aspect Ratio Fixes ───────────────────────────── */
+/* Prevent participant face/video cropping, maintain camera aspect ratio without stretching */
+#meetingSDKElement {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+  background-color: #020617 !important;
+}
+
+#meetingSDKElement canvas,
+#meetingSDKElement video {
+  object-fit: contain !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  margin: auto !important;
+}
+
+#meetingSDKElement .single-video-container,
+#meetingSDKElement .speaker-view {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Gallery View Grid Support */
+#meetingSDKElement.zoom-layout-gallery .gallery-video-container,
+#meetingSDKElement.zoom-layout-gallery .gallery-view {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* ─── Zoom Embedded SDK Canvas Fill Fix ─────────────────────────────────────
+   Forces the SDK-injected canvas/video elements to fill their parent container.
+   This resolves the sizing issue where Zoom uses clientWidth/Height at init time
+   before flex layout has settled, resulting in a tiny/clipped video canvas.
+   ──────────────────────────────────────────────────────────────────────────── */
+.zoom-sdk-container {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Force all canvas and video elements injected by the Zoom SDK to fill the container */
+.zoom-sdk-container canvas,
+.zoom-sdk-container video,
+#meetingSDKElement canvas,
+#meetingSDKElement video {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain;
+  object-position: center;
+}
+
+/* Zoom client inner wrapper sizing */
+.zoom-sdk-container .meeting-client-inner,
+.zoom-sdk-container .meeting-client {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+}

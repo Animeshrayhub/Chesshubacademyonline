@@ -20,6 +20,8 @@ export interface ClassData {
   totalStudents?: number;
   updated_at?: string | null;
   completed_at?: string | null;
+  reportNotes?: string | null;
+  reportSubmittedAt?: string | null;
 }
 
 interface CoachClassesListProps {
@@ -37,8 +39,12 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
   }, [initialClasses]);
 
   const [activeTab, setActiveTab] = useState<TabType>('UPCOMING');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  // Default: show TODAY'S CLASSES ONLY (Local browser date)
+  const getLocalDateStr = (d: Date = new Date()) => {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const [startDate, setStartDate] = useState(getLocalDateStr);
+  const [endDate, setEndDate] = useState(getLocalDateStr);
   const [selectedStudent, setSelectedStudent] = useState('ALL');
   const [studentSearchInput, setStudentSearchInput] = useState('');
   const [sortBy, setSortBy] = useState<'default' | 'date-asc' | 'date-desc' | 'name' | 'duration'>('default');
@@ -62,23 +68,25 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
       return;
     }
     if (type === 'today') {
-      const dateStr = now.toISOString().slice(0, 10);
+      const dateStr = getLocalDateStr(now);
       setStartDate(dateStr);
       setEndDate(dateStr);
       return;
     }
     if (type === 'week') {
-      const first = new Date(now.setDate(now.getDate() - now.getDay()));
-      const last = new Date(now.setDate(now.getDate() - now.getDay() + 6));
-      setStartDate(first.toISOString().slice(0, 10));
-      setEndDate(last.toISOString().slice(0, 10));
+      const weekStart = new Date(now);
+      weekStart.setDate(now.getDate() - now.getDay());
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6);
+      setStartDate(getLocalDateStr(weekStart));
+      setEndDate(getLocalDateStr(weekEnd));
       return;
     }
     if (type === 'month') {
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
       const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      setStartDate(firstDay.toISOString().slice(0, 10));
-      setEndDate(lastDay.toISOString().slice(0, 10));
+      setStartDate(getLocalDateStr(firstDay));
+      setEndDate(getLocalDateStr(lastDay));
     }
   };
 
@@ -491,6 +499,16 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
                       ? `Coach Login: ${c.coachLoginTime}`
                       : 'Coach Login: Not Logged In Yet'}
                   </p>
+                  {isCompleted && c.reportNotes && (
+                    <div className="mt-1.5 bg-slate-50 border border-slate-200/80 rounded-xl p-2 text-xs">
+                      <span className="font-bold text-purple-800 text-[10px] uppercase tracking-wider block mb-0.5">
+                        📝 Class Report & Feedback:
+                      </span>
+                      <p className="text-[11px] text-slate-600 line-clamp-2 italic">
+                        &ldquo;{c.reportNotes}&rdquo;
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Far Right Action Column */}
@@ -536,26 +554,22 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
                   {/* Action Buttons */}
                   {isCompleted ? (
                     <div className="flex items-center gap-1.5">
-                      <Link
-                        href={`/classroom/${c.id}/review`}
+                      <button
+                        type="button"
+                        onClick={() => setCompletionClass(c)}
                         className="px-3 py-1 border border-purple-600 text-purple-700 hover:bg-purple-50 font-black text-xs rounded-xl tracking-wider transition-all"
                       >
-                        EDIT
-                      </Link>
-                      <Link
-                        href={`/classroom/${c.id}/review`}
-                        className="px-3 py-1 border border-purple-600 text-purple-700 hover:bg-purple-50 font-black text-xs rounded-xl tracking-wider transition-all"
-                      >
-                        DETAILS
-                      </Link>
+                        SUMMARY / DETAILS
+                      </button>
                     </div>
                   ) : (
                     <div className="flex items-center gap-2">
                       <Link
                         href={`/classroom/${c.id}`}
-                        className="px-4 py-1.5 border-2 border-purple-600 text-purple-700 hover:bg-purple-600 hover:text-white font-black text-xs rounded-xl tracking-wider transition-all shadow-sm flex items-center gap-1"
+                        className="px-4 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs rounded-xl tracking-wider transition-all shadow-md flex items-center gap-1.5 group"
                       >
-                        <span>JOIN</span>
+                        <span>📹</span>
+                        <span>JOIN CLASS</span>
                       </Link>
                       <button
                         type="button"
