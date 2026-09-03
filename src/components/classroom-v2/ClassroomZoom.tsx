@@ -23,16 +23,13 @@ export default function ClassroomZoom({
   className = '',
 }: ClassroomZoomProps) {
   const zoomRef = useRef<ZoomClassroomVideoHandle>(null);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isVideoOn, setIsVideoOn] = useState(true);
+  const [isMuted, setIsMuted] = useState(true);
+  const [isVideoOn, setIsVideoOn] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
-
-  // Simplified Permission Flow for Students
-  const [showPreJoin, setShowPreJoin] = useState(false);
   const [permissionError, setPermissionError] = useState<string | null>(null);
-  const [camAllowed, setCamAllowed] = useState(true);
-  const [micAllowed, setMicAllowed] = useState(true);
+  const [camAllowed, setCamAllowed] = useState(false);
+  const [micAllowed, setMicAllowed] = useState(false);
 
   const [layoutMode, setLayoutMode] = useState<'gallery' | 'speaker'>(() => {
     if (typeof window !== 'undefined') {
@@ -42,84 +39,33 @@ export default function ClassroomZoom({
     return 'gallery';
   });
 
-  // Persistent browser permission check: If already granted, join directly without prompt
+  // Request browser media permissions cleanly and non-blockingly on mount
   useEffect(() => {
-    if (isCoach) {
-      setShowPreJoin(false);
-      return;
-    }
-
-    let isMounted = true;
-
-    async function checkExistingPermissions() {
-      try {
-        if (typeof navigator === 'undefined' || !navigator.permissions) {
-          setShowPreJoin(false);
-          return;
-        }
-
-        let camState = 'prompt';
-        let micState = 'prompt';
-
-        try {
-          const cam = await navigator.permissions.query({ name: 'camera' as PermissionName });
-          camState = cam.state;
-        } catch {}
-
-        try {
-          const mic = await navigator.permissions.query({ name: 'microphone' as PermissionName });
-          micState = mic.state;
-        } catch {}
-
-        if (!isMounted) return;
-
-        // If both already granted, student automatically initializes without prompt
-        if (camState === 'granted' && micState === 'granted') {
-          setShowPreJoin(false);
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+      navigator.mediaDevices
+        .getUserMedia({ video: true, audio: true })
+        .then((stream) => {
+          stream.getTracks().forEach((track) => track.stop());
           setCamAllowed(true);
           setMicAllowed(true);
-        } else if (camState === 'denied' || micState === 'denied') {
-          // Previously denied: show simple recovery option
-          setCamAllowed(camState === 'granted');
-          setMicAllowed(micState === 'granted');
-          setShowPreJoin(true);
-        } else {
-          // First time or prompt: show simple "Ready for class?"
-          setShowPreJoin(true);
-        }
-      } catch {
-        if (isMounted) setShowPreJoin(false);
-      }
+          setPermissionError(null);
+        })
+        .catch((err: any) => {
+          console.warn('[Camera/Mic Permission Notice]', err?.message);
+          setCamAllowed(false);
+          setMicAllowed(false);
+          setPermissionError(
+            'Camera or Microphone was blocked by your browser. Click the lock icon in your address bar to enable, or continue in class.'
+          );
+        });
     }
+  }, []);
 
-    checkExistingPermissions();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [isCoach]);
-
-  const handleAllowAndJoin = useCallback(async () => {
-    try {
-      if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        // Release immediate device lock so Zoom SDK can cleanly bind to devices
-        stream.getTracks().forEach((track) => track.stop());
-      }
-      setShowPreJoin(false);
-      setCamAllowed(true);
-      setMicAllowed(true);
-      setIsVideoOn(true);
-      setIsMuted(false);
-    } catch (err: any) {
-      console.warn('[Camera/Mic Permission Notice]', err);
-      // Non-blocking: student can still enter class
-      setCamAllowed(false);
-      setMicAllowed(false);
-      setIsVideoOn(false);
-      setIsMuted(true);
-      setPermissionError('Camera or Microphone was not granted. You can still join and turn them on anytime.');
-    }
+  const handleMediaStatusChange = useCallback((status: { isVideoOn: boolean; isMuted: boolean }) => {
+    setIsVideoOn(status.isVideoOn);
+    setIsMuted(status.isMuted);
+    setCamAllowed(status.isVideoOn);
+    setMicAllowed(!status.isMuted);
   }, []);
 
   const handleSelectLayout = (mode: 'gallery' | 'speaker') => {
@@ -232,71 +178,22 @@ export default function ClassroomZoom({
           passCode={zoomPasscode}
           userName={userName}
           role={isCoach ? 1 : 0}
+          onMediaStatusChange={handleMediaStatusChange}
           className="w-full h-full"
         />
 
-        {/* Student "Ready for class?" Permission Screen */}
-        {showPreJoin && !isCoach && (
-          <div className="absolute inset-0 z-30 bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center p-4 text-center select-none">
-            <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mb-2.5 text-2xl">
-              ♟️
-            </div>
-            <h3 className="text-base font-bold text-white mb-1">Ready for class?</h3>
-            <p className="text-xs text-slate-400 mb-4 max-w-xs leading-relaxed">
-              Enable your camera and microphone so your coach can see and hear you!
-            </p>
-
-            <div className="w-full max-w-[240px] space-y-2 mb-4">
-              <div className="flex items-center justify-between px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs">
-                <span className="flex items-center gap-2 text-slate-300 font-semibold">
-                  <span>📹</span> Camera
-                </span>
-                <span
-                  className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${
-                    camAllowed ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
-                  }`}
-                >
-                  {camAllowed ? 'ON' : 'OFF'}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs">
-                <span className="flex items-center gap-2 text-slate-300 font-semibold">
-                  <span>🎙️</span> Microphone
-                </span>
-                <span
-                  className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${
-                    micAllowed ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
-                  }`}
-                >
-                  {micAllowed ? 'ON' : 'OFF'}
-                </span>
-              </div>
-            </div>
-
-            {permissionError && (
-              <div className="mb-3 text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2 max-w-xs leading-relaxed">
-                {permissionError}
-              </div>
-            )}
-
-            <div className="flex flex-col gap-2 w-full max-w-[240px]">
-              <button
-                type="button"
-                onClick={handleAllowAndJoin}
-                className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-lg flex items-center justify-center gap-1.5"
-              >
-                <span>Allow & Join</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowPreJoin(false)}
-                className="w-full py-1.5 text-slate-400 hover:text-slate-200 text-[11px] font-medium transition-colors"
-              >
-                Join class anyway →
-              </button>
-            </div>
+        {/* Non-blocking permission notification if blocked by browser */}
+        {permissionError && (
+          <div className="absolute top-2 left-2 right-2 z-30 text-[11px] text-amber-200 bg-amber-950/90 border border-amber-500/40 rounded-xl px-3 py-1.5 flex items-center justify-between shadow-xl backdrop-blur-sm">
+            <span className="leading-snug">⚠️ {permissionError}</span>
+            <button
+              type="button"
+              onClick={() => setPermissionError(null)}
+              className="text-amber-400 hover:text-white ml-2 text-xs font-bold"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
           </div>
         )}
       </div>

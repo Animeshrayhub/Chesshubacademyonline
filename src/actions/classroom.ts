@@ -1,6 +1,7 @@
 'use server';
 
 import { getCurrentUser } from '@/lib/supabase/auth';
+import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import {
   getCanonicalClassroomSnapshot,
   mutateClassroomMove,
@@ -447,4 +448,35 @@ export async function endClassroomSessionAction(
     await recordProcessedMutation(mutationId, res, sessionId, 'end_class');
   }
   return res;
+}
+
+export async function getClassroomChatHistoryAction(classId: string) {
+  const auth = await getAuthContext();
+  if (!auth) return { success: false, error: 'Unauthorized' };
+  try {
+    const admin = createSupabaseAdmin();
+    const { data, error } = await admin
+      .from('classroom_chat')
+      .select('*')
+      .eq('class_id', classId)
+      .order('created_at', { ascending: true })
+      .limit(150);
+
+    if (error) throw error;
+
+    const messages = (data || []).map((row: any) => ({
+      id: row.id,
+      senderId: row.sender_id,
+      senderName: row.sender_name || 'Participant',
+      senderRole: row.sender_role || 'student',
+      message: row.message,
+      isPrivate: false,
+      timestamp: row.created_at,
+    }));
+
+    return { success: true, messages };
+  } catch (err: any) {
+    console.warn('[getClassroomChatHistoryAction Error]', err);
+    return { success: false, error: err?.message || 'Failed to load chat history' };
+  }
 }

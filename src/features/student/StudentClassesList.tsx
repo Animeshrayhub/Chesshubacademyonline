@@ -46,13 +46,13 @@ export default function StudentClassesList({ classes: initialClasses }: StudentC
     hasActiveLiveClasses ? 'ACTIVE' : 'UPCOMING'
   );
 
-  // Default: SHOW TODAY'S CLASSES ONLY (Local browser date)
+  // Date filter: default to All (empty) so UPCOMING and COMPLETED classes are never blocked
   const getLocalToday = () => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
-  const [startDate, setStartDate] = useState(getLocalToday);
-  const [endDate, setEndDate] = useState(getLocalToday);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [selectedCoach, setSelectedCoach] = useState('ALL');
   const [sortBy, setSortBy] = useState<'date-asc' | 'date-desc' | 'duration'>('date-asc');
   const [showNotifications, setShowNotifications] = useState(false);

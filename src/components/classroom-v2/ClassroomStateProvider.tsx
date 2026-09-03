@@ -58,6 +58,7 @@ import {
   mutateClassroomCreateBookmarkAction,
   mutateClassroomRaiseHandAction,
   getCanonicalClassroomSnapshotAction,
+  getClassroomChatHistoryAction,
   endClassroomSessionAction,
 } from '@/actions/classroom';
 
@@ -174,6 +175,20 @@ export function ClassroomStateProvider({
     }
   }, [classId, sessionId]);
 
+  // ── Initial Chat History Fetch ───────────────────────────────────────────
+  useEffect(() => {
+    if (!classId) return;
+    getClassroomChatHistoryAction(classId).then((res) => {
+      if (res.success && Array.isArray(res.messages)) {
+        setMessages((prev) => {
+          const existingIds = new Set(prev.map((m) => m.id));
+          const toAdd = res.messages.filter((m: any) => !existingIds.has(m.id));
+          return [...prev, ...toAdd];
+        });
+      }
+    });
+  }, [classId]);
+
   // ── Realtime WebSocket Setup ──────────────────────────────────────────────
   useEffect(() => {
     const supabase = createSupabaseClient();
@@ -186,20 +201,54 @@ export function ClassroomStateProvider({
       },
     });
 
+    // Redundant PostgreSQL replication listener: updates board state immediately upon DB write
+    channel.on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'live_session_board_state',
+        filter: `session_id=eq.${sessionId}`,
+      },
+      (changePayload: any) => {
+        const row = changePayload?.new;
+        if (!row) return;
+        setSnapshot((current) => {
+          const rawMoves = Array.isArray(row.moves) ? row.moves : [];
+          const moveIdx = row.current_move_index ?? (rawMoves.length - 1);
+          if (moveIdx < current.board.currentMoveIndex) return current;
+          return {
+            ...current,
+            board: {
+              ...current.board,
+              fen: row.fen || current.board.fen,
+              moves: rawMoves.length > 0 ? rawMoves : current.board.moves,
+              currentMoveIndex: moveIdx,
+              allowIllegalMoves: Boolean(row.allow_illegal_moves),
+              sideToMove: ((row.fen?.split(' ')[1] as 'w' | 'b') || current.board.sideToMove),
+            },
+            permissions: {
+              ...current.permissions,
+              boardControllerId: row.board_controller_id || null,
+            },
+          };
+        });
+      }
+    );
+
     channel
       .on('broadcast', { event: '*' }, (eventPayload: any) => {
         const payload = eventPayload?.payload;
         if (!payload) return;
 
-        // Gap detection: If incoming version skips local version, reconcile canonical state!
-        if (payload.version && payload.version > snapshotRef.current.version + 1) {
-          console.warn('[Realtime Gap] Received version', payload.version, 'while at', snapshotRef.current.version, '- Reconciling canonical snapshot');
-          reconcileSnapshot();
-          return;
-        }
-
-        // Apply reducer for canonical board/puzzle/quiz states
+        // Apply reducer for canonical board/puzzle/quiz states immediately — never drop moves!
         setSnapshot((current) => classroomReducer(current, payload));
+
+        // Gap detection: If incoming version skips local version, reconcile canonical state in background
+        if (payload.version && payload.version > snapshotRef.current.version + 1) {
+          console.warn('[Realtime Gap] Received version', payload.version, 'while at', snapshotRef.current.version, '- Reconciling canonical snapshot in background');
+          reconcileSnapshot();
+        }
 
         // Special handling for secondary real-time entities
         if (payload.type === 'CHAT_MESSAGE' || payload.type === 'PRIVATE_CHAT_MESSAGE') {

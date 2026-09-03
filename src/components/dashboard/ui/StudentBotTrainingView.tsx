@@ -86,6 +86,13 @@ export default function StudentBotTrainingView() {
   const [analysisData, setAnalysisData] = useState<any>(null);
   const [showEngineDetails, setShowEngineDetails] = useState(false);
 
+  // Interactive Mistake Practice Board State
+  const [practiceMistakeIndex, setPracticeMistakeIndex] = useState<number | null>(null);
+  const [practiceFen, setPracticeFen] = useState<string>('');
+  const [practiceMsg, setPracticeMsg] = useState<string | null>(null);
+  const [practiceSolved, setPracticeSolved] = useState<boolean>(false);
+  const [showPracticeSolution, setShowPracticeSolution] = useState<boolean>(false);
+
   // Puzzle Solver Modal
   const [activePuzzle, setActivePuzzle] = useState<PersonalizedPuzzle | null>(null);
   const [puzzleFen, setPuzzleFen] = useState<string>('');
@@ -212,16 +219,71 @@ export default function StudentBotTrainingView() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fen, inGame, gameStatus, playerColor]);
 
-  // Execute Bot move via Stockfish Worker
+  // Execute Bot move via Stockfish Worker or Level 1 Beginner Generator
   const triggerBotMove = () => {
     if (gameStatus !== 'active') return;
     setIsBotThinking(true);
 
+    const botCfg = BOT_LEVELS.find((b) => b.level === selectedLevel) || BOT_LEVELS[0];
+
+    // LEVEL 1: Gentle beginner AI tailored for children (~400 rating)
+    // Makes simple legal moves, avoids deep tactical traps, and allows the child to win and learn!
+    if (selectedLevel === 1) {
+      const delayMs = 600 + Math.floor(Math.random() * 500);
+      setTimeout(() => {
+        if (gameStatus !== 'active') {
+          setIsBotThinking(false);
+          return;
+        }
+        const game = gameRef.current;
+        const legalMoves = game.moves({ verbose: true });
+        if (legalMoves.length === 0) {
+          setIsBotThinking(false);
+          checkGameEndState();
+          return;
+        }
+
+        // Categorize candidate moves for a beginner child
+        const pawnMoves = legalMoves.filter((m) => m.piece === 'p');
+        const minorMoves = legalMoves.filter((m) => m.piece === 'n' || m.piece === 'b');
+        const captures = legalMoves.filter((m) => m.captured && m.captured !== 'q');
+        const gentleChecks = legalMoves.filter((m) => m.san.includes('+') && !m.san.includes('#'));
+
+        let chosenMove = legalMoves[0];
+        const roll = Math.random();
+
+        if (roll < 0.45 && pawnMoves.length > 0) {
+          chosenMove = pawnMoves[Math.floor(Math.random() * pawnMoves.length)];
+        } else if (roll < 0.75 && minorMoves.length > 0) {
+          chosenMove = minorMoves[Math.floor(Math.random() * minorMoves.length)];
+        } else if (roll < 0.90 && captures.length > 0) {
+          chosenMove = captures[Math.floor(Math.random() * captures.length)];
+        } else if (gentleChecks.length > 0 && Math.random() < 0.5) {
+          chosenMove = gentleChecks[0];
+        } else {
+          chosenMove = legalMoves[Math.floor(Math.random() * legalMoves.length)];
+        }
+
+        try {
+          game.move(chosenMove);
+          const nextFen = game.fen();
+          setFen(nextFen);
+          setMoveHistory(game.history());
+
+          if (isTimed && clockIncrementSec > 0) {
+            setBotTimeSec((prev) => prev + clockIncrementSec);
+          }
+          checkGameEndState();
+        } catch (e) {}
+        setIsBotThinking(false);
+      }, delayMs);
+      return;
+    }
+
+    // LEVEL 2+: Uses Stockfish worker
     stockfishRef.current?.terminate();
     const worker = new Worker('/stockfish/stockfish.js');
     stockfishRef.current = worker;
-
-    const botCfg = BOT_LEVELS.find((b) => b.level === selectedLevel) || BOT_LEVELS[0];
 
     worker.onmessage = (event) => {
       const line = event.data;
@@ -485,7 +547,6 @@ export default function StudentBotTrainingView() {
       fetchProfile();
     } else if (!res.success) {
       console.error('[handleGameEnd] finishBotGameAction failed:', (res as any).error?.message);
-      // Still show some result UI even on error
       setAnalysisData({
         result,
         ratingBefore: profile?.rating || 400,
@@ -493,7 +554,70 @@ export default function StudentBotTrainingView() {
         ratingChange: 0,
         analysisSummary: { accuracy: 0, blunders: 0, keyMoments: [] },
       });
+      setPracticeMistakeIndex(null);
       setShowAnalysisModal(true);
+    }
+  };
+
+  const PIECE_VAL: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 100 };
+
+  const handleStartPracticeMistakes = (index = 0) => {
+    const moments = analysisData?.analysisSummary?.keyMoments || [];
+    if (moments.length === 0) return;
+    const current = moments[index];
+    if (current && current.fen_before) {
+      setPracticeMistakeIndex(index);
+      setPracticeFen(current.fen_before);
+      setPracticeMsg(null);
+      setPracticeSolved(false);
+      setShowPracticeSolution(false);
+    }
+  };
+
+  const handlePracticeDrop = (sourceOrObj: any, targetArg?: string) => {
+    if (practiceSolved) return false;
+    const moments = analysisData?.analysisSummary?.keyMoments || [];
+    const current = moments[practiceMistakeIndex ?? 0];
+    if (!current || !current.fen_before) return false;
+
+    const { source, target } = extractDropSquares(sourceOrObj, targetArg);
+    if (!source || !target) return false;
+
+    try {
+      const sim = new Chess(practiceFen);
+      const moveRes = sim.move({
+        from: source,
+        to: target,
+        promotion: 'q',
+      });
+      if (!moveRes) return false;
+
+      // If user plays the exact bad move they played in the game
+      if (moveRes.san === current.played_move) {
+        setPracticeMsg(`You played this move (${current.played_move}) in the game! Look for a safer alternative.`);
+        return false;
+      }
+
+      // Check if the move leaves a piece attacked without defense
+      const opponentColor = playerColor === 'white' ? 'b' : 'w';
+      const studentColorCode = playerColor === 'white' ? 'w' : 'b';
+      const isTargetAttacked = sim.isAttacked(moveRes.to as any, opponentColor);
+      const hasDefender = sim.isAttacked(moveRes.to as any, studentColorCode);
+      const pieceVal = PIECE_VAL[moveRes.piece] ?? 1;
+
+      if (isTargetAttacked && !hasDefender && pieceVal >= 3) {
+        setPracticeMsg(`Not quite — moving to ${moveRes.to} leaves your ${moveRes.piece.toUpperCase()} unprotected. Try again!`);
+        return false;
+      }
+
+      // Correct fixing move
+      setPracticeFen(sim.fen());
+      setPracticeSolved(true);
+      setPracticeMsg('🎉 Correct! That protects your pieces and keeps your position solid!');
+      try { playChessSound('move'); } catch {}
+      return true;
+    } catch {
+      return false;
     }
   };
 
@@ -1211,6 +1335,13 @@ export default function StudentBotTrainingView() {
                       </div>
                     );
                   })}
+
+                  <Button
+                    onClick={() => handleStartPracticeMistakes(0)}
+                    className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-extrabold text-xs uppercase tracking-wider shadow-lg flex items-center justify-center gap-2 mt-2"
+                  >
+                    <span>🎯 Practice My Mistakes ({analysisData.analysisSummary.keyMoments.length}) →</span>
+                  </Button>
                 </div>
               )}
             </div>
@@ -1218,6 +1349,7 @@ export default function StudentBotTrainingView() {
             <Button
               onClick={() => {
                 setShowAnalysisModal(false);
+                setPracticeMistakeIndex(null);
                 setInGame(false);
               }}
               className="w-full py-3 bg-primary hover:bg-primary/90 text-white font-bold text-xs"
@@ -1227,6 +1359,130 @@ export default function StudentBotTrainingView() {
           </div>
         </div>
       )}
+
+      {/* INTERACTIVE MISTAKE PRACTICE BOARD MODAL */}
+      {showAnalysisModal && practiceMistakeIndex !== null && analysisData && (() => {
+        const moments = analysisData.analysisSummary?.keyMoments || [];
+        const currentMoment = moments[practiceMistakeIndex];
+        if (!currentMoment) return null;
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl flex flex-col items-center">
+              {/* Header */}
+              <div className="w-full flex items-center justify-between border-b border-slate-800 pb-3">
+                <div>
+                  <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">
+                    Mistake {practiceMistakeIndex + 1} of {moments.length}
+                  </span>
+                  <h3 className="text-sm font-extrabold text-white">Move {currentMoment.move_number} Practice</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPracticeMistakeIndex(null)}
+                  className="text-xs font-bold text-slate-400 hover:text-white px-2 py-1 rounded-lg bg-slate-800 transition-colors"
+                >
+                  ← Back to Summary
+                </button>
+              </div>
+
+              {/* Explanation Card */}
+              <div className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs space-y-1.5">
+                <div className="flex items-center gap-1.5 text-slate-300">
+                  <span>You played:</span>
+                  <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 font-mono font-bold">
+                    {currentMoment.played_move}
+                  </span>
+                </div>
+                <div className="text-amber-300 font-medium leading-relaxed">
+                  💡 {currentMoment.explanation}
+                </div>
+                <div className="text-slate-400 text-[11px] leading-relaxed">
+                  🎯 <strong className="text-slate-200">Goal:</strong> {currentMoment.better_idea}
+                </div>
+              </div>
+
+              {/* Practice Chessboard */}
+              <div className="w-full max-w-[300px] aspect-square rounded-xl overflow-hidden border border-slate-800 shadow-xl">
+                <ChessboardComponent
+                  position={practiceFen}
+                  onPieceDrop={handlePracticeDrop}
+                  arePiecesDraggable={!practiceSolved}
+                  boardOrientation={playerColor}
+                  customPieces={customChessPieces}
+                />
+              </div>
+
+              {/* Interactive Status Feedback */}
+              {practiceMsg && (
+                <div
+                  className={`w-full p-2.5 rounded-xl text-xs font-bold text-center border ${
+                    practiceSolved
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                      : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                  }`}
+                >
+                  {practiceMsg}
+                </div>
+              )}
+
+              {/* Solution Revealer */}
+              {showPracticeSolution && currentMoment.best_move && (
+                <div className="w-full bg-indigo-950/80 border border-indigo-700/60 p-2 rounded-xl text-xs font-bold text-center text-indigo-200">
+                  💡 Better Move: <span className="font-mono text-white text-sm ml-1">{currentMoment.best_move}</span>
+                </div>
+              )}
+
+              {/* Control Buttons */}
+              <div className="w-full flex items-center justify-between gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPracticeFen(currentMoment.fen_before);
+                    setPracticeSolved(false);
+                    setPracticeMsg(null);
+                    setShowPracticeSolution(false);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-colors"
+                >
+                  🔄 Reset
+                </button>
+
+                {!practiceSolved && currentMoment.best_move && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPracticeSolution((v) => !v)}
+                    className="px-3 py-1.5 rounded-xl bg-indigo-900/60 hover:bg-indigo-800/80 text-indigo-200 border border-indigo-700/50 text-xs font-bold transition-colors"
+                  >
+                    {showPracticeSolution ? 'Hide Solution' : '💡 Show Solution'}
+                  </button>
+                )}
+
+                <div className="flex items-center gap-1.5">
+                  {practiceMistakeIndex > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handleStartPracticeMistakes(practiceMistakeIndex - 1)}
+                      className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-colors"
+                    >
+                      ← Prev
+                    </button>
+                  )}
+                  {practiceMistakeIndex < moments.length - 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleStartPracticeMistakes(practiceMistakeIndex + 1)}
+                      className="px-3 py-1.5 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-bold transition-colors"
+                    >
+                      Next →
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* PUZZLE SOLVER MODAL */}
       {activePuzzle && (

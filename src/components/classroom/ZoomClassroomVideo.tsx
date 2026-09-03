@@ -20,6 +20,7 @@ interface ZoomClassroomVideoProps {
   onMeetingEnd?: () => void;
   onMeetingJoin?: () => void;
   onConnectionChange?: (state: 'connected' | 'reconnecting' | 'disconnected') => void;
+  onMediaStatusChange?: (status: { isVideoOn: boolean; isMuted: boolean }) => void;
   className?: string;
   isMiniView?: boolean;
 }
@@ -42,6 +43,7 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
       onMeetingEnd,
       onMeetingJoin,
       onConnectionChange,
+      onMediaStatusChange,
       className = '',
       isMiniView = false,
     },
@@ -51,8 +53,8 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
     const [isLoading, setIsLoading] = useState(true);
     const [statusText, setStatusText] = useState('Initializing video session…');
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
-    const [audioMuted, setAudioMuted] = useState(false);
-    const [videoActive, setVideoActive] = useState(true);
+    const [audioMuted, setAudioMuted] = useState(true);
+    const [videoActive, setVideoActive] = useState(false);
 
     const containerRef = useRef<HTMLDivElement>(null);
     const clientRef = useRef<any>(null);
@@ -60,38 +62,39 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
     // Track whether Zoom has been initialized to prevent remounting
     const isInitializedRef = useRef(false);
 
+    const updateMediaStateFromClient = useCallback(() => {
+      try {
+        if (!clientRef.current) return;
+        const curUser = clientRef.current.getCurrentUser?.();
+        if (curUser) {
+          const isVideo = Boolean(curUser.bVideoOn);
+          const isMute = Boolean(curUser.muted);
+          setVideoActive(isVideo);
+          setAudioMuted(isMute);
+          onMediaStatusChange?.({ isVideoOn: isVideo, isMuted: isMute });
+        }
+      } catch {}
+    }, [onMediaStatusChange]);
+
     useImperativeHandle(ref, () => ({
       toggleMute: async () => {
         if (!clientRef.current || !isJoinedRef.current) return false;
         try {
-          if (audioMuted) {
-            await clientRef.current.unmuteAudio();
-            setAudioMuted(false);
-            return true;
-          } else {
-            await clientRef.current.muteAudio();
-            setAudioMuted(true);
-            return false;
+          const nextMute = !audioMuted;
+          if (typeof clientRef.current.mute === 'function') {
+            await clientRef.current.mute(nextMute);
           }
+          setAudioMuted(nextMute);
+          onMediaStatusChange?.({ isVideoOn: videoActive, isMuted: nextMute });
+          return nextMute;
         } catch {
-          return !audioMuted;
+          return audioMuted;
         }
       },
       toggleVideo: async () => {
         if (!clientRef.current || !isJoinedRef.current) return false;
-        try {
-          if (videoActive) {
-            await clientRef.current.stopVideo();
-            setVideoActive(false);
-            return false;
-          } else {
-            await clientRef.current.startVideo();
-            setVideoActive(true);
-            return true;
-          }
-        } catch {
-          return videoActive;
-        }
+        updateMediaStateFromClient();
+        return videoActive;
       },
       isMuted: () => audioMuted,
       isVideoOn: () => videoActive,
@@ -171,22 +174,12 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
         onConnectionChange?.('connected');
 
         try {
-          if (typeof (zoomClient as any)?.startVideo === 'function') {
-            await (zoomClient as any).startVideo();
-            setVideoActive(true);
-          }
-        } catch {
-          setVideoActive(false);
-        }
+          zoomClient.on('user-updated', () => {
+            updateMediaStateFromClient();
+          });
+        } catch {}
 
-        try {
-          if (typeof (zoomClient as any)?.unmuteAudio === 'function') {
-            await (zoomClient as any).unmuteAudio();
-            setAudioMuted(false);
-          }
-        } catch {
-          setAudioMuted(true);
-        }
+        updateMediaStateFromClient();
       } catch (err: any) {
         console.warn('[Zoom Video Notice]', err);
         isInitializedRef.current = false; // Allow retry
@@ -198,7 +191,7 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
           setErrorMsg('Live video standby. Click below to connect.');
         }
       }
-    }, [classId, propMeetingNumber, passCode, userName, userEmail, onMeetingJoin, onConnectionChange, getContainerDimensions]);
+    }, [classId, propMeetingNumber, passCode, userName, userEmail, onMeetingJoin, onConnectionChange, updateMediaStateFromClient, getContainerDimensions]);
 
     const handleRetry = useCallback(() => {
       isInitializedRef.current = false;

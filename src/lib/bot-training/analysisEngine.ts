@@ -213,6 +213,33 @@ export function analyzeGamePositions(
     }
 
     if (mistakeType && theme) {
+      // Compute a principled alternative candidate move from fenBefore
+      let candidateBestMove = '';
+      try {
+        const testGame = new Chess(fenBefore);
+        const legalAlts = testGame.moves({ verbose: true }).filter((m) => m.san !== move.san);
+        const opponentColor = isStudentWhite ? 'b' : 'w';
+        const studentColorCode = isStudentWhite ? 'w' : 'b';
+
+        const safeAlts = legalAlts.filter((alt) => {
+          const simGame = new Chess(fenBefore);
+          simGame.move(alt);
+          const isTargetAttacked = simGame.isAttacked(alt.to as any, opponentColor);
+          const hasDefender = simGame.isAttacked(alt.to as any, studentColorCode);
+          if (isTargetAttacked && !hasDefender && (pieceValue[alt.piece] ?? 1) >= 3) return false;
+          return true;
+        });
+
+        if (safeAlts.length > 0) {
+          const bestCandidate =
+            safeAlts.find((m) => m.captured) ||
+            safeAlts.find((m) => m.piece === 'n' || m.piece === 'b') ||
+            safeAlts.find((m) => m.piece === 'p' && (m.to.includes('4') || m.to.includes('5'))) ||
+            safeAlts[0];
+          candidateBestMove = bestCandidate.san;
+        }
+      } catch {}
+
       mistakes.push({
         id: crypto.randomUUID(),
         student_id: studentId,
@@ -221,7 +248,7 @@ export function analyzeGamePositions(
         fen_before: fenBefore,
         fen_after: fenAfter,
         played_move: move.san,
-        best_move: '',  // Not computed (no full engine) — left empty to avoid fake suggestions
+        best_move: candidateBestMove,
         evaluation_before: '0.0',
         evaluation_after: evalDrop > 2 ? `-${evalDrop.toFixed(1)}` : `-${evalDrop.toFixed(1)}`,
         evaluation_drop: evalDrop,

@@ -71,8 +71,22 @@ export function classroomReducer(
   state: ClassroomSnapshot,
   action: ClassroomRealtimePayload
 ): ClassroomSnapshot {
-  // Discard older version events (except snapshot reconcile and special global notifications)
-  if (action.type !== 'SNAPSHOT_RECONCILE' && action.type !== 'CLASS_ENDED' && action.type !== 'CHAT_MESSAGE' && action.type !== 'PRIVATE_CHAT_MESSAGE' && action.type !== 'STUDENT_RESPONSE' && action.type !== 'REACTION') {
+  // Discard older version events (except moves, snapshot reconcile, and special notifications)
+  if (action.type === 'MOVE_PLAYED') {
+    // For moves, only discard if we already have this move or a strictly newer move
+    if (action.currentMoveIndex < state.board.currentMoveIndex) {
+      return state;
+    }
+  } else if (
+    action.type !== 'SNAPSHOT_RECONCILE' &&
+    action.type !== 'CLASS_ENDED' &&
+    action.type !== 'CHAT_MESSAGE' &&
+    action.type !== 'PRIVATE_CHAT_MESSAGE' &&
+    action.type !== 'STUDENT_RESPONSE' &&
+    action.type !== 'REACTION' &&
+    action.type !== 'PERMISSIONS_CHANGED' &&
+    action.type !== 'BOARD_STATE_UPDATED'
+  ) {
     if (action.version && action.version < state.version) {
       return state;
     }
