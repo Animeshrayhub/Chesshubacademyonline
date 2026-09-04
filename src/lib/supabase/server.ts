@@ -58,7 +58,7 @@ export function createSupabaseServer() {
     headers['Authorization'] = `Bearer ${accessToken}`;
   }
 
-  const supabaseKey = env.SUPABASE_SERVICE_ROLE_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   return createClient(env.NEXT_PUBLIC_SUPABASE_URL, supabaseKey, {
     auth: {
       persistSession: false,
