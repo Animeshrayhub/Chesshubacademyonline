@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { getStudentPuzzleStats } from '@/lib/puzzles/progress';
 
 interface DailyStreakWidgetProps {
   currentStreak?: number;
@@ -10,9 +12,16 @@ interface DailyStreakWidgetProps {
   solvedDates?: string[];
 }
 
-function getWeekDays(solvedDates: string[]): { day: string; solved: boolean }[] {
+function getWeekDays(solvedDates: string[], isTodaySolved: boolean): { day: string; solved: boolean; isToday: boolean }[] {
   const solvedSet = new Set(solvedDates);
   const today = new Date();
+  const todayIso = today.toISOString().split('T')[0];
+  const todayLoc = today.toLocaleDateString('en-CA');
+  if (isTodaySolved) {
+    solvedSet.add(todayIso);
+    solvedSet.add(todayLoc);
+  }
+
   const days = [];
 
   // Build Mon→Sun of the current week
@@ -23,8 +32,14 @@ function getWeekDays(solvedDates: string[]): { day: string; solved: boolean }[] 
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
     const iso = d.toISOString().split('T')[0];
+    const loc = d.toLocaleDateString('en-CA');
     const dayName = d.toLocaleString('en-US', { weekday: 'short' });
-    days.push({ day: dayName, solved: solvedSet.has(iso) });
+    const isToday = iso === todayIso || loc === todayLoc;
+    days.push({
+      day: dayName,
+      solved: solvedSet.has(iso) || solvedSet.has(loc),
+      isToday,
+    });
   }
 
   return days;
@@ -39,16 +54,44 @@ export default function DailyStreakWidget({
   const [solved, setSolved] = useState(todaySolved);
   const [streak, setStreak] = useState(currentStreak);
   const [xp, setXp] = useState(totalXp);
+  const [activeSolvedDates, setActiveSolvedDates] = useState<string[]>(solvedDates);
 
-  const weekDays = getWeekDays(solvedDates);
+  // Sync with incoming server props
+  useEffect(() => {
+    setSolved(todaySolved);
+  }, [todaySolved]);
 
-  const handleClaimDailyPuzzle = () => {
-    if (!solved) {
-      setSolved(true);
-      setStreak((prev) => prev + 1);
-      setXp((prev) => prev + 50);
-    }
-  };
+  useEffect(() => {
+    setStreak(currentStreak);
+  }, [currentStreak]);
+
+  useEffect(() => {
+    setXp(totalXp);
+  }, [totalXp]);
+
+  useEffect(() => {
+    setActiveSolvedDates(solvedDates);
+  }, [solvedDates]);
+
+  // Client hydration check: check if student solved puzzles locally in current session
+  useEffect(() => {
+    try {
+      const local = getStudentPuzzleStats();
+      if (local) {
+        if (local.currentStreak > streak) {
+          setStreak(local.currentStreak);
+        }
+        if (local.xp > xp) {
+          setXp(local.xp);
+        }
+        if (local.todaySolvedCount > 0) {
+          setSolved(true);
+        }
+      }
+    } catch {}
+  }, []);
+
+  const weekDays = getWeekDays(activeSolvedDates, solved);
 
   return (
     <div className="bg-gradient-to-br from-amber-500/10 via-slate-900 to-indigo-950 border border-amber-500/30 rounded-3xl p-5 shadow-xl text-white space-y-4 relative overflow-hidden">
@@ -64,13 +107,17 @@ export default function DailyStreakWidget({
           <div>
             <h3 className="font-heading font-bold text-sm text-amber-300 flex items-center gap-2">
               <span>{streak} Day Puzzle Streak</span>
-              {streak > 0 && (
-                <span className="text-[10px] bg-amber-500/20 border border-amber-500/40 text-amber-300 px-2 py-0.5 rounded-full font-bold">
+              {streak > 0 ? (
+                <span className="text-[10px] bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 px-2 py-0.5 rounded-full font-bold">
                   Active
+                </span>
+              ) : (
+                <span className="text-[10px] bg-slate-800 border border-slate-700 text-slate-400 px-2 py-0.5 rounded-full font-medium">
+                  Solve 1 to Start
                 </span>
               )}
             </h3>
-            <p className="text-xs text-slate-400">Solve 1 puzzle daily to maintain your streak!</p>
+            <p className="text-xs text-slate-400">Solve daily tactics to keep your streak burning!</p>
           </div>
         </div>
         <div className="text-right">
@@ -93,11 +140,15 @@ export default function DailyStreakWidget({
               className={`p-2 rounded-xl border flex flex-col items-center gap-1 transition-all ${
                 w.solved
                   ? 'bg-amber-500/20 border-amber-500/40 text-amber-300 shadow-sm'
+                  : w.isToday
+                  ? 'bg-indigo-950/70 border-indigo-500/50 text-indigo-300'
                   : 'bg-slate-950/60 border-slate-800 text-slate-500'
               }`}
             >
-              <span className="text-[10px] font-bold uppercase">{w.day}</span>
-              <span className="text-xs">{w.solved ? '🔥' : '⚪'}</span>
+              <span className={`text-[10px] font-bold uppercase ${w.isToday ? 'text-amber-300 font-extrabold' : ''}`}>
+                {w.day}
+              </span>
+              <span className="text-xs">{w.solved ? '🔥' : w.isToday ? '⏳' : '⚪'}</span>
             </div>
           ))}
         </div>
@@ -108,28 +159,32 @@ export default function DailyStreakWidget({
         <div className="text-xs text-slate-300">
           {solved ? (
             <span className="text-emerald-400 font-bold flex items-center gap-1">
-              ✓ Today&apos;s Puzzle Completed (+50 XP)
+              ✓ Today&apos;s Tactical Practice Completed
             </span>
           ) : (
-            <span className="text-amber-300 font-medium">Today&apos;s Tactical Puzzle is ready!</span>
+            <span className="text-amber-300 font-medium">Today&apos;s Tactical Challenge is ready!</span>
           )}
         </div>
-        {!solved ? (
-          <a
-            href="/dashboard/student/puzzles"
-            onClick={handleClaimDailyPuzzle}
-            className="px-4 py-2 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-950 font-bold text-xs rounded-xl transition-all shadow-md active:scale-95 flex items-center gap-1.5"
-          >
-            <span>🧩 Solve Puzzle</span>
-          </a>
-        ) : (
-          <a
-            href="/dashboard/student/puzzles"
-            className="text-[11px] bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 px-3 py-1 rounded-xl font-bold hover:bg-emerald-500/30 transition-colors"
-          >
-            ✓ Solve More Puzzles
-          </a>
-        )}
+        <Link
+          href="/dashboard/student/puzzles"
+          className={`px-4 py-2 font-bold text-xs rounded-xl transition-all shadow-md active:scale-95 flex items-center gap-1.5 whitespace-nowrap ${
+            solved
+              ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/30'
+              : 'bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 shadow-gold'
+          }`}
+        >
+          {solved ? (
+            <>
+              <span>✓</span>
+              <span>Train More Puzzles ➔</span>
+            </>
+          ) : (
+            <>
+              <span>🧩</span>
+              <span>Solve Puzzle ➔</span>
+            </>
+          )}
+        </Link>
       </div>
     </div>
   );

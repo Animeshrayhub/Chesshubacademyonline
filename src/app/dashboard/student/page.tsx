@@ -47,6 +47,10 @@ export default async function StudentOverviewPage() {
     attendanceRate: 0,
     level: 'Beginner',
     xp: 0,
+    streak: 0,
+    shields: 0,
+    todaySolved: false,
+    solvedDates: [] as string[],
     lichess: null,
     nextClass: 'None',
     puzzleStats: null,
@@ -197,7 +201,7 @@ export default async function StudentOverviewPage() {
 
       {/* 🦁 Kids Companion & Pet Avatar Card */}
       <KidsPetCompanionCard
-        studentXp={stats.xp || 250}
+        studentXp={stats.xp ?? 0}
         studentName={user?.firstName || 'Champion'}
       />
 
@@ -308,7 +312,11 @@ export default async function StudentOverviewPage() {
       )}
 
       {/* 🏆 Student Level XP Progress Badge */}
-      <StudentXpBadge totalXp={stats.xp ?? 0} streakDays={stats.puzzleStats?.streak ?? 0} />
+      <StudentXpBadge
+        totalXp={stats.xp ?? 0}
+        streakDays={stats.streak ?? stats.puzzleStats?.streak ?? 0}
+        shields={stats.shields ?? 0}
+      />
 
       {/* 🔥 Daily 3-Puzzle Challenge Streak */}
       <DailyPuzzleChallengeWidget />
@@ -328,7 +336,12 @@ export default async function StudentOverviewPage() {
 
       {/* 🏆 Daily Streak Habit Tracker & ⚔️ 1v1 Speed Duel Arena Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <DailyStreakWidget currentStreak={stats.puzzleStats?.streak ?? 0} totalXp={stats.xp ?? 0} />
+        <DailyStreakWidget
+          currentStreak={stats.streak ?? stats.puzzleStats?.streak ?? 0}
+          totalXp={stats.xp ?? 0}
+          todaySolved={stats.todaySolved ?? false}
+          solvedDates={stats.solvedDates ?? []}
+        />
         <StudentBattleArena studentName={user?.firstName || 'Student'} />
       </div>
 

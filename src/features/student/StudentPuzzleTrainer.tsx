@@ -6,6 +6,7 @@ import { Chess } from 'chess.js';
 import { wrapChessboard } from '@/components/dashboard/ui/ChessboardWrapper';
 import { recordStudentActivityAction } from '@/actions/activity';
 import { playChessSound } from '@/utils/chessAudio';
+import { recordPuzzleAttempt, getStudentPuzzleStats } from '@/lib/puzzles/progress';
 
 const ChessboardComponent = dynamic(
   () => import('react-chessboard').then((mod) => wrapChessboard(mod.Chessboard)),
@@ -100,6 +101,16 @@ export default function StudentPuzzleTrainer() {
     fetchPuzzle(practiceMode, selectedCategory, categoryIndex);
   }, [practiceMode, selectedCategory, categoryIndex, fetchPuzzle]);
 
+  // Hydrate real local stats on mount
+  useEffect(() => {
+    const stats = getStudentPuzzleStats();
+    if (stats) {
+      if (stats.currentStreak > 0) setStreak(stats.currentStreak);
+      if (stats.tacticalRating > 0) setStudentRating(stats.tacticalRating);
+      if (stats.totalSolved > 0) setPuzzlesSolved(stats.totalSolved);
+    }
+  }, []);
+
   // Handle move validation
   const checkMoveUci = (uciMove: string): boolean => {
     if (!currentPuzzle || isSolved) return false;
@@ -174,25 +185,58 @@ export default function StudentPuzzleTrainer() {
       text: `🎉 PUZZLE SOLVED in ${durationSec}s! Perfect tactical vision!`,
     });
 
-    setStreak((s) => s + 1);
-    setPuzzlesSolved((p) => p + 1);
-    setStudentRating((r) => r + (attempts === 1 ? 12 : 5));
-
-    // Record real activity in database
+    // Update local progress engine
     if (currentPuzzle) {
-      await recordStudentActivityAction({
-        activityType: practiceMode === 'daily' ? 'DAILY_PUZZLE' : 'PUZZLE',
-        activityId: currentPuzzle.id,
-        durationSeconds: durationSec,
-        result: 'SOLVED',
-        accuracy: accuracyVal,
-        metadata: {
-          puzzleRating: currentPuzzle.rating,
-          category: selectedCategory,
-          attempts,
-          themes: currentPuzzle.themes,
-        },
-      });
+      const recordRes = recordPuzzleAttempt(
+        currentPuzzle.id,
+        currentPuzzle.rating,
+        true,
+        currentPuzzle.themes
+      );
+      setStreak(recordRes.newStats.currentStreak);
+      setPuzzlesSolved(recordRes.newStats.totalSolved);
+      setStudentRating(recordRes.newStats.tacticalRating);
+    } else {
+      setStreak((s) => s + 1);
+      setPuzzlesSolved((p) => p + 1);
+      setStudentRating((r) => r + (attempts === 1 ? 12 : 5));
+    }
+
+    // Record real activity in database & save puzzle result
+    if (currentPuzzle) {
+      try {
+        await Promise.allSettled([
+          recordStudentActivityAction({
+            activityType: practiceMode === 'daily' ? 'DAILY_PUZZLE' : 'PUZZLE',
+            activityId: currentPuzzle.id,
+            durationSeconds: durationSec,
+            result: 'SOLVED',
+            accuracy: accuracyVal,
+            metadata: {
+              puzzleRating: currentPuzzle.rating,
+              category: selectedCategory,
+              attempts,
+              themes: currentPuzzle.themes,
+            },
+          }),
+          fetch('/api/puzzles/result', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              puzzleId: currentPuzzle.id,
+              puzzleSource: 'LICHESS',
+              puzzleRating: currentPuzzle.rating,
+              puzzleThemes: currentPuzzle.themes,
+              solved: true,
+              attempts,
+              timeSeconds: durationSec,
+              accuracy: accuracyVal,
+            }),
+          }),
+        ]);
+      } catch (err) {
+        console.error('Failed to sync puzzle result to database:', err);
+      }
     }
   };
 

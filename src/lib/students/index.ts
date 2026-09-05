@@ -456,11 +456,16 @@ export async function getStudentDashboardStats(): Promise<Result<{
     syncedAt: string;
   } | null;
   nextClass: string;
+  streak: number;
+  shields: number;
+  todaySolved: boolean;
+  solvedDates: string[];
   puzzleStats: {
     totalSolved: number;
     solveRate: number;
     streak: number;
     averageAccuracy: number;
+    todaySolved: boolean;
   } | null;
 }>> {
   try {
@@ -580,14 +585,19 @@ export async function getStudentDashboardStats(): Promise<Result<{
         attendanceRate,
         level: studentProfile.level || 'Beginner',
         xp: realXp,
+        streak: streakData.streak ?? 0,
+        shields: streakData.shields ?? 0,
+        todaySolved: streakData.todaySolved ?? false,
+        solvedDates: streakData.solvedDates ?? [],
         lichess,
         nextClass: nextClassStr,
-        puzzleStats: pStats ? {
-          totalSolved: pStats.totalSolved,
-          solveRate: pStats.solveRate,
-          streak: streakData.streak,
-          averageAccuracy: pStats.averageAccuracy,
-        } : null,
+        puzzleStats: {
+          totalSolved: pStats?.totalSolved ?? 0,
+          solveRate: pStats?.solveRate ?? 0,
+          streak: streakData.streak ?? 0,
+          averageAccuracy: pStats?.averageAccuracy ?? 0,
+          todaySolved: streakData.todaySolved ?? false,
+        },
       },
     };
   } catch (error) {

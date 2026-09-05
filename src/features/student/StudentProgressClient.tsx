@@ -11,6 +11,7 @@ interface Props {
     activeAssignments: number;
     certificates: number;
     level: string;
+    xp?: number;
     lichess?: any;
   };
   /** Real puzzle stats from the server (puzzle_results DB table). Null for new students. */
@@ -203,7 +204,7 @@ export default function StudentProgressClient({ stats, puzzleStats = null }: Pro
             <span className="text-3xl">⚡</span>
             <span className="text-xs font-bold text-text-primary">Academy XP</span>
             <span className="text-[10px] text-text-secondary font-semibold">
-              {0} Points
+              {stats.xp ?? 0} Points
             </span>
           </div>
         </div>

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { speakCheer, playVictoryFanfare } from '@/utils/kidAudio';
+import { getStudentPuzzleStats } from '@/lib/puzzles/progress';
 
 export interface PetConfig {
   id: string;
@@ -216,7 +217,7 @@ interface KidsPetCompanionCardProps {
 }
 
 export default function KidsPetCompanionCard({
-  studentXp = 250,
+  studentXp = 0,
   studentName = 'Champion',
 }: KidsPetCompanionCardProps) {
   const [selectedPetId, setSelectedPetId] = useState<string>('dragon');
@@ -224,8 +225,14 @@ export default function KidsPetCompanionCard({
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
   const [petMood, setPetMood] = useState<'happy' | 'cheering' | 'talking'>('happy');
   const [bubbleText, setBubbleText] = useState('');
+  const [displayXp, setDisplayXp] = useState(studentXp);
 
-  // Load saved companion preference
+  // Sync displayXp when prop changes
+  useEffect(() => {
+    setDisplayXp(studentXp);
+  }, [studentXp]);
+
+  // Load saved companion preference & hydrate real local XP if higher
   useEffect(() => {
     try {
       const savedPet = localStorage.getItem('chesshub_kids_pet');
@@ -236,33 +243,38 @@ export default function KidsPetCompanionCard({
       if (savedAcc) {
         setSelectedAccessory(savedAcc);
       }
+
+      const local = getStudentPuzzleStats();
+      if (local && local.xp > displayXp) {
+        setDisplayXp(local.xp);
+      }
     } catch {}
   }, []);
 
   const activePet = PETS.find((p) => p.id === selectedPetId) || PETS[0];
 
-  // Calculate Pet Level from XP
+  // Calculate Pet Level from real XP
   let petLevel = 1;
   let levelTitle = 'Hatchling Companion';
   let nextLevelXp = 150;
   let currentLevelBaseXp = 0;
 
-  if (studentXp >= 1500) {
+  if (displayXp >= 1500) {
     petLevel = 5;
     levelTitle = 'Grandmaster Companion';
     nextLevelXp = 2000;
     currentLevelBaseXp = 1500;
-  } else if (studentXp >= 800) {
+  } else if (displayXp >= 800) {
     petLevel = 4;
     levelTitle = 'Board Champion';
     nextLevelXp = 1500;
     currentLevelBaseXp = 800;
-  } else if (studentXp >= 400) {
+  } else if (displayXp >= 400) {
     petLevel = 3;
     levelTitle = 'Brave Knight';
     nextLevelXp = 800;
     currentLevelBaseXp = 400;
-  } else if (studentXp >= 150) {
+  } else if (displayXp >= 150) {
     petLevel = 2;
     levelTitle = 'Swift Scout';
     nextLevelXp = 400;
@@ -271,7 +283,7 @@ export default function KidsPetCompanionCard({
 
   const levelProgressPct = Math.min(
     100,
-    Math.round(((studentXp - currentLevelBaseXp) / Math.max(1, nextLevelXp - currentLevelBaseXp)) * 100)
+    Math.round(((displayXp - currentLevelBaseXp) / Math.max(1, nextLevelXp - currentLevelBaseXp)) * 100)
   );
 
   const handleSelectPet = (petId: string) => {
@@ -378,7 +390,7 @@ export default function KidsPetCompanionCard({
         <div className="w-full sm:w-60 space-y-2">
           <div className="flex items-center justify-between text-[11px] font-bold text-slate-200">
             <span>Pet Growth</span>
-            <span className="font-mono text-amber-300">{studentXp} / {nextLevelXp} XP</span>
+            <span className="font-mono text-amber-300">{displayXp} / {nextLevelXp} XP</span>
           </div>
 
           <div className="w-full h-3 bg-slate-950 rounded-full overflow-hidden p-0.5 border border-slate-800 shadow-inner">

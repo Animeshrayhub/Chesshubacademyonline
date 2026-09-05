@@ -1,15 +1,46 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { calculateStudentRank } from '@/lib/gamification/xpService';
+import { getStudentPuzzleStats } from '@/lib/puzzles/progress';
 
 interface StudentXpBadgeProps {
   totalXp?: number;
   streakDays?: number;
+  shields?: number;
 }
 
-export default function StudentXpBadge({ totalXp = 0, streakDays = 0 }: StudentXpBadgeProps) {
-  const rank = calculateStudentRank(totalXp);
+export default function StudentXpBadge({
+  totalXp = 0,
+  streakDays = 0,
+  shields = 0,
+}: StudentXpBadgeProps) {
+  const [displayXp, setDisplayXp] = useState(totalXp);
+  const [displayStreak, setDisplayStreak] = useState(streakDays);
+
+  useEffect(() => {
+    setDisplayXp(totalXp);
+  }, [totalXp]);
+
+  useEffect(() => {
+    setDisplayStreak(streakDays);
+  }, [streakDays]);
+
+  useEffect(() => {
+    try {
+      const local = getStudentPuzzleStats();
+      if (local) {
+        if (local.currentStreak > displayStreak) {
+          setDisplayStreak(local.currentStreak);
+        }
+        if (local.xp > displayXp) {
+          setDisplayXp(local.xp);
+        }
+      }
+    } catch {}
+  }, []);
+
+  const rank = calculateStudentRank(displayXp);
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg select-none">
@@ -40,11 +71,25 @@ export default function StudentXpBadge({ totalXp = 0, streakDays = 0 }: StudentX
       <div className="flex items-center gap-2 text-xs font-bold text-slate-300 self-end sm:self-auto">
         <div className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center gap-1.5 text-emerald-400 font-mono">
           <span>🔥</span>
-          <span>{streakDays} Day Streak</span>
+          <span>{displayStreak} Day Streak</span>
         </div>
-        <div className="px-2.5 py-1.5 rounded-xl bg-blue-950/80 border border-blue-800/80 text-blue-300 text-[11px]" title="Streak Shield Active">
-          <span>🛡️ Shield ON</span>
-        </div>
+        {shields > 0 ? (
+          <div
+            className="px-2.5 py-1.5 rounded-xl bg-blue-950/80 border border-blue-800/80 text-blue-300 text-[11px] flex items-center gap-1 font-bold"
+            title={`${shields} Streak Shield${shields > 1 ? 's' : ''} Active (Prevents streak loss if you miss 1 day)`}
+          >
+            <span>🛡️</span>
+            <span>{shields} Shield{shields > 1 ? 's' : ''} ON</span>
+          </div>
+        ) : (
+          <div
+            className="px-2.5 py-1.5 rounded-xl bg-slate-950/60 border border-slate-800/60 text-slate-500 text-[11px] flex items-center gap-1 font-medium"
+            title="Streak Shield: Earn 100 XP to auto-unlock a shield and protect your streak."
+          >
+            <span>🛡️</span>
+            <span>0 Shields</span>
+          </div>
+        )}
       </div>
     </div>
   );

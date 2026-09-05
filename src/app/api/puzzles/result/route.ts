@@ -36,11 +36,20 @@ export async function POST(req: NextRequest) {
 
     // Resolve student profile using admin client (since RLS might restrict student profiles access depending on config)
     const admin = createSupabaseAdmin();
-    const { data: profile } = await admin
+    let { data: profile } = await admin
       .from('student_profiles')
       .select('id')
       .eq('user_id', user.id)
       .maybeSingle();
+
+    if (!profile) {
+      const { data: newProfile } = await admin
+        .from('student_profiles')
+        .insert({ user_id: user.id, level: 'Beginner' })
+        .select('id')
+        .single();
+      profile = newProfile;
+    }
 
     if (!profile) {
       return NextResponse.json(
@@ -64,8 +73,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const studentProfileId = profile.id;
+
     const result = await withRetry(async () => {
-      const res = await savePuzzleResult(profile.id, body);
+      const res = await savePuzzleResult(studentProfileId, body);
       if (!res.success) {
         throw new Error(res.error.message);
       }
@@ -78,7 +89,7 @@ export async function POST(req: NextRequest) {
           const { data, error } = await admin
             .from('student_profiles')
             .select('notes')
-            .eq('id', profile.id)
+            .eq('id', studentProfileId)
             .single();
           if (error) throw error;
           return data;
@@ -92,7 +103,7 @@ export async function POST(req: NextRequest) {
             const { error } = await admin
               .from('student_profiles')
               .update({ notes: updatedNotes })
-              .eq('id', profile.id);
+              .eq('id', studentProfileId);
             if (error) throw error;
           });
         }
