@@ -45,8 +45,8 @@ export default async function StudentGamesPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <PageHeader
-          title="Personal Game Repository"
-          subtitle="Import PGN games, save Lichess logs, and analyze positions in your personal workspace."
+          title="My Games & AI Grandmaster Review"
+          subtitle="Review saved games, analyze moves with Stockfish, and generate plain-English AI Grandmaster feedback, accuracy scores, and tactical lessons."
         />
         <Link
           href="/dashboard/student"

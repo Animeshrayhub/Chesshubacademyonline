@@ -6,7 +6,12 @@ import { saveSavedGame } from '@/lib/games';
 import { getCurrentUser } from '@/lib/supabase/auth';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 
-export async function requestGameReviewAction(pgnText: string, userColor: 'white' | 'black' = 'white') {
+import type { AiGameReviewResult } from '@/lib/gameReview/aiGameReviewService';
+
+export async function requestGameReviewAction(
+  pgnText: string,
+  userColor: 'white' | 'black' = 'white'
+): Promise<AiGameReviewResult> {
   try {
     const result = await analyzeGamePgn(pgnText, userColor);
 
@@ -30,6 +35,7 @@ export async function requestGameReviewAction(pgnText: string, userColor: 'white
           );
         }
       }
+      revalidatePath('/dashboard/student/games');
       revalidatePath('/dashboard/student/review-bot');
     }
 
