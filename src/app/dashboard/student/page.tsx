@@ -23,6 +23,7 @@ import StudentXpBadge from '@/components/dashboard/ui/StudentXpBadge';
 import AiBlunderRadarWidget from '@/features/student/AiBlunderRadarWidget';
 import DailyPuzzleChallengeWidget from '@/features/student/DailyPuzzleChallengeWidget';
 import StudentReferralWidget from '@/features/student/StudentReferralWidget';
+import KidsPetCompanionCard from '@/features/student/KidsPetCompanionCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -191,6 +192,38 @@ export default async function StudentOverviewPage() {
           <span className="text-base group-hover:scale-125 transition-transform">📹</span>
           <span>ENTER CLASSROOM</span>
           <span className="text-base group-hover:translate-x-1 transition-transform">➔</span>
+        </a>
+      </div>
+
+      {/* 🦁 Kids Companion & Pet Avatar Card */}
+      <KidsPetCompanionCard
+        studentXp={stats.xp || 250}
+        studentName={user?.firstName || 'Champion'}
+      />
+
+      {/* 🎮 Kids Chess Playground Action Banner */}
+      <div className="bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-emerald-500/10 border border-amber-500/30 rounded-3xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
+        <div className="flex items-center gap-4 text-left">
+          <div className="w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-3xl shadow-lg flex-shrink-0">
+            🎮
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-extrabold text-white">Kids Chess Playground & Hero Quests</h3>
+              <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-extrabold border border-amber-500/30">
+                Minigames
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Play Knight’s Star Maze, race in the Pawn Sprint, and unlock Superhero Badges!
+            </p>
+          </div>
+        </div>
+        <a
+          href="/dashboard/student/playground"
+          className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs rounded-xl shadow-gold transition-all flex items-center gap-2 whitespace-nowrap"
+        >
+          <span>PLAY MINIGAMES ➔</span>
         </a>
       </div>
 
