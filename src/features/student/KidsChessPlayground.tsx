@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Chess } from 'chess.js';
+import React, { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { wrapChessboard } from '@/components/dashboard/ui/ChessboardWrapper';
 import {
@@ -18,6 +17,23 @@ const ChessboardComponent = dynamic(
   () => import('react-chessboard').then((mod) => wrapChessboard(mod.Chessboard)),
   { ssr: false }
 ) as any;
+
+// Helper to safely extract a square string (e.g. 'e4') from any string or object
+export const extractSquare = (sq: any): string => {
+  if (typeof sq === 'string') return sq.toLowerCase();
+  if (sq && typeof sq === 'object') {
+    if (typeof sq.square === 'string') return sq.square.toLowerCase();
+    if (typeof sq.targetSquare === 'string') return sq.targetSquare.toLowerCase();
+    if (typeof sq.sourceSquare === 'string') return sq.sourceSquare.toLowerCase();
+    if (typeof sq.to === 'string') return sq.to.toLowerCase();
+    if (typeof sq.from === 'string') return sq.from.toLowerCase();
+    if (typeof sq.toString === 'function') {
+      const s = sq.toString();
+      if (s && s !== '[object Object]' && s.length >= 2) return s.toLowerCase();
+    }
+  }
+  return '';
+};
 
 // ── Superheroes Data ──────────────────────────────────────────────────────────
 export interface ChessHero {
@@ -97,25 +113,22 @@ export default function KidsChessPlayground() {
   const [soundMuted, setSoundMuted] = useState(false);
 
   // ── 1. Knight's Star Maze State ─────────────────────────────────────────────
-  // Knight starts at a1. Stars to capture: c2, e3, d5, f6, h7
   const [mazeStars, setMazeStars] = useState<string[]>(['c2', 'e3', 'd5', 'f6', 'h7']);
-  const [mazeKnightSquare, setMazeKnightSquare] = useState<string>('a1');
-  const [mazeTraps] = useState<string[]>(['b3', 'd4']);
+  const [mazeTraps] = useState<string[]>(['b3', 'd4', 'f5', 'g2']);
+  const [mazeKnightSquare, setMazeKnightSquare] = useState('a1');
   const [mazeMovesCount, setMazeMovesCount] = useState(0);
   const [mazeCompleted, setMazeCompleted] = useState(false);
 
-  // ── 2. Pawn Sprint State ────────────────────────────────────────────────────
-  // White pawn on e2, Black pawn on a7
+  // ── 2. Pawn Sprint State ───────────────────────────────────────────────────
   const [sprintWhitePawn, setSprintWhitePawn] = useState('e2');
   const [sprintBlackPawn, setSprintBlackPawn] = useState('a7');
   const [sprintWinner, setSprintWinner] = useState<'white' | 'black' | null>(null);
 
   // ── 3. King Escape State ───────────────────────────────────────────────────
-  // King on e1. Must reach g1 without landing on checked squares
   const [escapeKingSquare, setEscapeKingSquare] = useState('e1');
   const [escapeCompleted, setEscapeCompleted] = useState(false);
 
-  // ── 4. Superhero Quest State ───────────────────────────────────────────────
+  // ── 4. Superhero Quests State ──────────────────────────────────────────────
   const [activeHero, setActiveHero] = useState<ChessHero>(CHESS_HEROES[0]);
   const [heroBoardFen, setHeroBoardFen] = useState(CHESS_HEROES[0].fen);
   const [heroCompleted, setHeroCompleted] = useState(false);
@@ -138,14 +151,19 @@ export default function KidsChessPlayground() {
     setMazeCompleted(false);
   };
 
-  const isLegalKnightMove = (from: string, to: string): boolean => {
+  const isLegalKnightMove = (fromRaw: any, toRaw: any): boolean => {
+    const from = extractSquare(fromRaw);
+    const to = extractSquare(toRaw);
+    if (!from || !to || from.length < 2 || to.length < 2) return false;
     const colDiff = Math.abs(from.charCodeAt(0) - to.charCodeAt(0));
-    const rowDiff = Math.abs(parseInt(from[1]) - parseInt(to[1]));
+    const rowDiff = Math.abs(parseInt(from[1], 10) - parseInt(to[1], 10));
     return (colDiff === 1 && rowDiff === 2) || (colDiff === 2 && rowDiff === 1);
   };
 
-  const handleMazeSquareClick = (square: string) => {
+  const handleMazeSquareClick = (rawSquare: any) => {
     if (mazeCompleted) return;
+    const square = extractSquare(rawSquare);
+    if (!square || square.length < 2) return;
 
     if (!isLegalKnightMove(mazeKnightSquare, square)) {
       playBoingSound();
@@ -180,6 +198,15 @@ export default function KidsChessPlayground() {
     }
   };
 
+  const handleMazePieceDrop = (arg0: any, arg1?: any): boolean => {
+    const from = extractSquare(arg0?.sourceSquare || arg0);
+    const to = extractSquare(arg0?.targetSquare || arg1);
+    if (!from || !to) return false;
+    if (from !== mazeKnightSquare) return false;
+    handleMazeSquareClick(to);
+    return true;
+  };
+
   // ── 2. Pawn Sprint Logic ───────────────────────────────────────────────────
   const resetSprint = () => {
     setSprintWhitePawn('e2');
@@ -191,7 +218,7 @@ export default function KidsChessPlayground() {
     if (sprintWinner) return;
 
     const col = sprintWhitePawn[0];
-    const currentRow = parseInt(sprintWhitePawn[1]);
+    const currentRow = parseInt(sprintWhitePawn[1], 10);
 
     // Validation: 2 squares only on rank 2
     if (stepCount === 2 && currentRow !== 2) {
@@ -217,18 +244,56 @@ export default function KidsChessPlayground() {
 
     // Computer Black pawn advances 1 square
     setTimeout(() => {
-      const bCol = sprintBlackPawn[0];
-      const bRow = parseInt(sprintBlackPawn[1]) - 1;
-      const bSquare = `${bCol}${bRow}`;
-      setSprintBlackPawn(bSquare);
-      playMoveSound();
+      setSprintBlackPawn((prev) => {
+        const bCol = prev[0];
+        const bRow = parseInt(prev[1], 10) - 1;
+        const bSquare = `${bCol}${bRow}`;
+        playMoveSound();
 
-      if (bRow === 1) {
-        setSprintWinner('black');
-        playBoingSound();
-        speakCheer('Black promoted first! Try moving 2 squares on turn 1 to win!');
-      }
+        if (bRow === 1) {
+          setSprintWinner('black');
+          playBoingSound();
+          speakCheer('Black promoted first! Try moving 2 squares on turn 1 to win!');
+        }
+        return bSquare;
+      });
     }, 450);
+  };
+
+  const handleSprintSquareClick = (rawSquare: any) => {
+    if (sprintWinner) return;
+    const targetSq = extractSquare(rawSquare);
+    if (!targetSq || targetSq.length < 2) return;
+
+    const curCol = sprintWhitePawn[0];
+    const curRow = parseInt(sprintWhitePawn[1], 10);
+    const tgtCol = targetSq[0];
+    const tgtRow = parseInt(targetSq[1], 10);
+
+    if (tgtCol !== curCol) {
+      playBoingSound();
+      speakCheer('Pawns only move straight forward in the sprint race!');
+      return;
+    }
+
+    const diff = tgtRow - curRow;
+    if (diff === 1) {
+      handlePawnSprintStep(1);
+    } else if (diff === 2 && curRow === 2) {
+      handlePawnSprintStep(2);
+    } else {
+      playBoingSound();
+      speakCheer('Click 1 square ahead, or 2 squares from the starting line!');
+    }
+  };
+
+  const handleSprintPieceDrop = (arg0: any, arg1?: any): boolean => {
+    const from = extractSquare(arg0?.sourceSquare || arg0);
+    const to = extractSquare(arg0?.targetSquare || arg1);
+    if (!from || !to) return false;
+    if (from !== sprintWhitePawn) return false;
+    handleSprintSquareClick(to);
+    return true;
   };
 
   // ── 3. King Escape Logic ───────────────────────────────────────────────────
@@ -237,10 +302,12 @@ export default function KidsChessPlayground() {
     setEscapeCompleted(false);
   };
 
-  const handleEscapeMove = (targetSq: string) => {
+  const handleEscapeMove = (rawTarget: any) => {
     if (escapeCompleted) return;
-    const allowed = ['f1', 'g1'];
-    if (allowed.includes(targetSq)) {
+    const targetSq = extractSquare(rawTarget);
+    if (!targetSq) return;
+
+    if (targetSq === 'g1' || targetSq === 'f1') {
       setEscapeKingSquare(targetSq);
       playMoveSound();
       if (targetSq === 'g1') {
@@ -248,15 +315,49 @@ export default function KidsChessPlayground() {
         playVictoryFanfare();
         speakCheer('The King reached the castle square safely! Castle complete!');
       } else {
-        speakCheer('Good step! One more move to the castle!');
+        speakCheer('Good step! One more hop to g1 for the castle!');
       }
     } else {
       playBoingSound();
-      speakCheer('Watch out! The enemy rooks guard those squares! Move toward g1!');
+      speakCheer('Watch out! The center is in check! Hop the King toward g1!');
     }
   };
 
+  const handleEscapePieceDrop = (arg0: any, arg1?: any): boolean => {
+    const from = extractSquare(arg0?.sourceSquare || arg0);
+    const to = extractSquare(arg0?.targetSquare || arg1);
+    if (!from || !to) return false;
+    if (from !== escapeKingSquare) return false;
+    handleEscapeMove(to);
+    return true;
+  };
+
   // ── 4. Superhero Quest Logic ───────────────────────────────────────────────
+  const getFenWithPieceOnSquare = (heroId: string, square: string): string => {
+    const pieceChar = heroId === 'knight' ? 'N' : heroId[0].toUpperCase();
+    const board = Array(8).fill(null).map(() => Array(8).fill(null));
+    const col = square.charCodeAt(0) - 97;
+    const row = 8 - parseInt(square[1], 10);
+    if (row >= 0 && row < 8 && col >= 0 && col < 8) {
+      board[row][col] = pieceChar;
+    }
+    let fen = '';
+    for (let r = 0; r < 8; r++) {
+      let empty = 0;
+      for (let c = 0; c < 8; c++) {
+        if (board[r][c]) {
+          if (empty > 0) { fen += empty; empty = 0; }
+          fen += board[r][c];
+        } else {
+          empty++;
+        }
+      }
+      if (empty > 0) fen += empty;
+      if (r < 7) fen += '/';
+    }
+    return `${fen} w - - 0 1`;
+  };
+
   const selectHero = (hero: ChessHero) => {
     setActiveHero(hero);
     setHeroBoardFen(hero.fen);
@@ -264,10 +365,15 @@ export default function KidsChessPlayground() {
     speakCheer(`Meet ${hero.name}! ${hero.motto}`);
   };
 
-  const handleHeroPieceDrop = (sourceSquare: string, targetSquare: string): boolean => {
-    if (targetSquare === activeHero.targetSquare) {
+  const handleHeroPieceDrop = (arg0: any, arg1?: any): boolean => {
+    const from = extractSquare(arg0?.sourceSquare || arg0);
+    const to = extractSquare(arg0?.targetSquare || arg1);
+    if (!to) return false;
+
+    if (to === activeHero.targetSquare) {
       playVictoryFanfare();
       setHeroCompleted(true);
+      setHeroBoardFen(getFenWithPieceOnSquare(activeHero.id, to));
       if (!heroBadgeUnlocked.includes(activeHero.id)) {
         setHeroBadgeUnlocked((prev) => [...prev, activeHero.id]);
       }
@@ -275,18 +381,27 @@ export default function KidsChessPlayground() {
       return true;
     } else {
       playBoingSound();
-      speakCheer(`Try again! Move ${activeHero.name} to ${activeHero.targetSquare}!`);
+      speakCheer(`Try again! Move ${activeHero.name} to ${activeHero.targetSquare.toUpperCase()}!`);
       return false;
     }
   };
 
-  // Maze board FEN builder
+  const handleHeroSquareClick = (rawSquare: any) => {
+    if (heroCompleted) return;
+    const sq = extractSquare(rawSquare);
+    if (sq === activeHero.targetSquare) {
+      handleHeroPieceDrop({ sourceSquare: '', targetSquare: sq });
+    }
+  };
+
+  // ── Dynamic FEN Builders ───────────────────────────────────────────────────
   const getMazeBoardFen = (): string => {
-    // Generate a simple FEN with a white knight on mazeKnightSquare
     const board = Array(8).fill(null).map(() => Array(8).fill(null));
     const kCol = mazeKnightSquare.charCodeAt(0) - 97;
-    const kRow = 8 - parseInt(mazeKnightSquare[1]);
-    board[kRow][kCol] = 'N';
+    const kRow = 8 - parseInt(mazeKnightSquare[1], 10);
+    if (kRow >= 0 && kRow < 8 && kCol >= 0 && kCol < 8) {
+      board[kRow][kCol] = 'N';
+    }
 
     let fen = '';
     for (let r = 0; r < 8; r++) {
@@ -305,20 +420,117 @@ export default function KidsChessPlayground() {
     return `${fen} w - - 0 1`;
   };
 
-  // Custom square styles for Maze stars and traps
+  const getSprintBoardFen = (): string => {
+    const board = Array(8).fill(null).map(() => Array(8).fill(null));
+
+    // White pawn (transforms into Queen on rank 8)
+    if (sprintWhitePawn && sprintWhitePawn.length >= 2) {
+      const wCol = sprintWhitePawn.charCodeAt(0) - 97;
+      const wRow = 8 - parseInt(sprintWhitePawn[1], 10);
+      if (wRow >= 0 && wRow < 8 && wCol >= 0 && wCol < 8) {
+        board[wRow][wCol] = sprintWhitePawn[1] === '8' ? 'Q' : 'P';
+      }
+    }
+
+    // Black pawn (transforms into Queen on rank 1)
+    if (sprintBlackPawn && sprintBlackPawn.length >= 2) {
+      const bCol = sprintBlackPawn.charCodeAt(0) - 97;
+      const bRow = 8 - parseInt(sprintBlackPawn[1], 10);
+      if (bRow >= 0 && bRow < 8 && bCol >= 0 && bCol < 8) {
+        board[bRow][bCol] = sprintBlackPawn[1] === '1' ? 'q' : 'p';
+      }
+    }
+
+    let fen = '';
+    for (let r = 0; r < 8; r++) {
+      let empty = 0;
+      for (let c = 0; c < 8; c++) {
+        if (board[r][c]) {
+          if (empty > 0) { fen += empty; empty = 0; }
+          fen += board[r][c];
+        } else {
+          empty++;
+        }
+      }
+      if (empty > 0) fen += empty;
+      if (r < 7) fen += '/';
+    }
+    return `${fen} w - - 0 1`;
+  };
+
+  const getEscapeBoardFen = (): string => {
+    const board = Array(8).fill(null).map(() => Array(8).fill(null));
+
+    // Black pieces
+    board[0][0] = 'k'; // a8 King
+    board[0][3] = 'r'; // d8 Rook
+    board[0][4] = 'r'; // e8 Rook
+    board[1][0] = 'p'; // a7
+    board[1][1] = 'p'; // b7
+    board[1][2] = 'p'; // c7
+
+    // White castle shield pawns (f2, g2, h2)
+    board[6][5] = 'P'; // f2
+    board[6][6] = 'P'; // g2
+    board[6][7] = 'P'; // h2
+
+    // White King
+    const kCol = escapeKingSquare.charCodeAt(0) - 97;
+    const kRow = 8 - parseInt(escapeKingSquare[1], 10);
+    if (kRow >= 0 && kRow < 8 && kCol >= 0 && kCol < 8) {
+      board[kRow][kCol] = 'K';
+    }
+
+    // White Rook
+    if (escapeKingSquare === 'g1') {
+      board[7][5] = 'R'; // f1 castled
+    } else {
+      board[7][7] = 'R'; // h1 ready
+    }
+
+    let fen = '';
+    for (let r = 0; r < 8; r++) {
+      let empty = 0;
+      for (let c = 0; c < 8; c++) {
+        if (board[r][c]) {
+          if (empty > 0) { fen += empty; empty = 0; }
+          fen += board[r][c];
+        } else {
+          empty++;
+        }
+      }
+      if (empty > 0) fen += empty;
+      if (r < 7) fen += '/';
+    }
+    return `${fen} w - - 0 1`;
+  };
+
+  // Custom square styles
   const getMazeCustomSquareStyles = () => {
     const styles: Record<string, React.CSSProperties> = {};
     mazeStars.forEach((sq) => {
       styles[sq] = {
-        background: 'radial-gradient(circle, rgba(234, 179, 8, 0.45) 45%, transparent 46%)',
-        position: 'relative',
+        background: 'radial-gradient(circle, rgba(234, 179, 8, 0.7) 40%, rgba(234, 179, 8, 0.2) 65%, transparent 70%)',
+        boxShadow: 'inset 0 0 12px rgba(234, 179, 8, 0.9)',
+        border: '2px solid rgba(234, 179, 8, 0.8)',
       };
     });
     mazeTraps.forEach((sq) => {
       styles[sq] = {
-        background: 'radial-gradient(circle, rgba(239, 68, 68, 0.35) 45%, transparent 46%)',
+        background: 'radial-gradient(circle, rgba(239, 68, 68, 0.6) 40%, rgba(239, 68, 68, 0.2) 65%, transparent 70%)',
+        boxShadow: 'inset 0 0 10px rgba(239, 68, 68, 0.9)',
       };
     });
+    return styles;
+  };
+
+  const getHeroCustomSquareStyles = () => {
+    const styles: Record<string, React.CSSProperties> = {};
+    styles[activeHero.targetSquare] = {
+      background: 'radial-gradient(circle, rgba(245, 158, 11, 0.7) 35%, rgba(245, 158, 11, 0.2) 65%, transparent 70%)',
+      boxShadow: 'inset 0 0 14px rgba(245, 158, 11, 0.9)',
+      border: '2px dashed #f59e0b',
+    };
     return styles;
   };
 
@@ -353,10 +565,10 @@ export default function KidsChessPlayground() {
       </div>
 
       {/* Mode Navigation Tabs */}
-      <div className="flex border-b border-slate-800 gap-2 text-xs">
+      <div className="flex border-b border-slate-800 gap-2 text-xs overflow-x-auto pb-1">
         <button
           onClick={() => setActiveMode('maze')}
-          className={`px-4 py-2.5 font-bold border-b-2 transition-colors flex items-center gap-2 ${
+          className={`px-4 py-2.5 font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
             activeMode === 'maze'
               ? 'border-amber-500 text-amber-400'
               : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -366,7 +578,7 @@ export default function KidsChessPlayground() {
         </button>
         <button
           onClick={() => setActiveMode('sprint')}
-          className={`px-4 py-2.5 font-bold border-b-2 transition-colors flex items-center gap-2 ${
+          className={`px-4 py-2.5 font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
             activeMode === 'sprint'
               ? 'border-emerald-500 text-emerald-400'
               : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -376,7 +588,7 @@ export default function KidsChessPlayground() {
         </button>
         <button
           onClick={() => setActiveMode('escape')}
-          className={`px-4 py-2.5 font-bold border-b-2 transition-colors flex items-center gap-2 ${
+          className={`px-4 py-2.5 font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
             activeMode === 'escape'
               ? 'border-blue-500 text-blue-400'
               : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -386,7 +598,7 @@ export default function KidsChessPlayground() {
         </button>
         <button
           onClick={() => setActiveMode('heroes')}
-          className={`px-4 py-2.5 font-bold border-b-2 transition-colors flex items-center gap-2 ${
+          className={`px-4 py-2.5 font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
             activeMode === 'heroes'
               ? 'border-rose-500 text-rose-400'
               : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -404,14 +616,16 @@ export default function KidsChessPlayground() {
               <ChessboardComponent
                 position={getMazeBoardFen()}
                 onSquareClick={handleMazeSquareClick}
+                onPieceDrop={handleMazePieceDrop}
+                arePiecesDraggable={true}
                 customSquareStyles={getMazeCustomSquareStyles()}
                 customDarkSquareStyle={{ backgroundColor: '#334155' }}
                 customLightSquareStyle={{ backgroundColor: '#94a3b8' }}
               />
             </div>
             <div className="flex items-center gap-4 mt-3 text-xs text-slate-400">
-              <span className="flex items-center gap-1.5"><span className="text-amber-400">⭐</span> Collect Stars</span>
-              <span className="flex items-center gap-1.5"><span className="text-rose-400">💥</span> Avoid Traps</span>
+              <span className="flex items-center gap-1.5"><span className="text-amber-400">⭐</span> Golden Stars: {mazeStars.length} left</span>
+              <span className="flex items-center gap-1.5"><span className="text-rose-400">💥</span> Red Trap Squares</span>
             </div>
           </div>
 
@@ -424,8 +638,29 @@ export default function KidsChessPlayground() {
                 </span>
               </h2>
               <p className="text-xs text-slate-400">
-                Click on squares to hop your Knight in an <strong>L-shape</strong> (2 squares forward, 1 to the side). Collect all 5 golden stars while dodging the red trap squares!
+                Click on squares or drag your Knight in an <strong>L-shape</strong> (2 squares forward, 1 to the side). Collect all 5 golden stars while dodging the red trap squares!
               </p>
+            </div>
+
+            {/* Stars Remaining Pills */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-slate-500 font-bold">Target Stars:</span>
+              {['c2', 'e3', 'd5', 'f6', 'h7'].map((sq) => {
+                const collected = !mazeStars.includes(sq);
+                return (
+                  <span
+                    key={sq}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold flex items-center gap-1 transition-all ${
+                      collected
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 line-through opacity-70'
+                        : 'bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse'
+                    }`}
+                  >
+                    <span>{sq.toUpperCase()}</span>
+                    <span>{collected ? '✓' : '⭐'}</span>
+                  </span>
+                );
+              })}
             </div>
 
             <div className="grid grid-cols-3 gap-3">
@@ -476,14 +711,17 @@ export default function KidsChessPlayground() {
           <div className="lg:col-span-6 flex flex-col items-center">
             <div className="w-full max-w-[360px] aspect-square rounded-2xl overflow-hidden shadow-2xl border-4 border-emerald-500/30 bg-slate-950">
               <ChessboardComponent
-                position={`8/p7/8/8/8/8/4P3/8 w - - 0 1`.replace('p', sprintBlackPawn === 'a7' ? 'p' : '8').replace('P', sprintWhitePawn === 'e2' ? 'P' : '8')}
+                position={getSprintBoardFen()}
+                onSquareClick={handleSprintSquareClick}
+                onPieceDrop={handleSprintPieceDrop}
+                arePiecesDraggable={true}
                 customDarkSquareStyle={{ backgroundColor: '#1e293b' }}
                 customLightSquareStyle={{ backgroundColor: '#64748b' }}
               />
             </div>
             <div className="mt-3 text-xs text-slate-400 flex items-center gap-4">
-              <span>White Pawn: <strong className="text-emerald-400 uppercase">{sprintWhitePawn}</strong></span>
-              <span>Computer Pawn: <strong className="text-rose-400 uppercase">{sprintBlackPawn}</strong></span>
+              <span>White Pawn: <strong className="text-emerald-400 uppercase font-mono">{sprintWhitePawn}</strong></span>
+              <span>Computer Pawn: <strong className="text-rose-400 uppercase font-mono">{sprintBlackPawn}</strong></span>
             </div>
           </div>
 
@@ -496,7 +734,7 @@ export default function KidsChessPlayground() {
                 </span>
               </h2>
               <p className="text-xs text-slate-400">
-                Pawns can hop <strong>2 squares</strong> on their very first move, then <strong>1 square</strong> at a time. The first pawn to reach the opposite end transforms into a Queen!
+                Pawns can hop <strong>2 squares</strong> on their very first move from rank 2, then <strong>1 square</strong> at a time. Click buttons or drag the pawn directly on the board!
               </p>
             </div>
 
@@ -508,7 +746,7 @@ export default function KidsChessPlayground() {
                 className="flex-1 p-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs shadow-lg disabled:opacity-40 transition-all text-center"
               >
                 🚀 Double Step (2 Squares)
-                <span className="block text-[10px] font-normal opacity-80 mt-0.5">Only from starting square!</span>
+                <span className="block text-[10px] font-normal opacity-80 mt-0.5">Starting square bonus</span>
               </button>
               <button
                 type="button"
@@ -554,14 +792,16 @@ export default function KidsChessPlayground() {
           <div className="lg:col-span-6 flex flex-col items-center">
             <div className="w-full max-w-[360px] aspect-square rounded-2xl overflow-hidden shadow-2xl border-4 border-blue-500/30 bg-slate-950">
               <ChessboardComponent
-                position={`r3k2r/8/8/8/8/8/8/4K2R w K - 0 1`}
+                position={getEscapeBoardFen()}
                 onSquareClick={handleEscapeMove}
+                onPieceDrop={handleEscapePieceDrop}
+                arePiecesDraggable={true}
                 customDarkSquareStyle={{ backgroundColor: '#1e293b' }}
                 customLightSquareStyle={{ backgroundColor: '#475569' }}
               />
             </div>
             <div className="mt-3 text-xs text-slate-400">
-              Target Safe Haven: <strong className="text-blue-400">g1 Castle Square</strong>
+              Target Safe Haven: <strong className="text-blue-400 font-mono uppercase">g1 Castle Square</strong>
             </div>
           </div>
 
@@ -574,14 +814,14 @@ export default function KidsChessPlayground() {
                 </span>
               </h2>
               <p className="text-xs text-slate-400">
-                The King is safe inside the castle walls! Click on the castle path squares (f1, g1) to tuck the White King into castle safety!
+                The center lines are under attack by enemy rooks! Click on square <strong>g1</strong> or drag the King to safely tuck behind your wall of pawns.
               </p>
             </div>
 
             {escapeCompleted ? (
               <div className="p-4 rounded-2xl bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs space-y-2 animate-fadeIn">
                 <div className="font-bold text-sm">🏰 King is Safe in the Castle!</div>
-                <p>Castling protects your King behind a wall of pawns and activates your Rook for battle! +25 XP awarded.</p>
+                <p>Castling tucks your King into safety behind a wall of pawns and brings your Rook into active play! +25 XP awarded.</p>
                 <button
                   type="button"
                   onClick={resetEscape}
@@ -642,12 +882,15 @@ export default function KidsChessPlayground() {
                 <ChessboardComponent
                   position={heroBoardFen}
                   onPieceDrop={handleHeroPieceDrop}
+                  onSquareClick={handleHeroSquareClick}
+                  arePiecesDraggable={true}
+                  customSquareStyles={getHeroCustomSquareStyles()}
                   customDarkSquareStyle={{ backgroundColor: '#334155' }}
                   customLightSquareStyle={{ backgroundColor: '#cbd5e1' }}
                 />
               </div>
               <div className="mt-3 text-xs text-slate-300">
-                Goal: Drag {activeHero.name} to <strong className="text-amber-400 uppercase font-mono">{activeHero.targetSquare}</strong>!
+                Target: Drag or click {activeHero.name} to <strong className="text-amber-400 uppercase font-mono">{activeHero.targetSquare}</strong>!
               </div>
             </div>
 
@@ -682,7 +925,7 @@ export default function KidsChessPlayground() {
                 </div>
               ) : (
                 <p className="text-xs text-slate-400">
-                  Drag {activeHero.name} across the board to square <span className="font-mono text-amber-400 font-bold">{activeHero.targetSquare}</span> to unlock the superhero badge!
+                  Drag {activeHero.name} across the board to square <span className="font-mono text-amber-400 font-bold">{activeHero.targetSquare.toUpperCase()}</span> or click the square to unlock the superhero badge!
                 </p>
               )}
             </div>
