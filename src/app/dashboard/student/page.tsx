@@ -1,4 +1,5 @@
 import React from 'react';
+import Link from 'next/link';
 import PageHeader from '@/components/dashboard/ui/PageHeader';
 import StatCard from '@/components/dashboard/ui/StatCard';
 import QuickActionCard from '@/components/dashboard/ui/QuickActionCard';
@@ -51,6 +52,9 @@ export default async function StudentOverviewPage() {
     shields: 0,
     todaySolved: false,
     solvedDates: [] as string[],
+    equippedPet: 'dragon',
+    equippedGear: 'none',
+    unlockedGear: ['none'] as string[],
     lichess: null,
     nextClass: 'None',
     puzzleStats: null,
@@ -203,32 +207,55 @@ export default async function StudentOverviewPage() {
       <KidsPetCompanionCard
         studentXp={stats.xp ?? 0}
         studentName={user?.firstName || 'Champion'}
+        initialPetId={stats.equippedPet || 'dragon'}
+        initialGearId={stats.equippedGear || 'none'}
+        initialUnlockedGear={stats.unlockedGear || ['none']}
       />
 
       {/* 🎮 Kids Chess Playground Action Banner */}
-      <div className="bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-emerald-500/10 border border-amber-500/30 rounded-3xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
-        <div className="flex items-center gap-4 text-left">
-          <div className="w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-3xl shadow-lg flex-shrink-0">
-            🎮
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-base font-extrabold text-white">Kids Chess Playground & Hero Quests</h3>
-              <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-extrabold border border-amber-500/30">
-                Minigames
-              </span>
+      <div className="relative overflow-hidden rounded-3xl border-2 border-amber-400/50 bg-gradient-to-r from-slate-950 via-indigo-950 to-amber-950/80 p-6 shadow-[0_0_35px_rgba(245,158,11,0.2)]">
+        {/* Glow ambient background accents */}
+        <div className="absolute -top-10 -right-10 w-40 h-40 bg-amber-500/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-purple-500/20 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-5">
+          <div className="flex items-center gap-4 text-left w-full md:w-auto">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500/30 to-purple-500/30 border-2 border-amber-400/60 flex items-center justify-center text-3xl shadow-[0_0_20px_rgba(245,158,11,0.4)] flex-shrink-0 animate-pulse">
+              🎮
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Play Knight’s Star Maze, race in the Pawn Sprint, and unlock Superhero Badges!
-            </p>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-lg font-black text-white tracking-wide">
+                  Kids Chess Playground & Hero Quests
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 text-[10px] font-black uppercase tracking-wider shadow">
+                  ★ Minigames Arcade
+                </span>
+                <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px] font-extrabold border border-indigo-500/30">
+                  Earn Real XP
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 max-w-xl font-medium">
+                Conquer Knight’s Star Maze, race in the Pawn Sprint, and unlock Superhero Badges to earn XP for your Companion Gear!
+              </p>
+              <div className="flex items-center gap-3 pt-1 text-[11px] text-amber-300/90 font-bold flex-wrap">
+                <span>⭐ 4 Chapters</span>
+                <span>•</span>
+                <span>🎯 20 Interactive Levels</span>
+                <span>•</span>
+                <span>⚡ Real Academy XP</span>
+              </div>
+            </div>
           </div>
+
+          <Link
+            href="/dashboard/student/playground"
+            className="w-full md:w-auto px-6 py-3 bg-gradient-to-r from-amber-400 via-yellow-400 to-orange-500 hover:from-amber-300 hover:via-yellow-300 hover:to-orange-400 text-slate-950 font-black text-xs md:text-sm rounded-2xl shadow-[0_0_25px_rgba(245,158,11,0.5)] transform hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center justify-center gap-2 whitespace-nowrap tracking-wide group"
+          >
+            <span>PLAY MINIGAMES</span>
+            <span className="text-base group-hover:translate-x-1 transition-transform">➔</span>
+          </Link>
         </div>
-        <a
-          href="/dashboard/student/playground"
-          className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs rounded-xl shadow-gold transition-all flex items-center gap-2 whitespace-nowrap"
-        >
-          <span>PLAY MINIGAMES ➔</span>
-        </a>
       </div>
 
       {/* 📣 Broadcast Announcement Banner (Only rendered if published by Admin) */}

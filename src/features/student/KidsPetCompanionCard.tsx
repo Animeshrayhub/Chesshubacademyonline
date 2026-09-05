@@ -1,8 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { speakCheer, playVictoryFanfare } from '@/utils/kidAudio';
-import { getStudentPuzzleStats } from '@/lib/puzzles/progress';
+import { speakCheer, playVictoryFanfare, playBoingSound } from '@/utils/kidAudio';
+import { getStudentPuzzleStats, saveStudentPuzzleStats } from '@/lib/puzzles/progress';
+import {
+  buyCompanionGearAction,
+  equipCompanionGearAction,
+  equipCompanionPetAction,
+} from '@/actions/students';
 
 export interface PetConfig {
   id: string;
@@ -203,57 +208,323 @@ export const PETS: PetConfig[] = [
   },
 ];
 
-export const ACCESSORIES = [
-  { id: 'none', label: 'None', icon: '✨', reqLevel: 1 },
-  { id: 'tophat', label: 'Magician Hat', icon: '🎩', reqLevel: 2 },
-  { id: 'cape', label: 'Hero Cape', icon: '🦸', reqLevel: 3 },
-  { id: 'crown', label: 'Royal Crown', icon: '👑', reqLevel: 4 },
-  { id: 'sunglasses', label: 'GM Shades', icon: '🕶️', reqLevel: 5 },
+export interface CompanionGear {
+  id: string;
+  label: string;
+  icon: string;
+  costXp: number;
+  category: 'hat' | 'cape' | 'special';
+  tagline: string;
+  glowBorder: string;
+  glowBg: string;
+}
+
+export const COMPANION_GEAR: CompanionGear[] = [
+  {
+    id: 'none',
+    label: 'Natural Look',
+    icon: '✨',
+    costXp: 0,
+    category: 'special',
+    tagline: 'Pure natural champion style with no accessories.',
+    glowBorder: 'border-slate-700',
+    glowBg: 'bg-slate-900',
+  },
+  {
+    id: 'tophat',
+    label: 'Magician Top Hat',
+    icon: '🎩',
+    costXp: 30,
+    category: 'hat',
+    tagline: 'Dazzle opponents with tactical magic & disappearing pawns!',
+    glowBorder: 'border-purple-500/40',
+    glowBg: 'bg-purple-950/40',
+  },
+  {
+    id: 'partyhat',
+    label: 'Party Fiesta Cone',
+    icon: '🎉',
+    costXp: 40,
+    category: 'hat',
+    tagline: 'Throws colorful confetti after every checkmate!',
+    glowBorder: 'border-pink-500/40',
+    glowBg: 'bg-pink-950/40',
+  },
+  {
+    id: 'sunglasses',
+    label: 'GM Shades',
+    icon: '🕶️',
+    costXp: 50,
+    category: 'special',
+    tagline: 'Ice-cold calculation under severe clock time pressure!',
+    glowBorder: 'border-cyan-500/40',
+    glowBg: 'bg-cyan-950/40',
+  },
+  {
+    id: 'goggles',
+    label: 'Cyber Neon Goggles',
+    icon: '🥽',
+    costXp: 60,
+    category: 'special',
+    tagline: 'Night-vision laser lenses to spot back-rank blunders!',
+    glowBorder: 'border-emerald-400/40',
+    glowBg: 'bg-emerald-950/40',
+  },
+  {
+    id: 'viking',
+    label: 'Viking Battle Horns',
+    icon: '⚔️',
+    costXp: 75,
+    category: 'hat',
+    tagline: 'Storm the center fearlessly with warrior courage!',
+    glowBorder: 'border-amber-500/40',
+    glowBg: 'bg-amber-950/40',
+  },
+  {
+    id: 'holmes',
+    label: 'Detective Holmes Cap',
+    icon: '🕵️',
+    costXp: 85,
+    category: 'hat',
+    tagline: 'Deduce hidden opponent blunders with brilliant precision!',
+    glowBorder: 'border-amber-600/40',
+    glowBg: 'bg-amber-950/40',
+  },
+  {
+    id: 'ninja',
+    label: 'Shinobi Shadow Mask',
+    icon: '🥷',
+    costXp: 90,
+    category: 'special',
+    tagline: 'Strike silently from the diagonals when least expected!',
+    glowBorder: 'border-emerald-500/40',
+    glowBg: 'bg-emerald-950/40',
+  },
+  {
+    id: 'pirate',
+    label: 'Pirate Captain Tricorn',
+    icon: '🏴‍☠️',
+    costXp: 100,
+    category: 'hat',
+    tagline: 'Plunder enemy queens and take all open files!',
+    glowBorder: 'border-red-500/40',
+    glowBg: 'bg-red-950/40',
+  },
+  {
+    id: 'chef',
+    label: "Chef's Gourmet Toque",
+    icon: '👨‍🍳',
+    costXp: 110,
+    category: 'hat',
+    tagline: 'Cooking up spicy fried-liver attacks and king feasts!',
+    glowBorder: 'border-orange-400/40',
+    glowBg: 'bg-orange-950/40',
+  },
+  {
+    id: 'astronaut',
+    label: 'Cosmic Space Helmet',
+    icon: '🚀',
+    costXp: 125,
+    category: 'hat',
+    tagline: 'Calculations that soar beyond gravity into the galaxy!',
+    glowBorder: 'border-indigo-500/40',
+    glowBg: 'bg-indigo-950/40',
+  },
+  {
+    id: 'knighthelm',
+    label: 'Royal Knight Visor',
+    icon: '🪖',
+    costXp: 135,
+    category: 'hat',
+    tagline: 'Ironclad defenses that deflect all enemy checks and forks!',
+    glowBorder: 'border-slate-400/40',
+    glowBg: 'bg-slate-900',
+  },
+  {
+    id: 'cape',
+    label: 'Golden Hero Cape',
+    icon: '🦸',
+    costXp: 150,
+    category: 'cape',
+    tagline: 'Swoops across the rank to shield endangered pieces!',
+    glowBorder: 'border-yellow-500/40',
+    glowBg: 'bg-yellow-950/40',
+  },
+  {
+    id: 'headphones',
+    label: 'Neon Blitz Headset',
+    icon: '🎧',
+    costXp: 175,
+    category: 'special',
+    tagline: 'Groove to high-speed tactical blitz beats!',
+    glowBorder: 'border-fuchsia-500/40',
+    glowBg: 'bg-fuchsia-950/40',
+  },
+  {
+    id: 'wizard',
+    label: "Merlin's Spellbound Hat",
+    icon: '🧙',
+    costXp: 200,
+    category: 'hat',
+    tagline: 'Conjures unstoppable mating nets and mystical forks!',
+    glowBorder: 'border-violet-500/40',
+    glowBg: 'bg-violet-950/40',
+  },
+  {
+    id: 'boxing',
+    label: 'World Champion Belt',
+    icon: '🥊',
+    costXp: 220,
+    category: 'special',
+    tagline: 'Deliver knockout tactical blows in the first 10 moves!',
+    glowBorder: 'border-rose-500/50',
+    glowBg: 'bg-rose-950/50',
+  },
+  {
+    id: 'angelwings',
+    label: 'Celestial Angel Wings',
+    icon: '🪽',
+    costXp: 250,
+    category: 'cape',
+    tagline: 'Hover peacefully over dangerous traps and pawn pins!',
+    glowBorder: 'border-sky-400/40',
+    glowBg: 'bg-sky-950/40',
+  },
+  {
+    id: 'phoenixwings',
+    label: 'Phoenix Fire Wings',
+    icon: '🪶',
+    costXp: 280,
+    category: 'cape',
+    tagline: 'Rise from lost positions into glorious checkmate turnarounds!',
+    glowBorder: 'border-orange-500/50',
+    glowBg: 'bg-orange-950/50',
+  },
+  {
+    id: 'crown',
+    label: 'Imperial Monarch Crown',
+    icon: '👑',
+    costXp: 300,
+    category: 'hat',
+    tagline: 'Worn only by grandmasters and undisputed kings!',
+    glowBorder: 'border-amber-400/50',
+    glowBg: 'bg-amber-950/50',
+  },
+  {
+    id: 'pharaoh',
+    label: "Pharaoh's Golden Nemes",
+    icon: '🏺',
+    costXp: 320,
+    category: 'hat',
+    tagline: 'Ancient dynasty secrets guarding center pawn chains!',
+    glowBorder: 'border-yellow-500/50',
+    glowBg: 'bg-yellow-950/50',
+  },
+  {
+    id: 'dragonhelm',
+    label: 'Dragon Flame Aura',
+    icon: '🔥',
+    costXp: 350,
+    category: 'special',
+    tagline: 'Ignites furious counter-attacks and kingside storms!',
+    glowBorder: 'border-orange-500/50',
+    glowBg: 'bg-orange-950/50',
+  },
+  {
+    id: 'trophy',
+    label: 'World Cup Trophy Hat',
+    icon: '🏆',
+    costXp: 400,
+    category: 'special',
+    tagline: 'The ultimate symbol of ChessHub Academy mastery!',
+    glowBorder: 'border-yellow-400/60',
+    glowBg: 'bg-yellow-950/60',
+  },
+  {
+    id: 'lightning',
+    label: 'Lightning Speed Visor',
+    icon: '⚡',
+    costXp: 450,
+    category: 'special',
+    tagline: 'Spots brilliant sacrifices with lightning speed!',
+    glowBorder: 'border-amber-300/60',
+    glowBg: 'bg-amber-950/60',
+  },
+  {
+    id: 'halo',
+    label: 'Cosmic Grandmaster Halo',
+    icon: '🌌',
+    costXp: 500,
+    category: 'special',
+    tagline: 'Radiates cosmic chess wisdom and enlightenment!',
+    glowBorder: 'border-indigo-300/60',
+    glowBg: 'bg-indigo-950/60',
+  },
 ];
+
+export const ACCESSORIES = COMPANION_GEAR;
 
 interface KidsPetCompanionCardProps {
   studentXp?: number;
   studentName?: string;
+  initialPetId?: string;
+  initialGearId?: string;
+  initialUnlockedGear?: string[];
 }
 
 export default function KidsPetCompanionCard({
   studentXp = 0,
   studentName = 'Champion',
+  initialPetId = 'dragon',
+  initialGearId = 'none',
+  initialUnlockedGear = ['none'],
 }: KidsPetCompanionCardProps) {
-  const [selectedPetId, setSelectedPetId] = useState<string>('dragon');
-  const [selectedAccessory, setSelectedAccessory] = useState('none');
+  const [selectedPetId, setSelectedPetId] = useState<string>(initialPetId);
+  const [selectedAccessory, setSelectedAccessory] = useState<string>(initialGearId);
+  const [unlockedGear, setUnlockedGear] = useState<string[]>(initialUnlockedGear || ['none']);
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'pets' | 'gear'>('gear');
+  const [gearCategory, setGearCategory] = useState<'all' | 'hat' | 'cape' | 'special' | 'owned'>('all');
+  const [buyingId, setBuyingId] = useState<string | null>(null);
   const [petMood, setPetMood] = useState<'happy' | 'cheering' | 'talking'>('happy');
   const [bubbleText, setBubbleText] = useState('');
   const [displayXp, setDisplayXp] = useState(studentXp);
 
-  // Sync displayXp when prop changes
   useEffect(() => {
     setDisplayXp(studentXp);
   }, [studentXp]);
 
-  // Load saved companion preference & hydrate real local XP if higher
   useEffect(() => {
-    try {
-      const savedPet = localStorage.getItem('chesshub_kids_pet');
-      const savedAcc = localStorage.getItem('chesshub_kids_accessory');
-      if (savedPet && PETS.some((p) => p.id === savedPet)) {
-        setSelectedPetId(savedPet);
-      }
-      if (savedAcc) {
-        setSelectedAccessory(savedAcc);
+    if (initialPetId && PETS.some((p) => p.id === initialPetId)) {
+      setSelectedPetId(initialPetId);
+    }
+    if (initialGearId) {
+      setSelectedAccessory(initialGearId);
+    }
+    if (initialUnlockedGear && initialUnlockedGear.length > 0) {
+      setUnlockedGear((prev) => Array.from(new Set([...prev, ...initialUnlockedGear])));
+    }
+  }, [initialPetId, initialGearId, initialUnlockedGear]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (window.location.hash === '#pet-gear') {
+        setIsSelectorOpen(true);
+        setActiveTab('gear');
       }
 
-      const local = getStudentPuzzleStats();
-      if (local && local.xp > displayXp) {
-        setDisplayXp(local.xp);
-      }
-    } catch {}
+      const handleXpUpdate = (e: any) => {
+        if (e.detail?.xp != null) {
+          setDisplayXp(e.detail.xp);
+        }
+      };
+      window.addEventListener('chesshub_xp_updated', handleXpUpdate);
+      return () => window.removeEventListener('chesshub_xp_updated', handleXpUpdate);
+    }
   }, []);
 
   const activePet = PETS.find((p) => p.id === selectedPetId) || PETS[0];
 
-  // Calculate Pet Level from real XP
   let petLevel = 1;
   let levelTitle = 'Hatchling Companion';
   let nextLevelXp = 150;
@@ -286,12 +557,11 @@ export default function KidsPetCompanionCard({
     Math.round(((displayXp - currentLevelBaseXp) / Math.max(1, nextLevelXp - currentLevelBaseXp)) * 100)
   );
 
-  const handleSelectPet = (petId: string) => {
+  const handleSelectPet = async (petId: string) => {
     setSelectedPetId(petId);
     try {
       localStorage.setItem('chesshub_kids_pet', petId);
     } catch {}
-    setIsSelectorOpen(false);
     const chosen = PETS.find((p) => p.id === petId) || activePet;
     setBubbleText(chosen.dialogue);
     setPetMood('talking');
@@ -300,14 +570,97 @@ export default function KidsPetCompanionCard({
       setPetMood('happy');
       setBubbleText('');
     }, 4500);
+
+    try {
+      await equipCompanionPetAction(petId);
+    } catch {}
   };
 
-  const handleSelectAccessory = (accId: string, reqLevel: number) => {
-    if (petLevel < reqLevel) return;
-    setSelectedAccessory(accId);
+  const handleEquipGear = async (gearId: string) => {
+    setSelectedAccessory(gearId);
     try {
-      localStorage.setItem('chesshub_kids_accessory', accId);
+      localStorage.setItem('chesshub_kids_accessory', gearId);
     } catch {}
+
+    const chosen = COMPANION_GEAR.find((g) => g.id === gearId);
+    if (chosen && chosen.id !== 'none') {
+      setBubbleText(`Equipped ${chosen.label}!`);
+      setPetMood('happy');
+      speakCheer(`Equipped ${chosen.label}!`);
+      setTimeout(() => setBubbleText(''), 3000);
+    } else {
+      setBubbleText('Equipped Natural Look!');
+      setTimeout(() => setBubbleText(''), 2500);
+    }
+
+    try {
+      await equipCompanionGearAction(gearId);
+    } catch {}
+  };
+
+  const handleBuyGear = async (gear: CompanionGear) => {
+    if (unlockedGear.includes(gear.id)) {
+      handleEquipGear(gear.id);
+      return;
+    }
+
+    if (displayXp < gear.costXp) {
+      playBoingSound();
+      setBubbleText(`Need ${gear.costXp - displayXp} more XP for ${gear.label}!`);
+      setPetMood('talking');
+      speakCheer(`You need ${gear.costXp - displayXp} more XP to buy the ${gear.label}! Solve puzzles or play minigames to earn XP!`);
+      setTimeout(() => {
+        setBubbleText('');
+        setPetMood('happy');
+      }, 4000);
+      return;
+    }
+
+    setBuyingId(gear.id);
+    const newXp = Math.max(0, displayXp - gear.costXp);
+    const newUnlocked = Array.from(new Set([...unlockedGear, gear.id]));
+
+    setDisplayXp(newXp);
+    setUnlockedGear(newUnlocked);
+    setSelectedAccessory(gear.id);
+
+    try {
+      localStorage.setItem('chesshub_kids_accessory', gear.id);
+      localStorage.setItem('chesshub_unlocked_gear', JSON.stringify(newUnlocked));
+      const localStats = getStudentPuzzleStats();
+      if (localStats) {
+        localStats.xp = newXp;
+        saveStudentPuzzleStats(localStats);
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('chesshub_xp_updated', { detail: { xp: newXp } }));
+      }
+    } catch {}
+
+    playVictoryFanfare();
+    setPetMood('cheering');
+    setBubbleText(`🎉 Bought ${gear.label}! -${gear.costXp} XP`);
+    speakCheer(`Woohoo! You unlocked the ${gear.label}! Looking magnificent!`);
+
+    try {
+      const res = await buyCompanionGearAction(gear.id, gear.costXp);
+      if (!res.success) {
+        setDisplayXp(displayXp);
+        setUnlockedGear(unlockedGear);
+        setBubbleText(res.error || 'Failed to buy gear');
+      } else if (res.data?.xp != null) {
+        setDisplayXp(res.data.xp);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('chesshub_xp_updated', { detail: { xp: res.data.xp } }));
+        }
+      }
+    } catch {} finally {
+      setBuyingId(null);
+      setTimeout(() => {
+        setBubbleText('');
+        setPetMood('happy');
+      }, 4500);
+    }
   };
 
   const handlePetClick = () => {
@@ -321,25 +674,25 @@ export default function KidsPetCompanionCard({
     }, 4000);
   };
 
-  const activeAccObj = ACCESSORIES.find((a) => a.id === selectedAccessory);
+  const activeAccObj = COMPANION_GEAR.find((a) => a.id === selectedAccessory) || COMPANION_GEAR[0];
+
+  const filteredGear = COMPANION_GEAR.filter((g) => {
+    if (gearCategory === 'all') return true;
+    if (gearCategory === 'owned') return unlockedGear.includes(g.id);
+    return g.category === gearCategory;
+  });
 
   return (
     <div
+      id="pet-gear"
       className={`rounded-3xl border p-5 bg-gradient-to-br ${activePet.cardBg} ${activePet.cardBorder} shadow-2xl relative overflow-hidden transition-all duration-300`}
     >
-      {/* Dynamic ambient background glow */}
       <div
-        className="absolute -top-12 -right-12 w-48 h-48 rounded-full blur-3xl pointer-events-none transition-all duration-500"
-        style={{ backgroundColor: activePet.glowEffect }}
-      />
-      <div
-        className="absolute -bottom-12 -left-12 w-40 h-40 rounded-full blur-3xl pointer-events-none transition-all duration-500 opacity-60"
-        style={{ backgroundColor: activePet.glowEffect }}
+        className="absolute -top-12 -left-12 w-48 h-48 rounded-full blur-3xl pointer-events-none transition-all duration-500"
+        style={{ background: activePet.glowEffect }}
       />
 
-      <div className="flex flex-col sm:flex-row items-center gap-5 justify-between relative z-10">
-        
-        {/* Left: Pet Avatar & Character Identity */}
+      <div className="relative z-10 flex flex-col sm:flex-row items-center justify-between gap-5">
         <div className="flex items-center gap-4 text-left">
           <div className="relative">
             <div
@@ -347,23 +700,24 @@ export default function KidsPetCompanionCard({
               title="Click to hear your pet cheer!"
               className={`w-20 h-20 rounded-2xl border-2 ${activePet.avatarRing} flex items-center justify-center text-4xl cursor-pointer hover:scale-110 active:scale-95 transition-all select-none relative group`}
             >
-              {/* Worn accessory overlay */}
               {activeAccObj && activeAccObj.id !== 'none' && (
-                <span className="absolute -top-3 -right-2 text-xl filter drop-shadow-md animate-bounce">
+                <span
+                  className={`absolute select-none pointer-events-none filter drop-shadow-[0_0_10px_rgba(255,255,255,0.85)] ${
+                    activeAccObj.category === 'hat'
+                      ? '-top-3.5 left-1/2 -translate-x-1/2 text-2xl animate-bounce'
+                      : activeAccObj.category === 'cape'
+                      ? '-bottom-1.5 -right-2 text-2xl animate-pulse'
+                      : '-top-1.5 -right-1.5 text-2xl animate-spin-slow'
+                  }`}
+                  title={`Wearing: ${activeAccObj.label}`}
+                >
                   {activeAccObj.icon}
                 </span>
               )}
               <span className={petMood === 'cheering' ? 'animate-wiggle scale-110' : ''}>
                 {activePet.emoji}
               </span>
-
-              {/* Tap indicator badge */}
-              <span className="absolute -bottom-2 px-2 py-0.5 rounded-full bg-slate-900/90 text-[9px] font-bold text-white border border-slate-700 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow">
-                🔊 Cheer!
-              </span>
             </div>
-
-            {/* Floating Dialogue Speech Bubble */}
             {bubbleText && (
               <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[11px] font-bold px-3 py-1 rounded-xl border border-amber-400 shadow-xl whitespace-nowrap z-20 animate-bounce">
                 {bubbleText}
@@ -380,13 +734,18 @@ export default function KidsPetCompanionCard({
               <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[10px] font-bold border border-slate-700">
                 {levelTitle}
               </span>
+              {activeAccObj && activeAccObj.id !== 'none' && (
+                <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/30 flex items-center gap-1">
+                  <span>{activeAccObj.icon}</span>
+                  <span className="truncate max-w-[100px]">{activeAccObj.label}</span>
+                </span>
+              )}
             </div>
             <p className={`text-xs font-bold ${activePet.textAccent}`}>{activePet.title}</p>
             <p className="text-[11px] text-slate-300 italic max-w-sm leading-snug">{activePet.tagline}</p>
           </div>
         </div>
 
-        {/* Right: Companion XP Progress & Character Changer */}
         <div className="w-full sm:w-60 space-y-2">
           <div className="flex items-center justify-between text-[11px] font-bold text-slate-200">
             <span>Pet Growth</span>
@@ -405,98 +764,198 @@ export default function KidsPetCompanionCard({
             <button
               type="button"
               onClick={() => setIsSelectorOpen(!isSelectorOpen)}
-              className="text-amber-400 hover:text-amber-300 font-extrabold underline flex items-center gap-1"
+              className="text-amber-400 hover:text-amber-300 font-extrabold underline flex items-center gap-1 transition-all"
             >
-              <span>{isSelectorOpen ? 'Close Roster' : 'Switch Companion (12)'}</span>
-              <span>🐾</span>
+              <span>{isSelectorOpen ? 'Close Closet' : '🐾 Change Pet & Gear'}</span>
+              <span>{isSelectorOpen ? '▲' : '▼'}</span>
             </button>
           </div>
         </div>
-
       </div>
 
-      {/* Expandable Character Roster & Accessory Drawer */}
       {isSelectorOpen && (
         <div className="mt-5 pt-5 border-t border-slate-800/90 space-y-5 animate-fadeIn">
-          
-          {/* Character Grid (12 Characters) */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-extrabold text-white uppercase tracking-wider flex items-center gap-1.5">
-                <span>🌟 Choose Your Chess Companion (12 Unique Champions)</span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-950/80 p-3 rounded-2xl border border-slate-800">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveTab('gear')}
+                className={`px-4 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                  activeTab === 'gear'
+                    ? 'bg-amber-500 text-slate-950 shadow-gold'
+                    : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                <span>🎩</span>
+                <span>Gear & Hats Shop ({COMPANION_GEAR.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('pets')}
+                className={`px-4 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                  activeTab === 'pets'
+                    ? 'bg-amber-500 text-slate-950 shadow-gold'
+                    : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                <span>🐾</span>
+                <span>Switch Pet ({PETS.length})</span>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 self-end sm:self-auto">
+              <span className="text-[11px] text-slate-400 font-bold uppercase">Your Academy XP:</span>
+              <span className="px-3 py-1 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 font-mono text-xs font-black flex items-center gap-1 shadow">
+                <span>⚡</span>
+                <span>{displayXp} XP</span>
               </span>
-              <span className="text-[10px] text-slate-400">Click any character to adopt</span>
             </div>
+          </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
-              {PETS.map((pet) => {
-                const isSelected = selectedPetId === pet.id;
-                return (
+          {activeTab === 'gear' && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                {(['all', 'hat', 'cape', 'special', 'owned'] as const).map((cat) => (
                   <button
-                    key={pet.id}
+                    key={cat}
                     type="button"
-                    onClick={() => handleSelectPet(pet.id)}
-                    className={`p-3 rounded-2xl border text-left transition-all relative overflow-hidden flex flex-col justify-between ${
-                      isSelected
-                        ? `bg-slate-900 border-2 ${pet.cardBorder} shadow-lg scale-[1.02]`
-                        : 'bg-slate-950/70 border-slate-800/80 hover:border-slate-700 hover:bg-slate-900/60'
+                    onClick={() => setGearCategory(cat)}
+                    className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all capitalize ${
+                      gearCategory === cat
+                        ? 'bg-indigo-600 text-white shadow'
+                        : 'bg-slate-900/90 text-slate-400 hover:text-white border border-slate-800'
                     }`}
                   >
-                    <div>
-                      <div className="text-3xl mb-1.5">{pet.emoji}</div>
-                      <div className="text-xs font-bold text-white truncate">{pet.name}</div>
-                      <div className={`text-[10px] font-semibold truncate ${pet.textAccent}`}>{pet.title}</div>
+                    {cat === 'all' && `All Gear (${COMPANION_GEAR.length})`}
+                    {cat === 'hat' && 'Hats & Helmets 🎩'}
+                    {cat === 'cape' && 'Capes & Wings 🦸'}
+                    {cat === 'special' && 'Special Items ⚡'}
+                    {cat === 'owned' && `My Collection (${unlockedGear.length})`}
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {filteredGear.map((gear) => {
+                  const isOwned = unlockedGear.includes(gear.id) || gear.id === 'none';
+                  const isEquipped = selectedAccessory === gear.id;
+                  const canAfford = displayXp >= gear.costXp;
+                  const isBuying = buyingId === gear.id;
+
+                  return (
+                    <div
+                      key={gear.id}
+                      className={`p-3.5 rounded-2xl border transition-all flex flex-col justify-between relative overflow-hidden ${
+                        isEquipped
+                          ? 'bg-gradient-to-br from-amber-500/20 via-slate-900 to-indigo-950/80 border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.25)]'
+                          : isOwned
+                          ? 'bg-slate-900/90 border-slate-800 hover:border-slate-700'
+                          : canAfford
+                          ? 'bg-slate-950/80 border-amber-500/30 hover:border-amber-400/60'
+                          : 'bg-slate-950/60 border-slate-800/60 opacity-80'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div className="w-12 h-12 rounded-xl bg-slate-950/90 border border-slate-800 flex items-center justify-center text-2xl shadow">
+                            {gear.icon}
+                          </div>
+                          <div>
+                            {isEquipped ? (
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-black border border-emerald-500/40">
+                                ✓ WORN
+                              </span>
+                            ) : isOwned ? (
+                              <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 text-[10px] font-bold border border-blue-500/30">
+                                UNLOCKED
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-mono font-black border border-amber-500/30">
+                                ⚡ {gear.costXp} XP
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="font-extrabold text-white text-xs mb-0.5">{gear.label}</div>
+                        <p className="text-[10px] text-slate-300 leading-tight mb-3">{gear.tagline}</p>
+                      </div>
+
+                      <div>
+                        {isEquipped ? (
+                          <div className="w-full py-1.5 rounded-xl bg-emerald-950/60 border border-emerald-600/50 text-emerald-300 text-[11px] font-black text-center">
+                            Currently Worn
+                          </div>
+                        ) : isOwned ? (
+                          <button
+                            type="button"
+                            onClick={() => handleEquipGear(gear.id)}
+                            className="w-full py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-[11px] font-black transition-all shadow"
+                          >
+                            Equip Gear
+                          </button>
+                        ) : canAfford ? (
+                          <button
+                            type="button"
+                            disabled={isBuying}
+                            onClick={() => handleBuyGear(gear)}
+                            className="w-full py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 active:scale-95 text-slate-950 text-[11px] font-black transition-all shadow-gold flex items-center justify-center gap-1"
+                          >
+                            <span>⚡</span>
+                            <span>{isBuying ? 'Unlocking...' : `Buy for ${gear.costXp} XP`}</span>
+                          </button>
+                        ) : (
+                          <div className="w-full py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-500 text-[10px] font-bold text-center">
+                            🔒 Need {gear.costXp - displayXp} more XP
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    {isSelected && (
-                      <span className="absolute top-1.5 right-1.5 text-xs text-amber-400">
-                        ⭐
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Accessory Closet */}
-          <div>
-            <div className="text-xs font-extrabold text-white uppercase tracking-wider mb-2 flex items-center justify-between">
-              <span>Companion Gear & Hats</span>
-              <span className="text-[10px] text-amber-400 font-bold">Unlocked at Higher Pet Levels</span>
+          {activeTab === 'pets' && (
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-extrabold text-white uppercase tracking-wider">
+                  Select Companion (12 Unique Champions)
+                </span>
+                <span className="text-[10px] text-slate-400">Adopt any pet instantly for free</span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
+                {PETS.map((pet) => {
+                  const isSelected = selectedPetId === pet.id;
+                  return (
+                    <button
+                      key={pet.id}
+                      type="button"
+                      onClick={() => handleSelectPet(pet.id)}
+                      className={`p-3 rounded-2xl border text-left transition-all relative overflow-hidden flex flex-col justify-between ${
+                        isSelected
+                          ? `bg-slate-900 border-2 ${pet.cardBorder} shadow-lg scale-[1.02]`
+                          : 'bg-slate-950/70 border-slate-800/80 hover:border-slate-700 hover:bg-slate-900/60'
+                      }`}
+                    >
+                      <div>
+                        <div className="text-3xl mb-1.5">{pet.emoji}</div>
+                        <div className="text-xs font-bold text-white truncate">{pet.name}</div>
+                        <div className={`text-[10px] font-semibold truncate ${pet.textAccent}`}>{pet.title}</div>
+                      </div>
+                      {isSelected && (
+                        <span className="absolute top-1.5 right-1.5 text-xs text-amber-400">
+                          ⭐
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-
-            <div className="grid grid-cols-5 gap-2">
-              {ACCESSORIES.map((acc) => {
-                const isLocked = petLevel < acc.reqLevel;
-                const isEquipped = selectedAccessory === acc.id;
-                return (
-                  <button
-                    key={acc.id}
-                    type="button"
-                    disabled={isLocked}
-                    onClick={() => handleSelectAccessory(acc.id, acc.reqLevel)}
-                    className={`p-2.5 rounded-xl border text-center transition-all relative ${
-                      isEquipped
-                        ? 'bg-amber-500/20 border-amber-400 text-white shadow-gold'
-                        : isLocked
-                        ? 'bg-slate-950/40 border-slate-800/50 opacity-40 cursor-not-allowed text-slate-600'
-                        : 'bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-300'
-                    }`}
-                  >
-                    <div className="text-xl mb-1">{acc.icon}</div>
-                    <div className="text-[10px] font-bold truncate">{acc.label}</div>
-                    {isLocked && (
-                      <span className="text-[9px] text-rose-400 font-mono block font-bold">Lv.{acc.reqLevel}</span>
-                    )}
-                    {isEquipped && (
-                      <span className="text-[9px] text-amber-400 font-bold block">Equipped</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
+          )}
         </div>
       )}
     </div>

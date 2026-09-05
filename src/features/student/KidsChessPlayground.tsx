@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { Chess } from 'chess.js';
 import dynamic from 'next/dynamic';
 import { wrapChessboard } from '@/components/dashboard/ui/ChessboardWrapper';
@@ -13,6 +14,8 @@ import {
   isSoundMuted,
   toggleSoundMute,
 } from '@/utils/kidAudio';
+import { awardPlaygroundXpAction } from '@/actions/students';
+import { getStudentPuzzleStats, saveStudentPuzzleStats } from '@/lib/puzzles/progress';
 
 const ChessboardComponent = dynamic(
   () => import('react-chessboard').then((mod) => wrapChessboard(mod.Chessboard)),
@@ -327,9 +330,21 @@ export const CHESS_HEROES: ChessHero[] = [
 
 type PlaygroundMode = 'maze' | 'sprint' | 'escape' | 'heroes';
 
-export default function KidsChessPlayground() {
+interface KidsChessPlaygroundProps {
+  initialXp?: number;
+  studentName?: string;
+}
+
+export default function KidsChessPlayground({
+  initialXp = 0,
+  studentName = 'Champion',
+}: KidsChessPlaygroundProps) {
   const [activeMode, setActiveMode] = useState<PlaygroundMode>('maze');
   const [soundMuted, setSoundMuted] = useState(false);
+  const [currentXp, setCurrentXp] = useState(initialXp);
+  const [awardedChallenges, setAwardedChallenges] = useState<string[]>([]);
+  const [floatingReward, setFloatingReward] = useState<{ xp: number; text: string } | null>(null);
+  const [isAwardingXp, setIsAwardingXp] = useState(false);
 
   // ── 1. Knight's Star Maze State (5 Types) ───────────────────────────────────
   const [mazeLevelIdx, setMazeLevelIdx] = useState(0);
@@ -360,12 +375,53 @@ export default function KidsChessPlayground() {
   const [heroBadgeUnlocked, setHeroBadgeUnlocked] = useState<string[]>([]);
 
   useEffect(() => {
+    setCurrentXp(initialXp);
+  }, [initialXp]);
+
+  useEffect(() => {
     setSoundMuted(isSoundMuted());
+
+    const handleXpUpdate = (e: any) => {
+      if (e.detail?.xp != null) {
+        setCurrentXp(e.detail.xp);
+      }
+    };
+    window.addEventListener('chesshub_xp_updated', handleXpUpdate);
+    return () => window.removeEventListener('chesshub_xp_updated', handleXpUpdate);
   }, []);
 
   const handleToggleSound = () => {
     const next = toggleSoundMute();
     setSoundMuted(next);
+  };
+
+  const handleAwardPlaygroundXp = async (amount: number, challengeTitle: string) => {
+    if (awardedChallenges.includes(challengeTitle)) return;
+    setAwardedChallenges((prev) => [...prev, challengeTitle]);
+    const nextXp = currentXp + amount;
+    setCurrentXp(nextXp);
+    setFloatingReward({ xp: amount, text: challengeTitle });
+    setTimeout(() => setFloatingReward(null), 4500);
+
+    try {
+      setIsAwardingXp(true);
+      const res = await awardPlaygroundXpAction(amount, challengeTitle);
+      if (res.success && res.data?.xp != null) {
+        setCurrentXp(res.data.xp);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('chesshub_xp_updated', { detail: { xp: res.data.xp } }));
+          const local = getStudentPuzzleStats();
+          if (local) {
+            local.xp = res.data.xp;
+            saveStudentPuzzleStats(local);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error awarding playground XP:', err);
+    } finally {
+      setIsAwardingXp(false);
+    }
   };
 
   // ── Switch Maze Level ──────────────────────────────────────────────────────
@@ -418,6 +474,7 @@ export default function KidsChessPlayground() {
         setMazeCompleted(true);
         playVictoryFanfare();
         speakCheer('Fantastic hopping! You collected all stars and mastered this level!');
+        handleAwardPlaygroundXp(25, `Knight's Star Maze: ${activeMazeLevel.title}`);
       } else {
         speakCheer('Star collected! Keep hopping!');
       }
@@ -480,6 +537,7 @@ export default function KidsChessPlayground() {
       setSprintWinner('white');
       playVictoryFanfare();
       speakCheer(`Pawn reached rank 8 and crowned into a ${activeSprintLevel.promotionPiece === 'N' ? 'Knight' : 'Queen'}! Race won!`);
+      handleAwardPlaygroundXp(25, `Pawn Sprint: ${activeSprintLevel.title}`);
       return;
     }
 
@@ -575,6 +633,7 @@ export default function KidsChessPlayground() {
       setEscapeWarning('');
       playVictoryFanfare();
       speakCheer(activeCastleLevel.explanation);
+      handleAwardPlaygroundXp(25, `King's Castle Escape: ${activeCastleLevel.title}`);
     } else {
       playBoingSound();
       speakCheer(`Move your King to ${activeCastleLevel.targetSquare.toUpperCase()} to complete the castle!`);
@@ -643,6 +702,7 @@ export default function KidsChessPlayground() {
         setHeroBadgeUnlocked((prev) => [...prev, activeHero.id]);
       }
       speakCheer(`Heroic move! You unlocked the ${activeHero.name} superhero badge!`);
+      handleAwardPlaygroundXp(30, `Superhero Badge: ${activeHero.name}`);
       return true;
     } else {
       playBoingSound();
@@ -797,75 +857,174 @@ export default function KidsChessPlayground() {
 
   return (
     <div className="space-y-6">
-      {/* Header Bar with Audio Control */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-2xl">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">🎮</span>
-            <h1 className="text-xl font-extrabold text-white">Kids Chess Playground & Hero Academy</h1>
-            <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/30">
-              4 Chapters • 5 Levels Each
-            </span>
+      {/* Top Breadcrumb & Live Account XP Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1">
+        <Link
+          href="/dashboard/student"
+          className="inline-flex items-center gap-1.5 text-xs font-black text-amber-400 hover:text-amber-300 transition-colors"
+        >
+          <span>←</span>
+          <span>Back to Student Dashboard</span>
+        </Link>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="px-3.5 py-1.5 rounded-2xl bg-amber-500/20 border border-amber-400/40 text-amber-300 font-mono text-xs font-black flex items-center gap-1.5 shadow-[0_0_15px_rgba(245,158,11,0.25)]">
+            <span>⚡</span>
+            <span>{currentXp} XP in Live Account</span>
+            {isAwardingXp && <span className="text-[10px] text-amber-200 animate-pulse">(Saving...)</span>}
           </div>
-          <p className="text-xs text-slate-400 max-w-xl">
-            Learn piece powers and official rules through 5 interactive types per chapter!
-          </p>
+          <Link
+            href="/dashboard/student#pet-gear"
+            className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-400 via-yellow-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 font-black text-xs shadow-gold transition-all flex items-center gap-1.5 active:scale-95"
+          >
+            <span>🎩</span>
+            <span>Gear & Hats Shop</span>
+            <span className="text-sm">➔</span>
+          </Link>
+        </div>
+      </div>
+
+      {/* Floating Victory XP Toast */}
+      {floatingReward && (
+        <div className="fixed top-6 right-6 z-50 p-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-amber-500 text-white shadow-2xl border-2 border-amber-300 flex items-center gap-3 animate-bounce max-w-sm">
+          <div className="text-3xl">🎉</div>
+          <div>
+            <div className="font-black text-sm text-yellow-200">+{floatingReward.xp} Real XP Earned!</div>
+            <div className="text-xs text-white/90 truncate">{floatingReward.text}</div>
+            <div className="text-[10px] text-emerald-200 font-semibold">Credited live to your profile in database!</div>
+          </div>
+        </div>
+      )}
+
+      {/* Hero Arcade Banner */}
+      <div className="bg-gradient-to-r from-slate-950 via-indigo-950 to-slate-950 border-2 border-slate-800 rounded-3xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-5 shadow-2xl relative overflow-hidden">
+        <div className="absolute -top-12 -right-12 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 flex items-center gap-4">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500/30 to-purple-500/30 border-2 border-amber-400/60 flex items-center justify-center text-3xl shadow-[0_0_20px_rgba(245,158,11,0.35)] flex-shrink-0 animate-pulse">
+            🎮
+          </div>
+          <div className="space-y-1 text-left">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-xl font-black text-white tracking-wide">Kids Chess Playground & Hero Academy</h1>
+              <span className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 text-[10px] font-black uppercase tracking-wider shadow">
+                ★ 4 Chapters
+              </span>
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-black border border-emerald-500/30">
+                20 Interactive Levels
+              </span>
+            </div>
+            <p className="text-xs text-slate-300 max-w-xl font-medium">
+              Hello <strong className="text-amber-300">{studentName}</strong>! Master Knight moves, Pawn promotions, and King castling rules to earn real XP for your Companion Hats & Gear!
+            </p>
+          </div>
         </div>
 
         <button
           type="button"
           onClick={handleToggleSound}
-          className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-2 ${
+          className={`relative z-10 px-4 py-2.5 rounded-2xl text-xs font-black border transition-all flex items-center gap-2 whitespace-nowrap shadow-lg ${
             soundMuted
-              ? 'bg-rose-500/10 border-rose-500/30 text-rose-400 hover:bg-rose-500/20'
-              : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
+              ? 'bg-rose-500/15 border-rose-500/40 text-rose-300 hover:bg-rose-500/25'
+              : 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25 shadow-[0_0_15px_rgba(16,185,129,0.2)]'
           }`}
         >
-          <span>{soundMuted ? '🔇 Voice & Sounds Muted' : '🔊 Voice Cheering ON'}</span>
+          <span>{soundMuted ? '🔇 Voice & Sounds Muted' : '🔊 Cheering Voice ON'}</span>
         </button>
       </div>
 
-      {/* Main Chapter Navigation Tabs */}
-      <div className="flex border-b border-slate-800 gap-2 text-xs overflow-x-auto pb-1">
+      {/* Main Chapter Navigation Cards (4 Distinct Themes) */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <button
+          type="button"
           onClick={() => setActiveMode('maze')}
-          className={`px-4 py-2.5 font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
+          className={`p-3.5 rounded-2xl border text-left transition-all flex items-center gap-3 relative overflow-hidden ${
             activeMode === 'maze'
-              ? 'border-amber-500 text-amber-400'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
+              ? 'bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 text-slate-950 border-amber-300 shadow-[0_0_25px_rgba(245,158,11,0.45)] scale-[1.02]'
+              : 'bg-slate-900/90 border-slate-800 text-slate-300 hover:border-amber-500/40 hover:bg-slate-900'
           }`}
         >
-          <span>⭐ Chapter 1: Knight’s Star Maze (5 Types)</span>
+          <span className="text-2xl">⭐</span>
+          <div className="truncate">
+            <div className={`text-xs font-black tracking-wide ${activeMode === 'maze' ? 'text-slate-950' : 'text-amber-400'}`}>
+              Chapter 1
+            </div>
+            <div className={`text-xs font-extrabold truncate ${activeMode === 'maze' ? 'text-slate-900' : 'text-white'}`}>
+              Knight’s Star Maze
+            </div>
+            <div className={`text-[10px] ${activeMode === 'maze' ? 'text-slate-800 font-bold' : 'text-slate-400'}`}>
+              5 Star Challenges
+            </div>
+          </div>
         </button>
+
         <button
+          type="button"
           onClick={() => setActiveMode('sprint')}
-          className={`px-4 py-2.5 font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
+          className={`p-3.5 rounded-2xl border text-left transition-all flex items-center gap-3 relative overflow-hidden ${
             activeMode === 'sprint'
-              ? 'border-emerald-500 text-emerald-400'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
+              ? 'bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500 text-slate-950 border-emerald-300 shadow-[0_0_25px_rgba(16,185,129,0.45)] scale-[1.02]'
+              : 'bg-slate-900/90 border-slate-800 text-slate-300 hover:border-emerald-500/40 hover:bg-slate-900'
           }`}
         >
-          <span>🏃 Chapter 2: Pawn Sprint (5 Types)</span>
+          <span className="text-2xl">🏃</span>
+          <div className="truncate">
+            <div className={`text-xs font-black tracking-wide ${activeMode === 'sprint' ? 'text-slate-950' : 'text-emerald-400'}`}>
+              Chapter 2
+            </div>
+            <div className={`text-xs font-extrabold truncate ${activeMode === 'sprint' ? 'text-slate-900' : 'text-white'}`}>
+              Pawn Sprint
+            </div>
+            <div className={`text-[10px] ${activeMode === 'sprint' ? 'text-slate-800 font-bold' : 'text-slate-400'}`}>
+              5 Promotion Races
+            </div>
+          </div>
         </button>
+
         <button
+          type="button"
           onClick={() => setActiveMode('escape')}
-          className={`px-4 py-2.5 font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
+          className={`p-3.5 rounded-2xl border text-left transition-all flex items-center gap-3 relative overflow-hidden ${
             activeMode === 'escape'
-              ? 'border-blue-500 text-blue-400'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
+              ? 'bg-gradient-to-r from-blue-600 via-indigo-500 to-blue-500 text-white border-blue-300 shadow-[0_0_25px_rgba(59,130,246,0.45)] scale-[1.02]'
+              : 'bg-slate-900/90 border-slate-800 text-slate-300 hover:border-blue-500/40 hover:bg-slate-900'
           }`}
         >
-          <span>🏰 Chapter 3: King’s Castling Rules (5 Types)</span>
+          <span className="text-2xl">🏰</span>
+          <div className="truncate">
+            <div className={`text-xs font-black tracking-wide ${activeMode === 'escape' ? 'text-white' : 'text-blue-400'}`}>
+              Chapter 3
+            </div>
+            <div className={`text-xs font-extrabold truncate ${activeMode === 'escape' ? 'text-blue-50' : 'text-white'}`}>
+              King’s Castle Escape
+            </div>
+            <div className={`text-[10px] ${activeMode === 'escape' ? 'text-blue-200 font-bold' : 'text-slate-400'}`}>
+              5 Official Rules
+            </div>
+          </div>
         </button>
+
         <button
+          type="button"
           onClick={() => setActiveMode('heroes')}
-          className={`px-4 py-2.5 font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
+          className={`p-3.5 rounded-2xl border text-left transition-all flex items-center gap-3 relative overflow-hidden ${
             activeMode === 'heroes'
-              ? 'border-rose-500 text-rose-400'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
+              ? 'bg-gradient-to-r from-purple-600 via-fuchsia-500 to-rose-500 text-white border-rose-300 shadow-[0_0_25px_rgba(168,85,247,0.45)] scale-[1.02]'
+              : 'bg-slate-900/90 border-slate-800 text-slate-300 hover:border-purple-500/40 hover:bg-slate-900'
           }`}
         >
-          <span>🦸 Chapter 4: Superhero Quests (5 Heroes)</span>
+          <span className="text-2xl">🦸</span>
+          <div className="truncate">
+            <div className={`text-xs font-black tracking-wide ${activeMode === 'heroes' ? 'text-white' : 'text-rose-400'}`}>
+              Chapter 4
+            </div>
+            <div className={`text-xs font-extrabold truncate ${activeMode === 'heroes' ? 'text-rose-50' : 'text-white'}`}>
+              Superhero Quests
+            </div>
+            <div className={`text-[10px] ${activeMode === 'heroes' ? 'text-rose-200 font-bold' : 'text-slate-400'}`}>
+              5 Hero Powers
+            </div>
+          </div>
         </button>
       </div>
 
@@ -879,10 +1038,10 @@ export default function KidsChessPlayground() {
                 key={lvl.id}
                 type="button"
                 onClick={() => selectMazeLevel(idx)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
                   mazeLevelIdx === idx
-                    ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-gold'
-                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                    ? 'bg-gradient-to-r from-amber-400 to-yellow-400 text-slate-950 border-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.5)] font-black scale-105'
+                    : 'bg-slate-900/90 border-slate-800 text-slate-300 hover:border-amber-500/40 hover:bg-slate-900'
                 }`}
               >
                 {lvl.title}
@@ -890,9 +1049,9 @@ export default function KidsChessPlayground() {
             ))}
           </div>
 
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+          <div className="bg-gradient-to-br from-amber-950/30 via-slate-950 to-indigo-950/40 border-2 border-amber-500/30 rounded-3xl p-6 shadow-[0_0_35px_rgba(245,158,11,0.12)] grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
             <div className="lg:col-span-6 flex flex-col items-center">
-              <div className="w-full max-w-[360px] aspect-square rounded-2xl overflow-hidden shadow-2xl border-4 border-amber-500/30 bg-slate-950">
+              <div className="w-full max-w-[360px] aspect-square rounded-2xl overflow-hidden shadow-[0_0_30px_rgba(245,158,11,0.25)] border-4 border-amber-400/60 bg-slate-950">
                 <ChessboardComponent
                   position={getMazeBoardFen()}
                   onSquareClick={handleMazeSquareClick}
@@ -900,14 +1059,14 @@ export default function KidsChessPlayground() {
                   isDraggablePiece={({ piece }: { piece: string }) => piece === 'wN'}
                   arePiecesDraggable={true}
                   customSquareStyles={getMazeCustomSquareStyles()}
-                  customDarkSquareStyle={{ backgroundColor: '#334155' }}
-                  customLightSquareStyle={{ backgroundColor: '#94a3b8' }}
+                  customDarkSquareStyle={{ backgroundColor: '#1e293b' }}
+                  customLightSquareStyle={{ backgroundColor: '#cbd5e1' }}
                 />
               </div>
-              <div className="flex items-center gap-4 mt-3 text-xs text-slate-400">
-                <span className="flex items-center gap-1.5"><span className="text-amber-400">⭐</span> Stars: {mazeStars.length} left</span>
+              <div className="flex items-center gap-4 mt-3 text-xs text-slate-300">
+                <span className="flex items-center gap-1.5"><span className="text-amber-400">⭐</span> Stars Remaining: <strong className="text-amber-300 font-mono">{mazeStars.length}</strong></span>
                 {activeMazeLevel.traps.length > 0 && (
-                  <span className="flex items-center gap-1.5"><span className="text-rose-400">💥</span> Red Traps: {activeMazeLevel.traps.length}</span>
+                  <span className="flex items-center gap-1.5"><span className="text-rose-400">💥</span> Red Traps: <strong className="text-rose-300 font-mono">{activeMazeLevel.traps.length}</strong></span>
                 )}
               </div>
             </div>
@@ -915,19 +1074,19 @@ export default function KidsChessPlayground() {
             <div className="lg:col-span-6 space-y-4">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-lg font-bold text-white">{activeMazeLevel.title}</h2>
-                  <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold">
+                  <h2 className="text-lg font-black text-white">{activeMazeLevel.title}</h2>
+                  <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-black border border-amber-500/40">
                     {activeMazeLevel.ruleTag}
                   </span>
                 </div>
-                <p className="text-xs text-slate-400 leading-relaxed">
+                <p className="text-xs text-slate-300 leading-relaxed">
                   {activeMazeLevel.description}
                 </p>
               </div>
 
               {/* Target Stars Checklist */}
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs text-slate-500 font-bold">Stars:</span>
+                <span className="text-xs text-slate-400 font-bold">Stars:</span>
                 {activeMazeLevel.stars.map((sq) => {
                   const collected = !mazeStars.includes(sq);
                   return (
@@ -947,32 +1106,43 @@ export default function KidsChessPlayground() {
               </div>
 
               <div className="grid grid-cols-3 gap-3">
-                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-center">
-                  <div className="text-[10px] text-slate-500 font-bold uppercase">Stars Left</div>
+                <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl text-center">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase">Stars Left</div>
                   <div className="text-xl font-extrabold text-amber-400 mt-1">{mazeStars.length} / {activeMazeLevel.stars.length}</div>
                 </div>
-                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-center">
-                  <div className="text-[10px] text-slate-500 font-bold uppercase">Moves Taken</div>
+                <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl text-center">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase">Moves Taken</div>
                   <div className="text-xl font-extrabold text-white font-mono mt-1">{mazeMovesCount}</div>
                 </div>
-                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-center">
-                  <div className="text-[10px] text-slate-500 font-bold uppercase">Reward</div>
+                <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl text-center">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase">Reward</div>
                   <div className="text-xl font-extrabold text-emerald-400 mt-1">+25 XP</div>
                 </div>
               </div>
 
               {mazeCompleted ? (
-                <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs space-y-2 animate-fadeIn">
-                  <div className="font-bold text-sm">🎉 Level Complete!</div>
-                  <p>You completed {activeMazeLevel.title} in {mazeMovesCount} moves! +25 XP awarded.</p>
-                  <div className="flex gap-2 pt-1">
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/20 via-slate-900 to-amber-500/20 border-2 border-emerald-500/40 text-emerald-300 text-xs space-y-3 animate-fadeIn shadow-2xl">
+                  <div className="flex items-center justify-between">
+                    <div className="font-extrabold text-sm flex items-center gap-1.5 text-white">
+                      <span>🎉</span>
+                      <span>Level Mastered!</span>
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono font-black border border-emerald-500/30">
+                      +25 Real XP Saved
+                    </span>
+                  </div>
+                  <p className="text-slate-200">
+                    You conquered {activeMazeLevel.title} in {mazeMovesCount} moves! XP has been credited to your live profile.
+                  </p>
+                  <div className="flex gap-2 pt-1 flex-wrap">
                     {mazeLevelIdx < MAZE_LEVELS.length - 1 && (
                       <button
                         type="button"
                         onClick={() => selectMazeLevel(mazeLevelIdx + 1)}
-                        className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl transition-all shadow-gold"
+                        className="px-4 py-2 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black rounded-xl transition-all shadow-gold flex items-center gap-1"
                       >
-                        Next Level ➡️
+                        <span>Next Level</span>
+                        <span>➡️</span>
                       </button>
                     )}
                     <button
@@ -982,6 +1152,14 @@ export default function KidsChessPlayground() {
                     >
                       Play Again 🔄
                     </button>
+                    <Link
+                      href="/dashboard/student#pet-gear"
+                      className="px-4 py-2 bg-indigo-600/80 hover:bg-indigo-500 text-white font-black rounded-xl transition-all border border-indigo-400/30 flex items-center gap-1.5 shadow"
+                    >
+                      <span>🎩</span>
+                      <span>Spend in Gear Shop</span>
+                      <span>➔</span>
+                    </Link>
                   </div>
                 </div>
               ) : (
@@ -1008,10 +1186,10 @@ export default function KidsChessPlayground() {
                 key={lvl.id}
                 type="button"
                 onClick={() => selectSprintLevel(idx)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
                   sprintLevelIdx === idx
-                    ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-gold'
-                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                    ? 'bg-gradient-to-r from-emerald-400 to-teal-400 text-slate-950 border-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.5)] font-black scale-105'
+                    : 'bg-slate-900/90 border-slate-800 text-slate-300 hover:border-emerald-500/40 hover:bg-slate-900'
                 }`}
               >
                 {lvl.title}
@@ -1019,9 +1197,9 @@ export default function KidsChessPlayground() {
             ))}
           </div>
 
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+          <div className="bg-gradient-to-br from-emerald-950/30 via-slate-950 to-teal-950/40 border-2 border-emerald-500/30 rounded-3xl p-6 shadow-[0_0_35px_rgba(16,185,129,0.12)] grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
             <div className="lg:col-span-6 flex flex-col items-center">
-              <div className="w-full max-w-[360px] aspect-square rounded-2xl overflow-hidden shadow-2xl border-4 border-emerald-500/30 bg-slate-950">
+              <div className="w-full max-w-[360px] aspect-square rounded-2xl overflow-hidden shadow-[0_0_30px_rgba(16,185,129,0.25)] border-4 border-emerald-400/60 bg-slate-950">
                 <ChessboardComponent
                   position={getSprintBoardFen()}
                   onSquareClick={handleSprintSquareClick}
@@ -1029,10 +1207,10 @@ export default function KidsChessPlayground() {
                   isDraggablePiece={({ piece }: { piece: string }) => piece === 'wP'}
                   arePiecesDraggable={true}
                   customDarkSquareStyle={{ backgroundColor: '#1e293b' }}
-                  customLightSquareStyle={{ backgroundColor: '#64748b' }}
+                  customLightSquareStyle={{ backgroundColor: '#cbd5e1' }}
                 />
               </div>
-              <div className="mt-3 text-xs text-slate-400 flex items-center gap-4">
+              <div className="mt-3 text-xs text-slate-300 flex items-center gap-4">
                 <span>White Pawn: <strong className="text-emerald-400 uppercase font-mono">{sprintWhitePawn}</strong></span>
                 <span>Computer Pawn: <strong className="text-rose-400 uppercase font-mono">{sprintBlackPawn}</strong></span>
               </div>
@@ -1041,14 +1219,38 @@ export default function KidsChessPlayground() {
             <div className="lg:col-span-6 space-y-4">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-lg font-bold text-white">{activeSprintLevel.title}</h2>
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+                  <h2 className="text-lg font-black text-white">{activeSprintLevel.title}</h2>
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-black border border-emerald-500/40">
                     {activeSprintLevel.ruleTag}
                   </span>
                 </div>
-                <p className="text-xs text-slate-400 leading-relaxed">
+                <p className="text-xs text-slate-300 leading-relaxed">
                   {activeSprintLevel.description}
                 </p>
+              </div>
+
+              {/* Pawn Sprint Track Distance Gauges */}
+              <div className="space-y-2 p-3 bg-slate-950/80 border border-slate-800 rounded-xl">
+                <div className="flex items-center justify-between text-[11px] font-bold">
+                  <span className="text-emerald-400 flex items-center gap-1"><span>⚪</span> Your Pawn (White)</span>
+                  <span className="font-mono text-white">Rank {sprintWhitePawn[1]} / 8 (Crown Queen)</span>
+                </div>
+                <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300"
+                    style={{ width: `${Math.min(100, Math.max(10, ((parseInt(sprintWhitePawn[1], 10) - 2) / 6) * 100))}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-[11px] font-bold pt-1">
+                  <span className="text-rose-400 flex items-center gap-1"><span>⚫</span> Rival Pawn (Computer)</span>
+                  <span className="font-mono text-slate-400">Rank {sprintBlackPawn[1]} / 1</span>
+                </div>
+                <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-rose-500 to-red-400 transition-all duration-300"
+                    style={{ width: `${Math.min(100, Math.max(10, ((7 - parseInt(sprintBlackPawn[1], 10)) / 6) * 100))}%` }}
+                  />
+                </div>
               </div>
 
               <div className="flex gap-3">
@@ -1056,10 +1258,10 @@ export default function KidsChessPlayground() {
                   type="button"
                   disabled={!!sprintWinner || sprintWhitePawn[1] !== '2'}
                   onClick={() => handlePawnSprintStep(2)}
-                  className="flex-1 p-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs shadow-lg disabled:opacity-40 transition-all text-center"
+                  className="flex-1 p-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black rounded-xl text-xs shadow-lg disabled:opacity-40 transition-all text-center"
                 >
-                  🚀 Double Step (2 Squares)
-                  <span className="block text-[10px] font-normal opacity-80 mt-0.5">Rank 2 Starting Bonus</span>
+                  🚀 Turbo 2-Square Leap
+                  <span className="block text-[10px] font-normal opacity-90 mt-0.5">Rank 2 Starting Rule</span>
                 </button>
                 <button
                   type="button"
@@ -1067,33 +1269,42 @@ export default function KidsChessPlayground() {
                   onClick={() => handlePawnSprintStep(1)}
                   className="flex-1 p-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs border border-slate-700 disabled:opacity-40 transition-all text-center"
                 >
-                  🚶 Single Step (1 Square)
-                  <span className="block text-[10px] font-normal opacity-80 mt-0.5">March / Capture Forward</span>
+                  🚶 1-Square March
+                  <span className="block text-[10px] font-normal opacity-80 mt-0.5">Step / Capture Diagonal</span>
                 </button>
               </div>
 
               {sprintWinner && (
-                <div className={`p-4 rounded-2xl border text-xs space-y-2 animate-fadeIn ${
+                <div className={`p-4 rounded-2xl border-2 text-xs space-y-3 animate-fadeIn shadow-2xl ${
                   sprintWinner === 'white'
-                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                    ? 'bg-gradient-to-r from-emerald-500/20 via-slate-900 to-teal-500/20 border-emerald-500/50 text-emerald-300'
                     : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
                 }`}>
-                  <div className="font-bold text-sm">
-                    {sprintWinner === 'white' ? `👑 Promoted to ${activeSprintLevel.promotionPiece === 'N' ? 'Knight' : 'Queen'}! You Won!` : '🏁 Black Pawn Reached First!'}
+                  <div className="flex items-center justify-between">
+                    <div className="font-black text-sm text-white flex items-center gap-1.5">
+                      <span>{sprintWinner === 'white' ? '👑' : '🏁'}</span>
+                      <span>{sprintWinner === 'white' ? `Promoted to ${activeSprintLevel.promotionPiece === 'N' ? 'Knight' : 'Queen'}! You Won!` : 'Black Pawn Reached First!'}</span>
+                    </div>
+                    {sprintWinner === 'white' && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono font-black border border-emerald-500/30">
+                        +25 Real XP Saved
+                      </span>
+                    )}
                   </div>
-                  <p>
+                  <p className="text-slate-200">
                     {sprintWinner === 'white'
                       ? activeSprintLevel.explanation
-                      : 'The computer reached first. Try starting with the 2-square double step!'}
+                      : 'The computer reached first. Try starting with the 2-square double step to seize the tempo!'}
                   </p>
-                  <div className="flex gap-2 pt-1">
+                  <div className="flex gap-2 pt-1 flex-wrap">
                     {sprintLevelIdx < SPRINT_LEVELS.length - 1 && (
                       <button
                         type="button"
                         onClick={() => selectSprintLevel(sprintLevelIdx + 1)}
-                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition-all shadow-lg"
+                        className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black rounded-xl transition-all shadow-lg flex items-center gap-1"
                       >
-                        Next Level ➡️
+                        <span>Next Level</span>
+                        <span>➡️</span>
                       </button>
                     )}
                     <button
@@ -1103,6 +1314,14 @@ export default function KidsChessPlayground() {
                     >
                       Race Again 🔄
                     </button>
+                    <Link
+                      href="/dashboard/student#pet-gear"
+                      className="px-4 py-2 bg-indigo-600/80 hover:bg-indigo-500 text-white font-black rounded-xl transition-all border border-indigo-400/30 flex items-center gap-1.5 shadow"
+                    >
+                      <span>🎩</span>
+                      <span>Spend in Gear Shop</span>
+                      <span>➔</span>
+                    </Link>
                   </div>
                 </div>
               )}
@@ -1121,10 +1340,10 @@ export default function KidsChessPlayground() {
                 key={lvl.id}
                 type="button"
                 onClick={() => selectCastleLevel(idx)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
                   castleLevelIdx === idx
-                    ? 'bg-blue-500 text-slate-950 border-blue-400 shadow-gold'
-                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-500 text-white border-blue-300 shadow-[0_0_15px_rgba(59,130,246,0.5)] font-black scale-105'
+                    : 'bg-slate-900/90 border-slate-800 text-slate-300 hover:border-blue-500/40 hover:bg-slate-900'
                 }`}
               >
                 {lvl.title}
@@ -1132,9 +1351,9 @@ export default function KidsChessPlayground() {
             ))}
           </div>
 
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+          <div className="bg-gradient-to-br from-blue-950/30 via-slate-950 to-indigo-950/40 border-2 border-blue-500/30 rounded-3xl p-6 shadow-[0_0_35px_rgba(59,130,246,0.12)] grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
             <div className="lg:col-span-6 flex flex-col items-center">
-              <div className="w-full max-w-[360px] aspect-square rounded-2xl overflow-hidden shadow-2xl border-4 border-blue-500/30 bg-slate-950">
+              <div className="w-full max-w-[360px] aspect-square rounded-2xl overflow-hidden shadow-[0_0_30px_rgba(59,130,246,0.25)] border-4 border-blue-400/60 bg-slate-950">
                 <ChessboardComponent
                   position={getCastleBoardFen()}
                   boardOrientation={activeCastleLevel.color}
@@ -1144,46 +1363,55 @@ export default function KidsChessPlayground() {
                   arePiecesDraggable={true}
                   customSquareStyles={getCastleCustomSquareStyles()}
                   customDarkSquareStyle={{ backgroundColor: '#1e293b' }}
-                  customLightSquareStyle={{ backgroundColor: '#475569' }}
+                  customLightSquareStyle={{ backgroundColor: '#cbd5e1' }}
                 />
               </div>
-              <div className="mt-3 text-xs text-slate-400 flex items-center gap-3">
-                <span>Playing as: <strong className="uppercase font-bold text-amber-400">{activeCastleLevel.color}</strong></span>
-                <span>Safe Haven: <strong className="text-blue-400 font-mono uppercase">{activeCastleLevel.targetSquare}</strong></span>
+              <div className="mt-3 text-xs text-slate-300 flex items-center gap-3">
+                <span>Playing as: <strong className="uppercase font-black text-amber-400">{activeCastleLevel.color}</strong></span>
+                <span>Safe Haven: <strong className="text-blue-400 font-mono uppercase font-black">{activeCastleLevel.targetSquare}</strong></span>
               </div>
             </div>
 
             <div className="lg:col-span-6 space-y-4">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-lg font-bold text-white">{activeCastleLevel.title}</h2>
-                  <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 text-[10px] font-bold">
+                  <h2 className="text-lg font-black text-white">{activeCastleLevel.title}</h2>
+                  <span className="px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 text-[10px] font-black border border-blue-500/40">
                     {activeCastleLevel.ruleTag}
                   </span>
                 </div>
-                <p className="text-xs text-slate-400 leading-relaxed">
+                <p className="text-xs text-slate-300 leading-relaxed">
                   {activeCastleLevel.description}
                 </p>
               </div>
 
               {escapeWarning && (
-                <div className="p-3 bg-rose-500/10 border border-rose-500/30 text-rose-400 rounded-xl text-xs font-bold animate-shake">
+                <div className="p-3 bg-rose-500/15 border-2 border-rose-500/40 text-rose-300 rounded-xl text-xs font-bold animate-shake">
                   ⚠️ {escapeWarning}
                 </div>
               )}
 
               {escapeCompleted ? (
-                <div className="p-4 rounded-2xl bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs space-y-2 animate-fadeIn">
-                  <div className="font-bold text-sm">🏰 Castling Mastered!</div>
-                  <p>{activeCastleLevel.explanation}</p>
-                  <div className="flex gap-2 pt-1">
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-500/20 via-slate-900 to-indigo-500/20 border-2 border-blue-500/40 text-blue-300 text-xs space-y-3 animate-fadeIn shadow-2xl">
+                  <div className="flex items-center justify-between">
+                    <div className="font-extrabold text-sm flex items-center gap-1.5 text-white">
+                      <span>🏰</span>
+                      <span>Castling Mastered!</span>
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-mono font-black border border-blue-500/30">
+                      +25 Real XP Saved
+                    </span>
+                  </div>
+                  <p className="text-slate-200">{activeCastleLevel.explanation}</p>
+                  <div className="flex gap-2 pt-1 flex-wrap">
                     {castleLevelIdx < CASTLE_LEVELS.length - 1 && (
                       <button
                         type="button"
                         onClick={() => selectCastleLevel(castleLevelIdx + 1)}
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-all shadow-lg"
+                        className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-500 hover:from-blue-500 hover:to-indigo-400 text-white font-black rounded-xl transition-all shadow-lg flex items-center gap-1"
                       >
-                        Next Rule Level ➡️
+                        <span>Next Rule Level</span>
+                        <span>➡️</span>
                       </button>
                     )}
                     <button
@@ -1193,6 +1421,14 @@ export default function KidsChessPlayground() {
                     >
                       Play Again 🔄
                     </button>
+                    <Link
+                      href="/dashboard/student#pet-gear"
+                      className="px-4 py-2 bg-indigo-600/80 hover:bg-indigo-500 text-white font-black rounded-xl transition-all border border-indigo-400/30 flex items-center gap-1.5 shadow"
+                    >
+                      <span>🎩</span>
+                      <span>Spend in Gear Shop</span>
+                      <span>➔</span>
+                    </Link>
                   </div>
                 </div>
               ) : (
@@ -1200,11 +1436,12 @@ export default function KidsChessPlayground() {
                   <button
                     type="button"
                     onClick={() => handleCastleMove(activeCastleLevel.targetSquare)}
-                    className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl shadow-lg transition-all"
+                    className="w-full py-3.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-black rounded-xl shadow-lg transition-all flex items-center justify-center gap-1.5"
                   >
-                    🏰 Castle King to {activeCastleLevel.targetSquare.toUpperCase()}!
+                    <span>🏰</span>
+                    <span>Castle King to {activeCastleLevel.targetSquare.toUpperCase()}! (O-O / O-O-O)</span>
                   </button>
-                  <p className="text-[11px] text-slate-500 text-center">
+                  <p className="text-[11px] text-slate-400 text-center font-medium">
                     (You can also drag the King directly to {activeCastleLevel.targetSquare.toUpperCase()})
                   </p>
                 </div>
@@ -1227,17 +1464,19 @@ export default function KidsChessPlayground() {
                   key={hero.id}
                   type="button"
                   onClick={() => selectHero(hero)}
-                  className={`p-4 rounded-2xl border text-left transition-all relative ${
+                  className={`p-4 rounded-2xl border text-left transition-all relative overflow-hidden ${
                     isSelected
-                      ? 'bg-slate-800 border-amber-400 shadow-xl'
-                      : 'bg-slate-900/70 border-slate-800 hover:border-slate-700'
+                      ? 'bg-slate-800 border-2 border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.35)] scale-105'
+                      : 'bg-slate-900/80 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
                   }`}
                 >
                   <div className="text-3xl mb-1">{hero.emoji}</div>
-                  <div className="text-xs font-bold text-white truncate">{hero.name}</div>
-                  <div className="text-[10px] text-slate-400 truncate">{hero.title}</div>
+                  <div className="text-xs font-black text-white truncate">{hero.name}</div>
+                  <div className="text-[10px] text-slate-300 truncate font-semibold">{hero.title}</div>
                   {isUnlocked && (
-                    <span className="absolute top-2 right-2 text-xs">⭐</span>
+                    <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-md bg-amber-500/20 border border-amber-400/40 text-[9px] font-black text-amber-300">
+                      ⭐ UNLOCKED
+                    </span>
                   )}
                 </button>
               );
@@ -1245,9 +1484,9 @@ export default function KidsChessPlayground() {
           </div>
 
           {/* Active Hero Challenge Board */}
-          <div className={`p-6 rounded-3xl border bg-gradient-to-br from-slate-900 to-slate-950 ${activeHero.colorClass} shadow-xl grid grid-cols-1 lg:grid-cols-12 gap-6 items-center`}>
+          <div className={`p-6 rounded-3xl border-2 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 ${activeHero.colorClass} shadow-2xl grid grid-cols-1 lg:grid-cols-12 gap-6 items-center`}>
             <div className="lg:col-span-6 flex flex-col items-center">
-              <div className="w-full max-w-[340px] aspect-square rounded-2xl overflow-hidden shadow-2xl border-4 border-slate-700 bg-slate-950">
+              <div className="w-full max-w-[340px] aspect-square rounded-2xl overflow-hidden shadow-[0_0_30px_rgba(168,85,247,0.2)] border-4 border-slate-700 bg-slate-950">
                 <ChessboardComponent
                   position={heroBoardFen}
                   onPieceDrop={handleHeroPieceDrop}
@@ -1255,12 +1494,12 @@ export default function KidsChessPlayground() {
                   isDraggablePiece={({ piece }: { piece: string }) => piece.startsWith('w')}
                   arePiecesDraggable={true}
                   customSquareStyles={getHeroCustomSquareStyles()}
-                  customDarkSquareStyle={{ backgroundColor: '#334155' }}
+                  customDarkSquareStyle={{ backgroundColor: '#1e293b' }}
                   customLightSquareStyle={{ backgroundColor: '#cbd5e1' }}
                 />
               </div>
               <div className="mt-3 text-xs text-slate-300">
-                Target: Drag or click {activeHero.name} to <strong className="text-amber-400 uppercase font-mono">{activeHero.targetSquare}</strong>!
+                Target: Drag or click {activeHero.name} to <strong className="text-amber-400 uppercase font-mono font-black">{activeHero.targetSquare}</strong>!
               </div>
             </div>
 
@@ -1269,29 +1508,49 @@ export default function KidsChessPlayground() {
                 <div className="flex items-center gap-2">
                   <span className="text-3xl">{activeHero.emoji}</span>
                   <div>
-                    <h3 className="font-extrabold text-base text-white">{activeHero.name}</h3>
+                    <h3 className="font-black text-base text-white">{activeHero.name}</h3>
                     <p className="text-xs text-amber-300 font-bold">{activeHero.title}</p>
                   </div>
                 </div>
                 <p className="text-xs text-slate-300 italic">&ldquo;{activeHero.motto}&rdquo;</p>
               </div>
 
-              <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1">
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Superpower</div>
-                <p className="text-xs text-slate-200">{activeHero.power}</p>
+              <div className="p-3.5 bg-slate-950/90 border border-slate-800 rounded-2xl space-y-1">
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Superpower</div>
+                <p className="text-xs text-slate-200 leading-relaxed">{activeHero.power}</p>
               </div>
 
               {heroCompleted ? (
-                <div className="p-4 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs space-y-2 animate-fadeIn">
-                  <div className="font-bold text-sm">🎉 {activeHero.name} Badge Earned!</div>
-                  <p>You proved mastery of {activeHero.name}&apos;s movement superpower! +25 XP awarded.</p>
-                  <button
-                    type="button"
-                    onClick={() => selectHero(activeHero)}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition-all"
-                  >
-                    Play Drill Again 🔄
-                  </button>
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/20 via-slate-900 to-amber-500/20 border-2 border-emerald-500/40 text-emerald-300 text-xs space-y-3 animate-fadeIn shadow-2xl">
+                  <div className="flex items-center justify-between">
+                    <div className="font-extrabold text-sm flex items-center gap-1.5 text-white">
+                      <span>🎉</span>
+                      <span>{activeHero.name} Badge Earned!</span>
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono font-black border border-emerald-500/30">
+                      +30 Real XP Saved
+                    </span>
+                  </div>
+                  <p className="text-slate-200">
+                    You proved mastery of {activeHero.name}&apos;s movement superpower! Badge and XP are saved to your account.
+                  </p>
+                  <div className="flex gap-2 pt-1 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => selectHero(activeHero)}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition-all shadow"
+                    >
+                      Play Drill Again 🔄
+                    </button>
+                    <Link
+                      href="/dashboard/student#pet-gear"
+                      className="px-4 py-2 bg-indigo-600/80 hover:bg-indigo-500 text-white font-black rounded-xl transition-all border border-indigo-400/30 flex items-center gap-1.5 shadow"
+                    >
+                      <span>🎩</span>
+                      <span>Spend in Gear Shop</span>
+                      <span>➔</span>
+                    </Link>
+                  </div>
                 </div>
               ) : (
                 <p className="text-xs text-slate-400">

@@ -460,6 +460,9 @@ export async function getStudentDashboardStats(): Promise<Result<{
   shields: number;
   todaySolved: boolean;
   solvedDates: string[];
+  equippedPet: string;
+  equippedGear: string;
+  unlockedGear: string[];
   puzzleStats: {
     totalSolved: number;
     solveRate: number;
@@ -589,6 +592,9 @@ export async function getStudentDashboardStats(): Promise<Result<{
         shields: streakData.shields ?? 0,
         todaySolved: streakData.todaySolved ?? false,
         solvedDates: streakData.solvedDates ?? [],
+        equippedPet: dbStats.equippedPet || 'dragon',
+        equippedGear: dbStats.equippedGear || 'none',
+        unlockedGear: dbStats.unlockedGear || ['none'],
         lichess,
         nextClass: nextClassStr,
         puzzleStats: {

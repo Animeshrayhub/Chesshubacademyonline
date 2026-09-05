@@ -1,10 +1,19 @@
-interface StudentStats {
+export interface StudentStats {
   xp: number;
   shields: number;
+  equippedPet?: string;
+  equippedGear?: string;
+  unlockedGear?: string[];
 }
 
 export function parseStudentStats(notes: string | null): StudentStats {
-  const defaultStats: StudentStats = { xp: 0, shields: 0 };
+  const defaultStats: StudentStats = {
+    xp: 0,
+    shields: 0,
+    equippedPet: 'dragon',
+    equippedGear: 'none',
+    unlockedGear: ['none'],
+  };
   if (!notes) return defaultStats;
 
   const parts = notes.split('=== CHESSHUB_STATS ===');
@@ -15,6 +24,9 @@ export function parseStudentStats(notes: string | null): StudentStats {
     return {
       xp: typeof parsed.xp === 'number' ? parsed.xp : 0,
       shields: typeof parsed.shields === 'number' ? parsed.shields : 0,
+      equippedPet: typeof parsed.equippedPet === 'string' ? parsed.equippedPet : 'dragon',
+      equippedGear: typeof parsed.equippedGear === 'string' ? parsed.equippedGear : 'none',
+      unlockedGear: Array.isArray(parsed.unlockedGear) ? parsed.unlockedGear : ['none'],
     };
   } catch {
     return defaultStats;

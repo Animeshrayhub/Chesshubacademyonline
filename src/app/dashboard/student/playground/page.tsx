@@ -1,6 +1,7 @@
 import React from 'react';
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/supabase/auth';
+import { getStudentDashboardStats } from '@/lib/students';
 import KidsChessPlayground from '@/features/student/KidsChessPlayground';
 
 export const dynamic = 'force-dynamic';
@@ -14,9 +15,15 @@ export default async function KidsPlaygroundPage() {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
 
+  const statsRes = await getStudentDashboardStats();
+  const xp = statsRes.success && statsRes.data?.xp != null ? statsRes.data.xp : 0;
+
   return (
     <div className="space-y-6">
-      <KidsChessPlayground />
+      <KidsChessPlayground
+        initialXp={xp}
+        studentName={user.firstName || 'Champion'}
+      />
     </div>
   );
 }
