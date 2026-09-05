@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import type { DbOpening, DbStudentOpeningProgress, DbStudentChapterProgress, DbStudentOpeningScores } from '@/types/opening-teacher';
+import InteractiveOpeningBuilderModal from '@/features/admin/InteractiveOpeningBuilderModal';
 
 interface StudentData {
   id: string;
@@ -40,6 +41,7 @@ export default function CoachOpeningsClient({ initialOpenings, isAdminView = fal
   // Modals
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showOpeningAssignModal, setShowOpeningAssignModal] = useState(false);
+  const [showOpeningBuilderModal, setShowOpeningBuilderModal] = useState(false);
   const [selectedOpeningToAssign, setSelectedOpeningToAssign] = useState<string>('');
 
   useEffect(() => {
@@ -262,6 +264,15 @@ export default function CoachOpeningsClient({ initialOpenings, isAdminView = fal
                 </select>
               </div>
             )}
+
+            <button
+              type="button"
+              onClick={() => setShowOpeningBuilderModal(true)}
+              className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-lg transition-all flex items-center gap-2"
+            >
+              <span>♟️+</span>
+              <span>Record Opening Kit (Auto-ECO)</span>
+            </button>
 
             <button
               type="button"
@@ -592,6 +603,13 @@ export default function CoachOpeningsClient({ initialOpenings, isAdminView = fal
           </div>
         </div>
       )}
+
+      {/* ── MODAL: INTERACTIVE OPENING RECORDER & AUTO-ECO BUILDER ── */}
+      <InteractiveOpeningBuilderModal
+        isOpen={showOpeningBuilderModal}
+        onClose={() => setShowOpeningBuilderModal(false)}
+        onCreated={() => fetchData()}
+      />
 
     </div>
   );

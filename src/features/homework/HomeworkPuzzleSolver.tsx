@@ -85,6 +85,7 @@ export default function HomeworkPuzzleSolver({
   const [currentHint, setCurrentHint] = useState<string | null>(null);
   const [hintLevel, setHintLevel] = useState<1 | 2 | 3>(1);
   const [elapsedSeconds, setElapsedSeconds] = useState(attempt?.time_seconds ?? 0);
+  const [currentMoveIndex, setCurrentMoveIndex] = useState(0);
   const [rightSquare, setRightSquare] = useState<string | null>(null);
   const [wrongSquare, setWrongSquare]  = useState<string | null>(null);
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
@@ -99,6 +100,7 @@ export default function HomeworkPuzzleSolver({
   useEffect(() => {
     try { gameRef.current = new Chess(puzzle.fen); } catch {}
     setFen(puzzle.fen);
+    setCurrentMoveIndex(0);
     setAttemptsUsed(attempt?.attempts_used ?? 0);
     setHintsUsed(attempt?.hints_used ?? 0);
     setScore(attempt?.score ?? 0);
@@ -190,7 +192,13 @@ export default function HomeworkPuzzleSolver({
       const res = await fetch('/api/homework/move', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ assignmentId, puzzleId: puzzle.id, uciMove, timeSeconds: elapsedSeconds }),
+        body: JSON.stringify({
+          assignmentId,
+          puzzleId: puzzle.id,
+          uciMove,
+          timeSeconds: elapsedSeconds,
+          moveIndex: currentMoveIndex,
+        }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -201,25 +209,49 @@ export default function HomeworkPuzzleSolver({
       const result: PuzzleMoveResult = json.result;
 
       if (result.correct) {
-        // Apply move on board
+        // Apply student's move on board
         try {
           gameRef.current.move({ from: sourceSquare as any, to: targetSquare as any, promotion: 'q' });
-          setFen(gameRef.current.fen());
         } catch {}
         flashSquare(targetSquare, 'right');
-        setScore(result.scoreEarned);
-        setAttemptsUsed((a) => a + 1);
-        setStatus('solved');
-        setMessage({ text: result.message, type: 'success' });
-        if (timerRef.current) clearInterval(timerRef.current);
+
+        if (result.isComplete) {
+          setFen(gameRef.current.fen());
+          setScore(result.scoreEarned);
+          setAttemptsUsed((a) => a + 1);
+          setStatus('solved');
+          setMessage({ text: result.message, type: 'success' });
+          if (timerRef.current) clearInterval(timerRef.current);
+        } else if (result.replyMove) {
+          // Multi-move combination: computer replies with zero delay
+          const replyFrom = result.replyMove.substring(0, 2);
+          const replyTo = result.replyMove.substring(2, 4);
+          const replyProm = result.replyMove.length > 4 ? result.replyMove[4] : undefined;
+          try {
+            gameRef.current.move({ from: replyFrom as any, to: replyTo as any, promotion: replyProm as any });
+          } catch {}
+          setFen(gameRef.current.fen());
+          setCurrentMoveIndex((i) => i + 2);
+          setStatus('idle');
+          setMessage({ text: result.message, type: 'info' });
+        }
       } else {
         flashSquare(targetSquare, 'wrong');
+        // Reset board FEN so wrong piece snaps back
+        setFen(gameRef.current.fen());
         const newAttempts = attemptsUsed + 1;
         setAttemptsUsed(newAttempts);
+
         if (result.isComplete) {
-          setStatus('failed');
-          setMessage({ text: result.message, type: 'error' });
           if (timerRef.current) clearInterval(timerRef.current);
+          if (result.isPartialCredit) {
+            setScore(result.scoreEarned);
+            setStatus('solved');
+            setMessage({ text: result.message, type: 'warn' });
+          } else {
+            setStatus('failed');
+            setMessage({ text: result.message, type: 'error' });
+          }
         } else {
           setStatus('idle');
           setMessage({ text: result.message, type: result.attemptsLeft === 1 ? 'warn' : 'error' });
@@ -234,7 +266,7 @@ export default function HomeworkPuzzleSolver({
     } finally {
       setIsSubmitting(false);
     }
-  }, [status, isSubmitting, isPreviouslyDone, assignmentId, puzzle.id, attemptsUsed, elapsedSeconds, flashSquare]);
+  }, [status, isSubmitting, isPreviouslyDone, assignmentId, puzzle.id, attemptsUsed, elapsedSeconds, currentMoveIndex, flashSquare]);
 
   // Request AI hint
   const handleHint = useCallback(async () => {

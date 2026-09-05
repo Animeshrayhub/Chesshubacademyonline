@@ -76,7 +76,7 @@ export default async function StudentHomeworkSolvePage({ params }: PageProps) {
       <div className="space-y-6">
         <PageHeader
           title={chapterTitle}
-          subtitle={`Solve interactive tactics puzzles for ${workbookTitle}. Complete all puzzles with ≥90% accuracy to unlock the next chapter.`}
+          subtitle={`Solve interactive tactics puzzles for ${workbookTitle}. Complete all puzzles with ≥70% accuracy to unlock the next chapter.`}
         />
 
         <HomeworkPuzzleSession

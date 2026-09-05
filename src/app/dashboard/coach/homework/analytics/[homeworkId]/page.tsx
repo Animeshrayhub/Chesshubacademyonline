@@ -54,10 +54,10 @@ export default async function CoachHomeworkAnalyticsPage({ params }: PageProps) 
 
           <div className="bg-white p-5 rounded-2xl border border-border shadow-card">
             <div className="text-xs font-bold text-text-secondary uppercase">Average Accuracy</div>
-            <div className={`text-2xl font-extrabold mt-1 ${data.avgAccuracy >= 90 ? 'text-emerald-600' : 'text-amber-600'}`}>
+            <div className={`text-2xl font-extrabold mt-1 ${data.avgAccuracy >= 70 ? 'text-emerald-600' : 'text-amber-600'}`}>
               {data.avgAccuracy}%
             </div>
-            <div className="text-[11px] text-text-secondary mt-1">Goal: ≥90% for auto-unlock</div>
+            <div className="text-[11px] text-text-secondary mt-1">Goal: ≥70% for auto-unlock</div>
           </div>
 
           <div className="bg-white p-5 rounded-2xl border border-border shadow-card">

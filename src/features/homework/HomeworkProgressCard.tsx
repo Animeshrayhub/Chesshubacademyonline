@@ -104,7 +104,7 @@ export default function HomeworkProgressCard({
           <span>Next Chapter Access</span>
         </div>
         <span className="font-bold">
-          {isPassed ? 'Unlocked (≥90%)' : `Requires 90% (Current: ${accuracy}%)`}
+          {isPassed ? `Unlocked (≥${UNLOCK_THRESHOLD}%)` : `Requires ${UNLOCK_THRESHOLD}% (Current: ${accuracy}%)`}
         </span>
       </div>
     </div>

@@ -171,9 +171,13 @@ export interface PuzzleSessionState {
 export interface PuzzleMoveResult {
   correct:          boolean;
   nextExpected?:    string;   // next move in solution (UCI) for multi-move sequences
+  replyMove?:       string;   // opponent's automatic reply move in the combination
+  stepIndex?:       number;   // current move step (1-based)
+  totalSteps?:      number;   // total player moves required
   isComplete:       boolean;  // true when full solution chain is done
   attemptsLeft:     number;
   scoreEarned:      number;
+  isPartialCredit?: boolean;
   message:          string;
 }
 
@@ -245,6 +249,7 @@ export interface SubmitMoveInput {
   puzzleId:     string;
   uciMove:      string;
   timeSeconds:  number;
+  moveIndex?:   number;
 }
 
 export interface RequestHintInput {
@@ -282,7 +287,7 @@ export const HINT_DEDUCTIONS = {
 
 export const MAX_ATTEMPTS = 3;
 
-export const UNLOCK_THRESHOLD = 90; // percent accuracy
+export const UNLOCK_THRESHOLD = 70; // percent accuracy (Standard academy passing threshold)
 
 // ── Theme Display Config ──────────────────────────────────────
 export const THEME_CONFIG: Record<string, { label: string; emoji: string; color: string }> = {

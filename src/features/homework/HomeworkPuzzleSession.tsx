@@ -182,7 +182,7 @@ export default function HomeworkPuzzleSession({
           <div className="grid grid-cols-3 gap-4 my-6 text-left">
             <div className="p-4 bg-slate-50 border border-border rounded-xl">
               <div className="text-[11px] font-bold text-text-secondary uppercase">Accuracy</div>
-              <div className={`text-xl font-extrabold mt-1 ${accuracy >= 90 ? 'text-emerald-600' : 'text-amber-600'}`}>
+              <div className={`text-xl font-extrabold mt-1 ${accuracy >= UNLOCK_THRESHOLD ? 'text-emerald-600' : 'text-amber-600'}`}>
                 {accuracy}%
               </div>
               <div className="text-[10px] text-text-secondary mt-0.5">{totalSolved} of {totalPuzzles} solved</div>
@@ -197,7 +197,7 @@ export default function HomeworkPuzzleSession({
             <div className="p-4 bg-slate-50 border border-border rounded-xl">
               <div className="text-[11px] font-bold text-text-secondary uppercase">Next Chapter</div>
               <div className={`text-[12px] font-bold mt-1.5 flex items-center gap-1 ${isPassed ? 'text-emerald-600' : 'text-slate-400'}`}>
-                {isPassed ? '🔓 UNLOCKED' : '🔒 Locked (Need 90%)'}
+                {isPassed ? '🔓 UNLOCKED' : `🔒 Locked (Need ${UNLOCK_THRESHOLD}%)`}
               </div>
             </div>
           </div>

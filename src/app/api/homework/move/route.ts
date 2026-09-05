@@ -17,11 +17,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'assignmentId, puzzleId, uciMove are required' }, { status: 400 });
     }
 
+    const moveIndex = typeof body.moveIndex === 'number' ? body.moveIndex : 0;
     const result = await submitPuzzleMove(
       assignmentId,
       puzzleId,
       String(uciMove),
-      Number(timeSeconds) || 0
+      Number(timeSeconds) || 0,
+      moveIndex
     );
 
     if (!result.success) {

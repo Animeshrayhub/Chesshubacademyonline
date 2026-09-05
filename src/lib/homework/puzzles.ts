@@ -329,12 +329,15 @@ export async function getChapterPuzzlesForStudent(
 
 /**
  * Server-side move validation. Never exposes the solution to the client.
+ * Enforces strict author line solution, handles multi-step combinations with instant opponent replies,
+ * and awards proportional partial move credit for breakthrough moves.
  */
 export async function submitPuzzleMove(
   assignmentId: string,
   puzzleId: string,
   uciMove: string,
-  timeSeconds: number
+  timeSeconds: number,
+  moveIndex: number = 0
 ): Promise<Result<PuzzleMoveResult>> {
   try {
     const user = await getCurrentUser();
@@ -390,14 +393,18 @@ export async function submitPuzzleMove(
       return { success: true, data: { correct: true, isComplete: true, attemptsLeft: 0, scoreEarned: attempt.score, message: 'Already solved! ✅' } };
     }
     if (attempt.status === 'failed') {
-      return { success: true, data: { correct: false, isComplete: true, attemptsLeft: 0, scoreEarned: 0, message: 'Puzzle failed. Reveal solution to learn! 📖' } };
+      return { success: true, data: { correct: false, isComplete: true, attemptsLeft: 0, scoreEarned: attempt.score || 0, message: 'Puzzle completed. Reveal solution to learn! 📖' } };
     }
     if (attempt.attempts_used >= MAX_ATTEMPTS) {
-      return { success: true, data: { correct: false, isComplete: true, attemptsLeft: 0, scoreEarned: 0, message: 'No attempts left. Click "Show Solution" to learn!' } };
+      return { success: true, data: { correct: false, isComplete: true, attemptsLeft: 0, scoreEarned: attempt.score || 0, message: 'No attempts left. Click "Show Solution" to learn!' } };
     }
 
-    // Validate move against solution
-    const expectedMove = puzzle.solution[0]?.toLowerCase();
+    const solutionList: string[] = Array.isArray(puzzle.solution) ? puzzle.solution : [];
+    const totalPlayerSteps = Math.max(1, Math.ceil(solutionList.length / 2));
+    const currentStep = Math.floor(moveIndex / 2) + 1;
+
+    // Strict Author Line Check: validate move against exact recorded move at moveIndex
+    const expectedMove = (solutionList[moveIndex] || solutionList[0] || '').toLowerCase();
     const normalizedMove = uciMove.toLowerCase();
     const isCorrect =
       normalizedMove === expectedMove ||
@@ -407,7 +414,29 @@ export async function submitPuzzleMove(
     const attemptsLeft = MAX_ATTEMPTS - newAttemptsUsed;
 
     if (isCorrect) {
-      // Calculate score based on which attempt succeeded
+      // Check if there is a next player move required in multi-move sequence
+      const hasOpponentReply = moveIndex + 1 < solutionList.length;
+      const hasNextPlayerMove = moveIndex + 2 < solutionList.length;
+
+      if (hasOpponentReply && hasNextPlayerMove) {
+        // Multi-move intermediate success: opponent replies immediately
+        const opponentReply = solutionList[moveIndex + 1];
+        return {
+          success: true,
+          data: {
+            correct:      true,
+            isComplete:   false,
+            replyMove:    opponentReply,
+            stepIndex:    currentStep,
+            totalSteps:   totalPlayerSteps,
+            attemptsLeft: MAX_ATTEMPTS,
+            scoreEarned:  0,
+            message:      `⚡ Great move (${currentStep}/${totalPlayerSteps})! Opponent replied — find the winning finish!`,
+          },
+        };
+      }
+
+      // Puzzle is fully completed! Calculate final score
       let score: number = PUZZLE_SCORES.THIRD_ATTEMPT;
       if (newAttemptsUsed === 1) score = PUZZLE_SCORES.FIRST_ATTEMPT;
       else if (newAttemptsUsed === 2) score = PUZZLE_SCORES.SECOND_ATTEMPT;
@@ -434,28 +463,48 @@ export async function submitPuzzleMove(
         data: {
           correct:      true,
           isComplete:   true,
+          stepIndex:    totalPlayerSteps,
+          totalSteps:   totalPlayerSteps,
           attemptsLeft: 0,
           scoreEarned:  finalScore,
           message:      newAttemptsUsed === 1
-            ? '🎯 Perfect! Solved on first try! +100 points'
-            : `✅ Correct! Solved on attempt ${newAttemptsUsed}. +${finalScore} points`,
+            ? `🎯 Perfect! Solved all ${totalPlayerSteps} moves on first try! +${finalScore} pts`
+            : `✅ Correct! Full combination solved on attempt ${newAttemptsUsed}. +${finalScore} pts`,
         },
       };
     } else {
-      // Wrong move
+      // Wrong move — strict author line
       const isFailed = newAttemptsUsed >= MAX_ATTEMPTS;
+
+      // Calculate partial credit if student successfully found prior breakthrough moves
+      let partialScore = 0;
+      if (isFailed && currentStep > 1 && totalPlayerSteps > 1) {
+        const solvedSteps = currentStep - 1;
+        const ratio = solvedSteps / totalPlayerSteps;
+        partialScore = Math.round(ratio * PUZZLE_SCORES.FIRST_ATTEMPT);
+      }
+
       await admin.from('student_puzzle_attempts').update({
-        status:        isFailed ? 'failed' : 'unsolved',
+        status:        isFailed ? (partialScore > 0 ? 'solved' : 'failed') : 'unsolved',
         attempts_used: newAttemptsUsed,
         time_seconds:  timeSeconds,
         last_move:     uciMove,
-        ...(isFailed ? { score: PUZZLE_SCORES.FAILED } : {}),
+        score:         isFailed ? partialScore : attempt.score,
       }).eq('id', attempt.id);
 
       if (isFailed) {
         return {
           success: true,
-          data: { correct: false, isComplete: true, attemptsLeft: 0, scoreEarned: 0, message: '❌ Out of attempts. Reveal the solution to learn from it!' },
+          data: {
+            correct:         false,
+            isComplete:      true,
+            attemptsLeft:    0,
+            scoreEarned:     partialScore,
+            isPartialCredit: partialScore > 0,
+            message:         partialScore > 0
+              ? `⭐ Partial Credit! +${partialScore} pts awarded for finding the initial tactical breakthrough (${currentStep - 1}/${totalPlayerSteps} moves).`
+              : '❌ Out of attempts. Check the solution to learn the exact lesson motif!',
+          },
         };
       }
 
@@ -467,8 +516,8 @@ export async function submitPuzzleMove(
           attemptsLeft,
           scoreEarned:  0,
           message:      attemptsLeft === 1
-            ? `⚠️ Wrong move. Last attempt! Think carefully…`
-            : `❌ Not quite. ${attemptsLeft} attempts remaining.`,
+            ? `⚠️ Deviation from coach line. 1 attempt left! Focus on the tactical theme.`
+            : `❌ Not the solution move. (${attemptsLeft} attempts remaining)`,
         },
       };
     }
@@ -477,6 +526,8 @@ export async function submitPuzzleMove(
     return { success: false, error: new InternalServerError(err instanceof Error ? err.message : 'Unknown') };
   }
 }
+
+
 
 /**
  * Returns a hint and records usage with point deduction.

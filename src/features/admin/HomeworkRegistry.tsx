@@ -28,6 +28,7 @@ import StudentRosterMatrixModal from '@/components/dashboard/ui/StudentRosterMat
 import PdfFenExtractorModal from '@/components/dashboard/ui/PdfFenExtractorModal';
 import ChessCoursePdfImporter from './ChessCoursePdfImporter';
 import InteractivePdfChessPuzzleScanner from './InteractivePdfChessPuzzleScanner';
+import CurriculumHealthMatrix from './CurriculumHealthMatrix';
 
 interface HomeworkRegistryProps {
 
@@ -41,7 +42,7 @@ const TRACK_COLORS: Record<string, string> = {
   ADVANCED: 'bg-purple-50 text-purple-700 border border-purple-100',
 };
 
-type ActiveTab = 'workbooks' | 'chapters' | 'modules' | 'pdf-importer' | 'interactive-scanner';
+type ActiveTab = 'workbooks' | 'chapters' | 'modules' | 'pdf-importer' | 'interactive-scanner' | 'health-matrix';
 
 export default function HomeworkRegistry({ workbooks }: HomeworkRegistryProps) {
   const [activeTab, setActiveTab] = useState<ActiveTab>('workbooks');
@@ -81,7 +82,7 @@ export default function HomeworkRegistry({ workbooks }: HomeworkRegistryProps) {
     pdfPageRange: '',
     notes: '',
     unlockType: 'coach_approval' as 'coach_approval' | 'auto_score',
-    unlockScore: 80,
+    unlockScore: 70,
   });
   const [chUploading, setChUploading] = useState(false);
   const [chFormError, setChFormError] = useState('');
@@ -262,7 +263,7 @@ export default function HomeworkRegistry({ workbooks }: HomeworkRegistryProps) {
       pdfPageRange: chFormData.pdfPageRange.trim() || undefined,
       notes: chFormData.notes.trim() || undefined,
       unlockType: chFormData.unlockType,
-      unlockScore: Number(chFormData.unlockScore) || 80,
+      unlockScore: Number(chFormData.unlockScore) || 70,
     };
 
     if (editChapter) {
@@ -552,6 +553,13 @@ export default function HomeworkRegistry({ workbooks }: HomeworkRegistryProps) {
         >
           🧩 Interactive PDF Chess Puzzle Scanner
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('health-matrix')}
+          className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${activeTab === 'health-matrix' ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text-primary'}`}
+        >
+          🩺 Curriculum Health Matrix
+        </button>
         {selectedWorkbook && (
           <>
             <button
@@ -571,6 +579,11 @@ export default function HomeworkRegistry({ workbooks }: HomeworkRegistryProps) {
           </>
         )}
       </div>
+
+      {/* Curriculum Health Matrix Tab */}
+      {activeTab === 'health-matrix' && (
+        <CurriculumHealthMatrix />
+      )}
 
       {/* PDF Importer Tab */}
       {activeTab === 'pdf-importer' && (
