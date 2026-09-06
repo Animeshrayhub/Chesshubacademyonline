@@ -931,17 +931,27 @@ export default function StudentPuzzleTrainer() {
                     : `${selectedCategory} Practice`}
                 </span>
 
-                {/* Lives Hearts */}
-                <div className="flex items-center gap-0.5 text-sm" title={`${lives} attempts remaining`}>
-                  {lives === 3 ? (
-                    <><span>❤️</span><span>❤️</span><span>❤️</span></>
-                  ) : lives === 2 ? (
-                    <><span>❤️</span><span>❤️</span><span className="opacity-25">🖤</span></>
-                  ) : lives === 1 ? (
-                    <><span>❤️</span><span className="opacity-25">🖤</span><span className="opacity-25">🖤</span></>
-                  ) : (
-                    <><span className="opacity-25">🖤</span><span className="opacity-25">🖤</span><span className="opacity-25">🖤</span></>
-                  )}
+                <div className="flex items-center gap-2">
+                  <span
+                    className="text-[10px] font-bold text-slate-400 bg-slate-800/80 border border-slate-700/50 px-2 py-0.5 rounded-full flex items-center gap-1"
+                    title="Zen Mode: Purely untimed calculation. Take all the time you need to calculate thoroughly."
+                  >
+                    <span>🧘</span>
+                    <span className="hidden sm:inline">Zen Mode • Untimed</span>
+                  </span>
+
+                  {/* Lives Hearts */}
+                  <div className="flex items-center gap-0.5 text-sm" title={`${lives} attempts remaining`}>
+                    {lives === 3 ? (
+                      <><span>❤️</span><span>❤️</span><span>❤️</span></>
+                    ) : lives === 2 ? (
+                      <><span>❤️</span><span>❤️</span><span className="opacity-25">🖤</span></>
+                    ) : lives === 1 ? (
+                      <><span>❤️</span><span className="opacity-25">🖤</span><span className="opacity-25">🖤</span></>
+                    ) : (
+                      <><span className="opacity-25">🖤</span><span className="opacity-25">🖤</span><span className="opacity-25">🖤</span></>
+                    )}
+                  </div>
                 </div>
               </div>
 
