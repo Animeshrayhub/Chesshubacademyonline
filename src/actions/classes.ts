@@ -35,6 +35,20 @@ export async function createClassAction(data: classesService.CreateClassInput) {
   return serializeResult(result);
 }
 
+export async function createBatchClassesAction(data: classesService.CreateBatchClassesInput) {
+  const result = await classesService.createBatchClasses(data);
+  if (result.success) {
+    revalidatePath('/dashboard/admin/classes');
+    revalidatePath('/dashboard/coach/classes');
+    revalidatePath('/dashboard/student/classes');
+    revalidatePath('/dashboard/coach');
+    revalidatePath('/dashboard/student');
+    revalidatePath('/dashboard/admin/recordings');
+    revalidatePath('/dashboard/admin');
+  }
+  return serializeResult(result);
+}
+
 export async function updateClassAction(id: string, data: classesService.UpdateClassInput) {
   const result = await classesService.updateClass(id, data);
   if (result.success) {

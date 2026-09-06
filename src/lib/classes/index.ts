@@ -65,6 +65,20 @@ export interface CreateClassInput {
   studentUserIds?: string[]; // multiple students mapping
 }
 
+export interface CreateBatchClassesInput extends CreateClassInput {
+  isRecurring?: boolean;
+  recurringDays?: number[]; // 0 = Sun, 1 = Mon, ..., 6 = Sat
+  recurringWeeks?: number; // e.g. 2, 4, 8, 12
+}
+
+export interface CreateBatchClassesResult {
+  createdCount: number;
+  classes: DbClass[];
+  joinUrl?: string;
+  zoomMeetingId?: string;
+  whatsappShareText?: string;
+}
+
 export interface UpdateClassInput {
   scheduledStart?: string;
   durationMinutes?: number;
@@ -333,12 +347,180 @@ export async function createClass(data: CreateClassInput): Promise<Result<DbClas
       }
     }
 
+    // In-app notifications dispatch for scheduled class
+    try {
+      const notifRows: any[] = [];
+      const formattedDate = new Date(data.scheduledStart).toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      if (data.coachUserId) {
+        notifRows.push({
+          user_id: data.coachUserId,
+          title: 'New Class Scheduled',
+          message: `A new ${data.classType.toLowerCase()} class has been scheduled for ${formattedDate}.`,
+          is_read: false,
+          created_at: new Date().toISOString(),
+        });
+      }
+
+      if (data.studentUserIds && data.studentUserIds.length > 0) {
+        for (const sUid of data.studentUserIds) {
+          notifRows.push({
+            user_id: sUid,
+            title: 'New Class Scheduled',
+            message: `You have been enrolled in a ${data.classType.toLowerCase()} chess class on ${formattedDate}.`,
+            is_read: false,
+            created_at: new Date().toISOString(),
+          });
+        }
+      }
+
+      if (notifRows.length > 0) {
+        await admin.from('notifications').insert(notifRows);
+      }
+    } catch (notifErr) {
+      console.warn('[createClass] Notification dispatch warning:', notifErr);
+    }
+
     return { success: true, data: finalClass };
   } catch (error) {
     if (error instanceof BaseError) return { success: false, error };
     return {
       success: false,
       error: new InternalServerError(error instanceof Error ? error.message : 'Unknown error'),
+    };
+  }
+}
+
+/**
+ * Generates an array of ISO dates for recurring weekly schedule.
+ */
+export function generateRecurringDates(
+  initialDateStr: string,
+  daysOfWeek: number[], // 0 = Sun, 1 = Mon, ..., 6 = Sat
+  totalWeeks: number
+): string[] {
+  const initialDate = new Date(initialDateStr);
+  if (isNaN(initialDate.getTime())) return [initialDateStr];
+
+  const dates: string[] = [];
+  const hours = initialDate.getHours();
+  const minutes = initialDate.getMinutes();
+
+  for (let week = 0; week < totalWeeks; week++) {
+    for (const day of daysOfWeek) {
+      const d = new Date(initialDate);
+      const dayDiff = day - initialDate.getDay();
+      d.setDate(initialDate.getDate() + dayDiff + week * 7);
+      d.setHours(hours, minutes, 0, 0);
+
+      if (d.getTime() >= initialDate.getTime() - 60000) {
+        dates.push(d.toISOString());
+      }
+    }
+  }
+
+  const uniqueSorted = Array.from(new Set(dates)).sort(
+    (a, b) => new Date(a).getTime() - new Date(b).getTime()
+  );
+  return uniqueSorted.length > 0 ? uniqueSorted : [initialDateStr];
+}
+
+/**
+ * Creates single or recurring batch of classes with meeting links & notifications.
+ */
+export async function createBatchClasses(
+  input: CreateBatchClassesInput
+): Promise<Result<CreateBatchClassesResult>> {
+  try {
+    const isRecurring =
+      input.isRecurring &&
+      (input.recurringDays?.length ?? 0) > 0 &&
+      (input.recurringWeeks || 1) >= 1;
+
+    const datesToSchedule = isRecurring
+      ? generateRecurringDates(
+          input.scheduledStart,
+          input.recurringDays!,
+          input.recurringWeeks || 4
+        )
+      : [input.scheduledStart];
+
+    const createdClasses: DbClass[] = [];
+    let primaryMeetingUrl = '';
+    let primaryMeetingId = '';
+
+    for (const dateStr of datesToSchedule) {
+      const res = await createClass({
+        ...input,
+        scheduledStart: dateStr,
+      });
+
+      if (res.success && res.data) {
+        createdClasses.push(res.data);
+        if (!primaryMeetingUrl) {
+          primaryMeetingUrl = res.data.zoom_join_url || '';
+          primaryMeetingId = res.data.zoom_meeting_id || '';
+        }
+      }
+    }
+
+    if (createdClasses.length === 0) {
+      return {
+        success: false,
+        error: new InternalServerError(
+          'Failed to schedule class sessions. Please check the dates and try again.'
+        ),
+      };
+    }
+
+    const firstClass = createdClasses[0];
+    const formattedFirstDate = new Date(firstClass.scheduled_start).toLocaleString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    const whatsappShareText = encodeURIComponent(
+      `♟️ *ChessHub Academy Class Scheduled*\n` +
+        `📅 *Date:* ${formattedFirstDate}\n` +
+        `⏱️ *Duration:* ${input.durationMinutes} min (${input.classType.toLowerCase()} session)\n` +
+        (createdClasses.length > 1
+          ? `🔁 *Total Sessions in Batch:* ${createdClasses.length}\n`
+          : '') +
+        `🔗 *Join Live Class:* ${
+          primaryMeetingUrl ||
+          'https://chesshubacademy.online/classroom/' + firstClass.id
+        }\n\n` +
+        `See you on the board!`
+    );
+
+    return {
+      success: true,
+      data: {
+        createdCount: createdClasses.length,
+        classes: createdClasses,
+        joinUrl:
+          primaryMeetingUrl ||
+          `https://chesshubacademy.online/classroom/${firstClass.id}`,
+        zoomMeetingId: primaryMeetingId,
+        whatsappShareText,
+      },
+    };
+  } catch (error) {
+    if (error instanceof BaseError) return { success: false, error };
+    return {
+      success: false,
+      error: new InternalServerError(
+        error instanceof Error ? error.message : 'Unknown error'
+      ),
     };
   }
 }
