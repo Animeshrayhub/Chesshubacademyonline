@@ -287,6 +287,7 @@ export async function GET(req: Request) {
     }
 
     // 2. Academy Puzzle Bank Priority (Matching category and rating)
+    let academyCount = 0;
     try {
       const minR = targetRating ? Math.max(400, targetRating - 200) : undefined;
       const maxR = targetRating ? targetRating + 200 : undefined;
@@ -299,38 +300,44 @@ export async function GET(req: Request) {
 
       if (bankRes.success && bankRes.data.puzzles.length > 0) {
         const academyList = bankRes.data.puzzles;
-        const p = academyList[index % academyList.length];
-        let sideToMove: 'white' | 'black' = 'white';
-        try {
-          const c = new Chess(p.fen);
-          sideToMove = c.turn() === 'w' ? 'white' : 'black';
-        } catch {}
+        academyCount = academyList.length;
 
-        return NextResponse.json({
-          success: true,
-          puzzle: {
-            id: p.id,
-            rating: p.rating,
-            fen: p.fen,
-            solution: p.solution,
-            themes: [p.theme || 'tactics'],
-            category: p.difficulty || category,
-            sideToMove,
-            source: 'ACADEMY',
-            title: p.title,
-            hint1: p.hint_1,
-            explanation: p.explanation,
-          },
-          source: 'ACADEMY_BANK',
-          totalInCategory: academyList.length,
-          nextIndex: (index + 1) % academyList.length,
-        });
+        // Priority Hybrid: If the student has not completed all Academy puzzles for this tier, serve them first
+        if (index < academyList.length) {
+          const p = academyList[index];
+          let sideToMove: 'white' | 'black' = 'white';
+          try {
+            const c = new Chess(p.fen);
+            sideToMove = c.turn() === 'w' ? 'white' : 'black';
+          } catch {}
+
+          return NextResponse.json({
+            success: true,
+            puzzle: {
+              id: p.id,
+              rating: p.rating,
+              fen: p.fen,
+              solution: p.solution,
+              themes: [p.theme || 'tactics'],
+              category: p.difficulty || category,
+              sideToMove,
+              source: 'ACADEMY',
+              title: p.title,
+              hint1: p.hint_1,
+              explanation: p.explanation,
+            },
+            source: 'ACADEMY_BANK',
+            totalInCategory: academyList.length,
+            nextIndex: index + 1,
+          });
+        }
+        // When index >= academyList.length, all Academy puzzles in this bracket were completed; smoothly fall through to Lichess.
       }
     } catch (e) {
       console.warn('[Puzzles Route] Error querying Academy Puzzle Bank:', e);
     }
 
-    // 3. Fallback to Verified Category Puzzles with adaptive rating proximity
+    // 3. Smooth Fallback to Verified Category Puzzles with adaptive rating proximity
     const pool = VERIFIED_CATEGORY_PUZZLES[category] || VERIFIED_CATEGORY_PUZZLES.MIXED;
     let sortedPool = pool;
     if (targetRating) {
@@ -338,13 +345,17 @@ export async function GET(req: Request) {
         (a, b) => Math.abs(a.rating - targetRating) - Math.abs(b.rating - targetRating)
       );
     }
-    const selectedPuzzle = sortedPool[index % sortedPool.length] || pool[0];
+    const lichessIndex = Math.max(0, index - academyCount);
+    const selectedPuzzle = sortedPool[lichessIndex % sortedPool.length] || pool[0];
 
     return NextResponse.json({
       success: true,
-      puzzle: selectedPuzzle,
+      puzzle: {
+        ...selectedPuzzle,
+        source: 'LICHESS',
+      },
       totalInCategory: sortedPool.length,
-      nextIndex: (index + 1) % sortedPool.length,
+      nextIndex: index + 1,
     });
   } catch (err: any) {
     return NextResponse.json(
