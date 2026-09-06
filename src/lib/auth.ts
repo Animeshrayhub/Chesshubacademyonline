@@ -14,12 +14,32 @@ export async function signIn(email: string, password: string): Promise<SignInRes
     const { createClient } = await import('@/lib/supabase/clientWrapper');
     const cleanEmail = email.toLowerCase().trim();
 
-    // Authenticate with Supabase Auth using client wrapper (does not require service role key)
-    const authClient = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+    // Authenticate with Supabase Auth using client wrapper with serverless options
+    const authClient = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    });
     let { data: authData, error: authError } = await authClient.auth.signInWithPassword({
       email: cleanEmail,
       password,
     });
+
+    // Fallback: If anon client fails, attempt authentication via admin client
+    if (authError || !authData?.user) {
+      try {
+        const adminSupabase = createSupabaseAdmin();
+        const adminAuthRes = await adminSupabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password,
+        });
+        if (adminAuthRes.data?.user && !adminAuthRes.error) {
+          authData = adminAuthRes.data as any;
+          authError = null;
+        }
+      } catch {}
+    }
 
     // Fallback for local development ONLY IF NEXT_PUBLIC_MOCK_AUTH is explicitly set to 'true'
     if ((authError || !authData?.user) && env.NEXT_PUBLIC_MOCK_AUTH === 'true') {
@@ -52,9 +72,10 @@ export async function signIn(email: string, password: string): Promise<SignInRes
     }
 
     if (authError || !authData?.user) {
+      console.error('[AUTH_SIGNIN_ERROR]', cleanEmail, authError);
       return {
         success: false,
-        error: 'Invalid email or password. Please try again.',
+        error: authError?.message || 'Invalid email or password. Please try again.',
       };
     }
 

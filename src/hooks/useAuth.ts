@@ -44,6 +44,7 @@ export function useAuth(): UseAuthReturn {
 
       if (!result.success || !result.user) {
         setErrors({ general: result.error ?? 'Invalid email or password. Please try again.' });
+        setLoading(false);
         return;
       }
 
