@@ -6,7 +6,8 @@ import DashboardIcon from '@/components/dashboard/ui/DashboardIcon';
 import StatCard from '@/components/dashboard/ui/StatCard';
 import { getCurrentUser } from '@/lib/supabase/auth';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
-import { getStudentPuzzleStats } from '@/lib/puzzles/results';
+import { getStudentPuzzleStats, getStudentPuzzleHistory } from '@/lib/puzzles/results';
+import { parseStudentStats } from '@/lib/students/stats';
 import { getCoachStudentActivitySummary } from '@/lib/activity';
 import type { StatCardData } from '@/types/dashboard';
 
@@ -58,11 +59,15 @@ export default async function CoachStudentDetailsPage({ params }: StudentDetails
     ? `${studentUser.first_name} ${studentUser.last_name}`
     : 'Unknown Student';
 
-  // 2. Fetch puzzle stats and activity summary
-  const [statsRes, actSummaryRes] = await Promise.all([
+  // 2. Fetch puzzle stats, audit history and activity summary
+  const [statsRes, actSummaryRes, historyRes] = await Promise.all([
     getStudentPuzzleStats(profileId),
     getCoachStudentActivitySummary(profile.user_id),
+    getStudentPuzzleHistory(profileId, 100),
   ]);
+
+  const auditLogs = historyRes.success && historyRes.data ? historyRes.data : [];
+  const studentStats = parseStudentStats(profile.notes);
 
   const stats = statsRes.success && statsRes.data ? statsRes.data : {
     totalAttempts: 0,
@@ -80,32 +85,21 @@ export default async function CoachStudentDetailsPage({ params }: StudentDetails
     classes: { totalAttended: 0 },
   };
 
-  // Get current Lichess puzzle rating if synced in notes
-  let lichessPuzzleRating = '—';
-  if (profile.notes) {
-    try {
-      const parsed = JSON.parse(profile.notes);
-      if (parsed.lichess?.ratings?.puzzle) {
-        lichessPuzzleRating = String(parsed.lichess.ratings.puzzle);
-      }
-    } catch (e) {}
-  }
-
   const STATS_CARDS: StatCardData[] = [
     {
-      label: 'Lichess Puzzle Rating',
-      value: lichessPuzzleRating,
+      label: 'Tactics Elo Rating',
+      value: String(studentStats.tacticalRating || 1200),
       iconKey: 'trophy',
       trend: 'neutral',
-      trendValue: 'Synced profile rating',
+      trendValue: `${studentStats.puzzleStreak || 0} streak 🔥`,
       colorScheme: 'gold',
     },
     {
       label: 'Solved Today',
-      value: String(stats.solvedToday),
+      value: `${studentStats.todayPuzzlesSolved ?? stats.solvedToday} / 5`,
       iconKey: 'puzzle',
       trend: 'neutral',
-      trendValue: 'Puzzles solved today',
+      trendValue: studentStats.dailyGoalAchieved ? '👑 Daily Master' : 'Daily Quota',
       colorScheme: 'green',
     },
     {
@@ -113,7 +107,7 @@ export default async function CoachStudentDetailsPage({ params }: StudentDetails
       value: `${stats.averageAccuracy}%`,
       iconKey: 'target',
       trend: 'neutral',
-      trendValue: 'Average correctness rate',
+      trendValue: `${stats.totalSolved} of ${stats.totalAttempts} solved`,
       colorScheme: 'blue',
     },
     {
@@ -121,7 +115,7 @@ export default async function CoachStudentDetailsPage({ params }: StudentDetails
       value: stats.averageTime ? `${stats.averageTime}s` : '—',
       iconKey: 'clock',
       trend: 'neutral',
-      trendValue: 'Average time per puzzle',
+      trendValue: 'Untimed Zen Calculation',
       colorScheme: 'purple',
     },
   ];
@@ -187,62 +181,99 @@ export default async function CoachStudentDetailsPage({ params }: StudentDetails
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Solved History list */}
+        {/* Full Puzzle Audit Log */}
         <div className="lg:col-span-2 bg-white border border-border rounded-2xl shadow-card overflow-hidden">
-          <div className="px-6 py-4 border-b border-border">
-            <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider">
-              Recent Solving History
-            </h3>
+          <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+            <div>
+              <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider">
+                Full Puzzle Audit Log
+              </h3>
+              <p className="text-[11px] text-text-secondary mt-0.5">
+                Chronological attempt registry with timestamps, error counts, and solve time ({auditLogs.length} logged)
+              </p>
+            </div>
+            <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200">
+              Verified DB Records
+            </span>
           </div>
-          {stats.recentResults.length === 0 ? (
+
+          {auditLogs.length === 0 ? (
             <div className="p-8 text-center text-slate-400 text-xs">
-              No daily puzzles solved by this student yet.
+              No tactical puzzle attempts recorded for this student yet.
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto max-h-[500px]">
               <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-border text-text-secondary font-bold uppercase tracking-wider">
-                    <th className="px-6 py-3">Puzzle ID</th>
-                    <th className="px-6 py-3">Rating</th>
-                    <th className="px-6 py-3">Status</th>
-                    <th className="px-6 py-3 text-center">Attempts</th>
-                    <th className="px-6 py-3 text-center">Time</th>
-                    <th className="px-6 py-3 text-center">Accuracy</th>
-                    <th className="px-6 py-3">Solved Date</th>
+                <thead className="sticky top-0 bg-slate-50 border-b border-border z-10">
+                  <tr className="text-text-secondary font-bold uppercase tracking-wider">
+                    <th className="px-5 py-3">Date &amp; Time</th>
+                    <th className="px-5 py-3">Puzzle ID</th>
+                    <th className="px-5 py-3">Rating</th>
+                    <th className="px-5 py-3">Themes</th>
+                    <th className="px-5 py-3">Status</th>
+                    <th className="px-5 py-3 text-center">Tries</th>
+                    <th className="px-5 py-3 text-center">Time</th>
+                    <th className="px-5 py-3 text-center">Accuracy</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border text-text-primary">
-                  {stats.recentResults.map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-50/50">
-                      <td className="px-6 py-3.5 font-mono text-[11px] font-medium">
-                        #{row.puzzle_id.substring(0, 8)}
-                      </td>
-                      <td className="px-6 py-3.5 font-mono font-bold">
-                        {row.puzzle_rating ?? '—'}
-                      </td>
-                      <td className="px-6 py-3.5">
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          row.solved ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
-                        }`}>
-                          {row.solved ? 'Solved' : 'Failed'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-3.5 text-center font-semibold font-mono">
-                        {row.attempts}
-                      </td>
-                      <td className="px-6 py-3.5 text-center font-semibold font-mono">
-                        {row.time_seconds ? `${row.time_seconds}s` : '—'}
-                      </td>
-                      <td className="px-6 py-3.5 text-center font-bold font-mono text-accent">
-                        {row.accuracy != null ? `${Math.round(Number(row.accuracy))}%` : '—'}
-                      </td>
-                      <td className="px-6 py-3.5 text-text-secondary">
-                        {new Date(row.solved_at).toLocaleDateString('en-US', {
+                  {auditLogs.map((row) => (
+                    <tr key={row.id} className="hover:bg-slate-50/50 transition">
+                      <td className="px-5 py-3 text-text-secondary whitespace-nowrap text-[11px]">
+                        {new Date(row.solved_at).toLocaleString('en-US', {
                           month: 'short',
                           day: 'numeric',
-                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
                         })}
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-[11px] font-bold text-slate-800">
+                            #{row.puzzle_id.substring(0, 8)}
+                          </span>
+                          <span className={`px-1 py-0.2 rounded text-[9px] font-bold uppercase ${
+                            row.puzzle_source === 'chesshub'
+                              ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                              : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            {row.puzzle_source === 'chesshub' ? 'Academy' : 'Lichess'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 font-mono font-bold text-slate-900">
+                        {row.puzzle_rating ?? '—'}
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex flex-wrap gap-1 max-w-[150px]">
+                          {row.puzzle_themes && row.puzzle_themes.length > 0 ? (
+                            row.puzzle_themes.slice(0, 2).map((th) => (
+                              <span key={th} className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 text-[10px] font-medium">
+                                #{th}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-slate-400 text-[10px]">tactics</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                          row.solved
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-red-50 text-red-700 border border-red-200'
+                        }`}>
+                          <span>{row.solved ? '✓ Solved' : '✕ Failed'}</span>
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 text-center font-semibold font-mono">
+                        {row.attempts}
+                      </td>
+                      <td className="px-5 py-3 text-center font-semibold font-mono text-slate-600">
+                        {row.time_seconds != null ? `${row.time_seconds}s` : '—'}
+                      </td>
+                      <td className="px-5 py-3 text-center font-bold font-mono text-accent">
+                        {row.accuracy != null ? `${Math.round(Number(row.accuracy))}%` : '—'}
                       </td>
                     </tr>
                   ))}
