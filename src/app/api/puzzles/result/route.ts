@@ -73,6 +73,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Normalize puzzleSource to 'lichess' | 'chesshub'
+    const rawSource = String(body.puzzleSource || '').toLowerCase();
+    const normalizedSource: 'lichess' | 'chesshub' = rawSource === 'academy' || rawSource === 'chesshub' ? 'chesshub' : 'lichess';
+    body.puzzleSource = normalizedSource;
+
     const studentProfileId = profile.id;
 
     const result = await withRetry(async () => {
@@ -82,6 +87,14 @@ export async function POST(req: NextRequest) {
       }
       return res;
     });
+
+    let serverTacticalRating = 1200;
+    let ratingDelta = 0;
+    let xpGain = 0;
+    let newStreak = 0;
+    let totalSolved = 0;
+    let totalAttempted = 0;
+    let reviewMistakes: string[] = [];
 
     try {
       const prof = await withRetry(async () => {
@@ -96,13 +109,33 @@ export async function POST(req: NextRequest) {
 
       if (prof) {
         const stats = parseStudentStats(prof.notes);
+        const currentRating = typeof stats.tacticalRating === 'number' && stats.tacticalRating >= 400 ? stats.tacticalRating : 1200;
+        const puzzleRating = typeof body.puzzleRating === 'number' && body.puzzleRating > 0 ? body.puzzleRating : currentRating;
+
+        // Server-Side Elo Calculation (Anti-Cheat Single Source of Truth)
+        const kFactor = 32;
+        const expectedScore = 1 / (1 + Math.pow(10, (puzzleRating - currentRating) / 400));
+        const actualScore = body.solved ? 1 : 0;
+        ratingDelta = Math.round(kFactor * (actualScore - expectedScore));
+
+        const hintsUsed = typeof (body as any).hintsUsed === 'number' ? (body as any).hintsUsed : 0;
+
         if (body.solved) {
-          const gain = typeof (body as any).xpGain === 'number' ? (body as any).xpGain : 10;
-          stats.xp += gain;
+          if (hintsUsed > 0) {
+            ratingDelta = Math.max(2, Math.round(ratingDelta * 0.5));
+            xpGain = 5;
+          } else {
+            if (ratingDelta < 5) ratingDelta = 5;
+            xpGain = 10;
+          }
+          stats.xp += xpGain;
           stats.puzzlesSolved = (stats.puzzlesSolved || 0) + 1;
           stats.puzzleStreak = (stats.puzzleStreak || 0) + 1;
           stats.reviewMistakes = (stats.reviewMistakes || []).filter((id) => id !== body.puzzleId);
         } else {
+          // Failed or forfeited
+          if (ratingDelta > -5) ratingDelta = -5;
+          if (ratingDelta < -20) ratingDelta = -20;
           stats.puzzleStreak = 0;
           if (!stats.reviewMistakes) stats.reviewMistakes = [];
           if (body.puzzleId && !stats.reviewMistakes.includes(body.puzzleId)) {
@@ -111,10 +144,13 @@ export async function POST(req: NextRequest) {
         }
 
         stats.puzzlesAttempted = (stats.puzzlesAttempted || 0) + 1;
+        serverTacticalRating = Math.max(400, currentRating + ratingDelta);
+        stats.tacticalRating = serverTacticalRating;
 
-        if (typeof (body as any).tacticalRating === 'number') {
-          stats.tacticalRating = (body as any).tacticalRating;
-        }
+        newStreak = stats.puzzleStreak || 0;
+        totalSolved = stats.puzzlesSolved || 0;
+        totalAttempted = stats.puzzlesAttempted || 0;
+        reviewMistakes = stats.reviewMistakes || [];
 
         const updatedNotes = serializeStudentStats(prof.notes, stats);
         await withRetry(async () => {
@@ -126,10 +162,19 @@ export async function POST(req: NextRequest) {
         });
       }
     } catch (err) {
-      console.error('Failed to sync student tactical stats:', err);
+      console.error('Failed to sync student tactical stats server-side:', err);
     }
 
-    return NextResponse.json({ id: result.data.id }, { status: 201 });
+    return NextResponse.json({
+      id: result.data.id,
+      tacticalRating: serverTacticalRating,
+      ratingDelta,
+      xpGain,
+      streak: newStreak,
+      puzzlesSolved: totalSolved,
+      puzzlesAttempted: totalAttempted,
+      reviewMistakes,
+    }, { status: 201 });
   } catch (error) {
     console.error('[/api/puzzles/result] Error saving puzzle result:', error);
     return NextResponse.json(

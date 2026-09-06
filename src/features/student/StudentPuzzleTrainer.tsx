@@ -33,6 +33,23 @@ export interface LichessPuzzle {
   explanation?: string;
 }
 
+function buildSolutionFens(initialFen: string, solutionMoves: string[]): string[] {
+  try {
+    const tempGame = new Chess(initialFen);
+    const fens: string[] = [initialFen];
+    for (const moveStr of solutionMoves) {
+      const from = moveStr.substring(0, 2);
+      const to = moveStr.substring(2, 4);
+      const promotion = moveStr.length > 4 ? moveStr.substring(4, 5) : undefined;
+      tempGame.move({ from: from as any, to: to as any, promotion: promotion as any });
+      fens.push(tempGame.fen());
+    }
+    return fens;
+  } catch {
+    return [initialFen];
+  }
+}
+
 export default function StudentPuzzleTrainer() {
   const [practiceMode, setPracticeMode] = useState<'daily' | 'unlimited' | 'mistakes'>('daily');
   const [selectedCategory, setSelectedCategory] = useState<PuzzleCategory>('TACTICS');
@@ -67,6 +84,24 @@ export default function StudentPuzzleTrainer() {
   const [showForfeitModal, setShowForfeitModal] = useState(false);
   const [petReaction, setPetReaction] = useState<string>('Ready to calculate tactics? Look for checks and captures!');
   const [customSquareStyles, setCustomSquareStyles] = useState<Record<string, React.CSSProperties>>({});
+
+  // Interactive solution step review state
+  const [solutionFens, setSolutionFens] = useState<string[]>([]);
+  const [stepReviewIndex, setStepReviewIndex] = useState<number>(0);
+  const animationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const clearAnimationInterval = useCallback(() => {
+    if (animationIntervalRef.current) {
+      clearInterval(animationIntervalRef.current);
+      animationIntervalRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearAnimationInterval();
+    };
+  }, [clearAnimationInterval]);
 
   const chessRef = useRef<Chess>(new Chess());
 
@@ -121,6 +156,9 @@ export default function StudentPuzzleTrainer() {
           const p: LichessPuzzle = data.puzzle;
           setCurrentPuzzle(p);
           setBoardFen(p.fen);
+          const fens = buildSolutionFens(p.fen, p.solution || []);
+          setSolutionFens(fens);
+          setStepReviewIndex(0);
 
           try {
             chessRef.current = new Chess(p.fen);
@@ -263,18 +301,21 @@ export default function StudentPuzzleTrainer() {
 
   // Automated solution playback when puzzle fails or is forfeited
   const playSolutionAnimation = (solutionMoves: string[]) => {
+    clearAnimationInterval();
     setIsReplayingSolution(true);
     let currentPly = 0;
 
     try {
       chessRef.current = new Chess(currentPuzzle!.fen);
       setBoardFen(chessRef.current.fen());
+      setStepReviewIndex(0);
     } catch {}
 
-    const interval = setInterval(() => {
+    animationIntervalRef.current = setInterval(() => {
       if (currentPly >= solutionMoves.length) {
-        clearInterval(interval);
+        clearAnimationInterval();
         setIsReplayingSolution(false);
+        setStepReviewIndex(solutionMoves.length);
         return;
       }
 
@@ -285,6 +326,7 @@ export default function StudentPuzzleTrainer() {
         const promotion = moveStr.length > 4 ? moveStr.substring(4, 5) : undefined;
         chessRef.current.move({ from: from as any, to: to as any, promotion: promotion as any });
         setBoardFen(chessRef.current.fen());
+        setStepReviewIndex(currentPly + 1);
         playChessSound(currentPly % 2 === 0 ? 'move' : 'capture');
       } catch {}
 
@@ -292,10 +334,57 @@ export default function StudentPuzzleTrainer() {
     }, 700);
   };
 
+  // Step-by-step interactive inspection controls
+  const handleStepBack = () => {
+    clearAnimationInterval();
+    setIsReplayingSolution(false);
+    if (stepReviewIndex > 0) {
+      const newIdx = stepReviewIndex - 1;
+      setStepReviewIndex(newIdx);
+      setBoardFen(solutionFens[newIdx]);
+      playChessSound('move');
+    }
+  };
+
+  const handleStepForward = () => {
+    clearAnimationInterval();
+    setIsReplayingSolution(false);
+    if (stepReviewIndex < solutionFens.length - 1) {
+      const newIdx = stepReviewIndex + 1;
+      setStepReviewIndex(newIdx);
+      setBoardFen(solutionFens[newIdx]);
+      playChessSound('move');
+    }
+  };
+
+  const handleStepToStart = () => {
+    clearAnimationInterval();
+    setIsReplayingSolution(false);
+    setStepReviewIndex(0);
+    setBoardFen(solutionFens[0]);
+    playChessSound('move');
+  };
+
+  const handleStepToEnd = () => {
+    clearAnimationInterval();
+    setIsReplayingSolution(false);
+    const last = solutionFens.length - 1;
+    setStepReviewIndex(last);
+    setBoardFen(solutionFens[last]);
+    playChessSound('move');
+  };
+
+  const handleReplayAnimation = () => {
+    if (currentPuzzle?.solution) {
+      playSolutionAnimation(currentPuzzle.solution);
+    }
+  };
+
   // On Complete Solve
   const handlePuzzleSolved = async () => {
     setIsSolved(true);
     playChessSound('victory');
+    setStepReviewIndex(currentPuzzle?.solution ? currentPuzzle.solution.length : 0);
 
     const durationSec = Math.max(1, Math.round((Date.now() - solveStartTime) / 1000));
     const accuracyVal = attempts === 1 ? 100 : Math.max(50, Math.round(100 / attempts));
@@ -323,39 +412,59 @@ export default function StudentPuzzleTrainer() {
 
       // Record real activity in database & save puzzle result with tactical stats
       try {
-        await Promise.allSettled([
-          recordStudentActivityAction({
-            activityType: practiceMode === 'daily' ? 'DAILY_PUZZLE' : 'PUZZLE',
-            activityId: currentPuzzle.id,
-            durationSeconds: durationSec,
-            result: 'SOLVED',
+        recordStudentActivityAction({
+          activityType: practiceMode === 'daily' ? 'DAILY_PUZZLE' : 'PUZZLE',
+          activityId: currentPuzzle.id,
+          durationSeconds: durationSec,
+          result: 'SOLVED',
+          accuracy: accuracyVal,
+          metadata: {
+            puzzleRating: currentPuzzle.rating,
+            category: selectedCategory,
+            attempts,
+            themes: currentPuzzle.themes,
+            hintsUsed: hintLevel,
+          },
+        }).catch(() => {});
+
+        const syncRes = await fetch('/api/puzzles/result', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            puzzleId: currentPuzzle.id,
+            puzzleSource: currentPuzzle.source || 'LICHESS',
+            puzzleRating: currentPuzzle.rating,
+            puzzleThemes: currentPuzzle.themes,
+            solved: true,
+            attempts,
+            timeSeconds: durationSec,
             accuracy: accuracyVal,
-            metadata: {
-              puzzleRating: currentPuzzle.rating,
-              category: selectedCategory,
-              attempts,
-              themes: currentPuzzle.themes,
-              hintsUsed: hintLevel,
-            },
+            hintsUsed: hintLevel,
           }),
-          fetch('/api/puzzles/result', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              puzzleId: currentPuzzle.id,
-              puzzleSource: currentPuzzle.source || 'LICHESS',
-              puzzleRating: currentPuzzle.rating,
-              puzzleThemes: currentPuzzle.themes,
-              solved: true,
-              attempts,
-              timeSeconds: durationSec,
-              accuracy: accuracyVal,
-              tacticalRating: recordRes.newStats.tacticalRating,
-              ratingDelta: recordRes.ratingDelta,
-              xpGain: recordRes.xpGain,
-            }),
-          }),
-        ]);
+        });
+
+        if (syncRes.ok) {
+          const sData = await syncRes.json();
+          if (typeof sData.tacticalRating === 'number') {
+            setStudentRating(sData.tacticalRating);
+            setRatingDelta(sData.ratingDelta);
+            setStreak(sData.streak);
+            setPuzzlesSolved(sData.puzzlesSolved);
+            setPuzzlesAttempted(sData.puzzlesAttempted);
+            setMistakesQueue(sData.reviewMistakes || []);
+            hydrateStatsFromDb({
+              tacticalRating: sData.tacticalRating,
+              totalSolved: sData.puzzlesSolved,
+              totalAttempted: sData.puzzlesAttempted,
+              currentStreak: sData.streak,
+              reviewMistakes: sData.reviewMistakes,
+            });
+            setFeedback({
+              type: 'success',
+              text: `🎉 PUZZLE SOLVED in ${durationSec}s! (${sData.ratingDelta >= 0 ? '+' : ''}${sData.ratingDelta} ⭐, +${sData.xpGain} XP)`,
+            });
+          }
+        }
       } catch (err) {
         console.error('Failed to sync puzzle result to database:', err);
       }
@@ -393,38 +502,61 @@ export default function StudentPuzzleTrainer() {
     setPetReaction('Don&apos;t worry! Analyzing missed tactics is how champions learn.');
 
     try {
-      await Promise.allSettled([
-        recordStudentActivityAction({
-          activityType: practiceMode === 'daily' ? 'DAILY_PUZZLE' : 'PUZZLE',
-          activityId: currentPuzzle.id,
-          durationSeconds: durationSec,
-          result: 'FAILED',
+      recordStudentActivityAction({
+        activityType: practiceMode === 'daily' ? 'DAILY_PUZZLE' : 'PUZZLE',
+        activityId: currentPuzzle.id,
+        durationSeconds: durationSec,
+        result: 'FAILED',
+        accuracy: 0,
+        metadata: {
+          puzzleRating: currentPuzzle.rating,
+          category: selectedCategory,
+          attempts,
+          themes: currentPuzzle.themes,
+          forfeit: isForfeit,
+        },
+      }).catch(() => {});
+
+      const syncRes = await fetch('/api/puzzles/result', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          puzzleId: currentPuzzle.id,
+          puzzleSource: currentPuzzle.source || 'LICHESS',
+          puzzleRating: currentPuzzle.rating,
+          puzzleThemes: currentPuzzle.themes,
+          solved: false,
+          attempts,
+          timeSeconds: durationSec,
           accuracy: 0,
-          metadata: {
-            puzzleRating: currentPuzzle.rating,
-            category: selectedCategory,
-            attempts,
-            themes: currentPuzzle.themes,
-            forfeit: isForfeit,
-          },
+          forfeit: isForfeit,
         }),
-        fetch('/api/puzzles/result', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            puzzleId: currentPuzzle.id,
-            puzzleSource: currentPuzzle.source || 'LICHESS',
-            puzzleRating: currentPuzzle.rating,
-            puzzleThemes: currentPuzzle.themes,
-            solved: false,
-            attempts,
-            timeSeconds: durationSec,
-            accuracy: 0,
-            tacticalRating: recordRes.newStats.tacticalRating,
-            ratingDelta: recordRes.ratingDelta,
-          }),
-        }),
-      ]);
+      });
+
+      if (syncRes.ok) {
+        const sData = await syncRes.json();
+        if (typeof sData.tacticalRating === 'number') {
+          setStudentRating(sData.tacticalRating);
+          setRatingDelta(sData.ratingDelta);
+          setStreak(sData.streak);
+          setPuzzlesSolved(sData.puzzlesSolved);
+          setPuzzlesAttempted(sData.puzzlesAttempted);
+          setMistakesQueue(sData.reviewMistakes || []);
+          hydrateStatsFromDb({
+            tacticalRating: sData.tacticalRating,
+            totalSolved: sData.puzzlesSolved,
+            totalAttempted: sData.puzzlesAttempted,
+            currentStreak: sData.streak,
+            reviewMistakes: sData.reviewMistakes,
+          });
+          setFeedback({
+            type: 'error',
+            text: isForfeit
+              ? `🏳️ Forfeited (${sData.ratingDelta} ⭐). Solution is replaying on the board:`
+              : `❌ 3 Strikes! Puzzle failed (${sData.ratingDelta} ⭐). Solution is replaying on the board:`,
+          });
+        }
+      }
     } catch (err) {
       console.error('Failed to sync failed puzzle to database:', err);
     }
@@ -498,6 +630,8 @@ export default function StudentPuzzleTrainer() {
   const canAdvance = isSolved || isFailed;
 
   const handleNextPuzzle = () => {
+    clearAnimationInterval();
+
     if (!canAdvance) {
       setFeedback({
         type: 'warn',
@@ -684,6 +818,77 @@ export default function StudentPuzzleTrainer() {
               customBoardStyle={{ borderRadius: '0.75rem', boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }}
             />
           </div>
+
+          {/* Interactive Step-by-Step Solution Walkthrough Controls */}
+          {canAdvance && solutionFens.length > 1 && (
+            <div className="w-full max-w-[500px] mt-3 p-2 bg-slate-950/90 border border-slate-800 rounded-2xl flex items-center justify-between gap-2 shadow-inner">
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={handleStepToStart}
+                  disabled={isReplayingSolution || stepReviewIndex === 0}
+                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-slate-300 text-xs font-bold transition"
+                  title="Go to starting position"
+                >
+                  ⏮️
+                </button>
+                <button
+                  type="button"
+                  onClick={handleStepBack}
+                  disabled={isReplayingSolution || stepReviewIndex === 0}
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-slate-300 text-xs font-bold transition flex items-center gap-1"
+                  title="Previous move"
+                >
+                  <span>◀</span>
+                  <span className="hidden sm:inline text-[11px]">Prev</span>
+                </button>
+              </div>
+
+              <div className="text-center">
+                <span className="text-[11px] font-mono font-bold text-amber-400">
+                  Move {stepReviewIndex} / {solutionFens.length - 1}
+                </span>
+                <span className="text-[10px] text-slate-400 block">
+                  {stepReviewIndex === 0
+                    ? 'Puzzle Start'
+                    : stepReviewIndex === solutionFens.length - 1
+                    ? 'Solution Complete'
+                    : 'Tactical Line'}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={handleStepForward}
+                  disabled={isReplayingSolution || stepReviewIndex >= solutionFens.length - 1}
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-slate-300 text-xs font-bold transition flex items-center gap-1"
+                  title="Next move"
+                >
+                  <span className="hidden sm:inline text-[11px]">Next</span>
+                  <span>▶</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleStepToEnd}
+                  disabled={isReplayingSolution || stepReviewIndex >= solutionFens.length - 1}
+                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-slate-300 text-xs font-bold transition"
+                  title="Go to final position"
+                >
+                  ⏭️
+                </button>
+                <button
+                  type="button"
+                  onClick={handleReplayAnimation}
+                  disabled={isReplayingSolution}
+                  className="p-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 text-amber-400 text-xs font-bold transition ml-1"
+                  title="Replay animated walkthrough"
+                >
+                  🔁
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Pet Companion Dialogue Banner */}
           <div className="w-full max-w-[500px] mt-4 p-3 rounded-2xl bg-slate-950/60 border border-slate-800 flex items-center gap-3">
