@@ -577,46 +577,75 @@ export default function StudentPuzzleTrainer() {
     playSolutionAnimation(currentPuzzle.solution);
   };
 
-  // Progressive Hint Handler
+  // AI Coach Conceptual Clue Handler (No square highlighting on board)
   const handleRequestHint = () => {
-    if (!currentPuzzle || isSolved || isFailed || isReplayingSolution) return;
+    if (!currentPuzzle || isSolved || isFailed || isReplayingSolution || hintLevel > 0) return;
     const currentExpected = currentPuzzle.solution[solutionStep];
     if (!currentExpected) return;
 
-    const fromSquare = currentExpected.substring(0, 2);
-    const toSquare = currentExpected.substring(2, 4);
+    setHintLevel(1);
+    // Deliberately keep board clean (no square highlight styles) to enforce independent board calculation
 
-    if (hintLevel === 0) {
-      setHintLevel(1);
-      setCustomSquareStyles({
-        [fromSquare]: {
-          backgroundColor: 'rgba(234, 179, 8, 0.45)',
-          borderRadius: '50%',
-        },
-      });
-      setFeedback({
-        type: 'warn',
-        text: `💡 Hint 1 (Half Elo/XP): Look closely at the piece on ${fromSquare.toUpperCase()}!`,
-      });
-      setPetReaction(`Take a close look at the ${fromSquare.toUpperCase()} square!`);
-    } else if (hintLevel === 1) {
-      setHintLevel(2);
-      setCustomSquareStyles({
-        [fromSquare]: {
-          backgroundColor: 'rgba(234, 179, 8, 0.45)',
-          borderRadius: '50%',
-        },
-        [toSquare]: {
-          backgroundColor: 'rgba(34, 197, 94, 0.55)',
-          borderRadius: '50%',
-        },
-      });
-      setFeedback({
-        type: 'warn',
-        text: `💡 Hint 2: Move to ${toSquare.toUpperCase()} to execute the tactical strike!`,
-      });
-      setPetReaction(`Move the piece to ${toSquare.toUpperCase()} to win material or mate!`);
+    let clueText = '';
+    if (currentPuzzle.hint1) {
+      clueText = currentPuzzle.hint1;
+    } else if (currentPuzzle.explanation) {
+      clueText = currentPuzzle.explanation;
+    } else {
+      const from = currentExpected.substring(0, 2);
+      const to = currentExpected.substring(2, 4);
+
+      let pieceName = 'piece';
+      try {
+        const piece = chessRef.current.get(from as any);
+        if (piece) {
+          const names: Record<string, string> = {
+            p: 'pawn',
+            n: 'Knight',
+            b: 'Bishop',
+            r: 'Rook',
+            q: 'Queen',
+            k: 'King',
+          };
+          pieceName = names[piece.type] || 'piece';
+        }
+      } catch {}
+
+      const themes = (currentPuzzle.themes || []).map((t) => t.toLowerCase());
+
+      if (themes.some((t) => t.includes('mate'))) {
+        clueText = `Notice the enemy King's limited escape routes. Look for a forcing check that sets up a mating net or exploits a trapped back rank!`;
+      } else if (themes.includes('fork')) {
+        clueText = `Search for a double attack (fork) where your ${pieceName} can attack two vulnerable enemy pieces at the same time!`;
+      } else if (themes.includes('pin')) {
+        clueText = `Look for an enemy piece that is pinned to their King or Queen and cannot move without fatal loss.`;
+      } else if (themes.includes('skewer')) {
+        clueText = `Notice high-value enemy pieces aligned on the same file, rank, or diagonal. Can you attack the front piece to win the piece behind it?`;
+      } else if (themes.includes('discoveredattack')) {
+        clueText = `Moving your ${pieceName} creates an ambush — look for the piece hidden behind it that delivers a discovered threat!`;
+      } else if (themes.includes('hangingpiece')) {
+        clueText = `Scan the board for loose, undefended enemy pieces. One of their pieces has zero defenders!`;
+      } else if (themes.includes('sacrifice')) {
+        clueText = `Consider a bold sacrifice to break open opponent's shelter and initiate a decisive breakthrough.`;
+      } else {
+        let isCapture = false;
+        try {
+          isCapture = !!chessRef.current.get(to as any);
+        } catch {}
+
+        if (isCapture) {
+          clueText = `Look for a tactical capture with your ${pieceName} that eliminates an essential defender or wins key material.`;
+        } else {
+          clueText = `Examine forcing checks and active maneuvers with your ${pieceName} that create unstoppable threats.`;
+        }
+      }
     }
+
+    setFeedback({
+      type: 'warn',
+      text: `🧠 AI Coach Clue: ${clueText}`,
+    });
+    setPetReaction(`Coach says: &ldquo;${clueText}&rdquo;`);
   };
 
   // Piece drop handler on board
@@ -1079,17 +1108,12 @@ export default function StudentPuzzleTrainer() {
               <button
                 type="button"
                 onClick={handleRequestHint}
-                disabled={isSolved || isFailed || isReplayingSolution || hintLevel >= 2}
-                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+                disabled={isSolved || isFailed || isReplayingSolution || hintLevel > 0}
+                className="px-3.5 py-2 bg-purple-950/40 hover:bg-purple-900/60 disabled:opacity-40 text-purple-300 border border-purple-800/60 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+                title="Get an AI Coach conceptual clue without revealing board coordinates"
               >
-                <span>💡</span>
-                <span>
-                  {hintLevel === 0
-                    ? 'Hint 1 (Piece)'
-                    : hintLevel === 1
-                    ? 'Hint 2 (Target)'
-                    : 'Hints Revealed'}
-                </span>
+                <span>🧠</span>
+                <span>{hintLevel > 0 ? 'Coach Clue Received' : 'AI Coach Clue'}</span>
               </button>
 
               {!canAdvance && (
