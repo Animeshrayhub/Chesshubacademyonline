@@ -162,21 +162,41 @@ export async function getCoachDetails(
  */
 export async function updateCoachProfile(
   coachUserId: string,
-  data: Partial<Pick<DbCoachProfile, 'title' | 'photo_url' | 'whatsapp' | 'languages' | 'experience_years' | 'bio'>>
+  data: any
 ): Promise<Result<DbCoachProfile>> {
   try {
     await assertAdmin();
     const admin = createSupabaseAdmin();
 
+    const updates: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (data.title !== undefined) updates.title = data.title;
+    if (data.whatsapp !== undefined) updates.whatsapp = data.whatsapp;
+    if (data.languages !== undefined) updates.languages = data.languages;
+    if (data.bio !== undefined) updates.bio = data.bio;
+
+    if (data.experience_years !== undefined) {
+      updates.experience_years = Number(data.experience_years) || 0;
+    } else if (data.experienceYears !== undefined) {
+      updates.experience_years = Number(data.experienceYears) || 0;
+    }
+
+    if (data.photo_url !== undefined) {
+      updates.photo_url = data.photo_url || null;
+    } else if (data.photoUrl !== undefined) {
+      updates.photo_url = data.photoUrl || null;
+    }
+
     const { data: updated, error } = await admin
       .from('coach_profiles')
-      .update({ ...data, updated_at: new Date().toISOString() })
-      .eq('user_id', coachUserId)
+      .upsert({ user_id: coachUserId, ...updates }, { onConflict: 'user_id' })
       .select()
       .single();
 
     if (error || !updated) {
-      return { success: false, error: new DatabaseError('Failed to update coach profile', error) };
+      return { success: false, error: new DatabaseError(error?.message || 'Failed to update coach profile', error) };
     }
 
     return { success: true, data: updated };

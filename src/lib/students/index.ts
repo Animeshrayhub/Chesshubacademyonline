@@ -305,21 +305,40 @@ export async function getStudentDetails(
  */
 export async function updateStudentProfile(
   studentId: string,
-  data: Partial<Pick<DbStudentProfile, 'age' | 'level' | 'parent_name' | 'parent_whatsapp' | 'notes'>>
+  data: any
 ): Promise<Result<DbStudentProfile>> {
   try {
     await assertAdmin();
     const admin = createSupabaseAdmin();
 
+    const updates: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (data.age !== undefined) updates.age = Number(data.age) || 10;
+    if (data.level !== undefined) updates.level = data.level;
+    if (data.notes !== undefined) updates.notes = data.notes;
+
+    if (data.parent_name !== undefined) {
+      updates.parent_name = data.parent_name;
+    } else if (data.parentName !== undefined) {
+      updates.parent_name = data.parentName;
+    }
+
+    if (data.parent_whatsapp !== undefined) {
+      updates.parent_whatsapp = data.parent_whatsapp;
+    } else if (data.parentWhatsapp !== undefined) {
+      updates.parent_whatsapp = data.parentWhatsapp;
+    }
+
     const { data: updated, error } = await admin
       .from('student_profiles')
-      .update({ ...data, updated_at: new Date().toISOString() })
-      .eq('user_id', studentId)
+      .upsert({ user_id: studentId, ...updates }, { onConflict: 'user_id' })
       .select()
       .single();
 
     if (error || !updated) {
-      return { success: false, error: new DatabaseError('Failed to update student profile', error) };
+      return { success: false, error: new DatabaseError(error?.message || 'Failed to update student profile', error) };
     }
 
     return { success: true, data: updated };

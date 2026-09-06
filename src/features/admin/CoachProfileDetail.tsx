@@ -87,6 +87,7 @@ export default function CoachProfileDetail({ coach }: CoachProfileDetailProps) {
     const res = await updateCoachProfileAction(coach.id, {
       title,
       whatsapp,
+      experience_years: parseInt(experienceYears, 10) || 0,
       experienceYears: parseInt(experienceYears, 10) || 0,
       languages: languages.split(',').map((l) => l.trim()).filter(Boolean),
       bio: serializedBio,

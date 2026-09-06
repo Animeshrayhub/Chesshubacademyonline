@@ -20,6 +20,9 @@ export async function assertAdmin(): Promise<void> {
     email.includes('admin') ||
     email.includes('coach') ||
     email.startsWith('admin') ||
+    email === 'royduguu786@gmail.com' ||
+    email === 'animesh@gmail.com' ||
+    email === 'admin@chesshub.com' ||
     email === 'animeshray98@gmail.com';
 
   if (!isAuthorized) {
@@ -45,6 +48,9 @@ export async function assertCoach(): Promise<any> {
     role === 'ADMIN' ||
     email.includes('coach') ||
     email.includes('admin') ||
+    email === 'royduguu786@gmail.com' ||
+    email === 'animesh@gmail.com' ||
+    email === 'admin@chesshub.com' ||
     email === 'animeshray98@gmail.com';
 
   if (!isAuthorized) {
@@ -89,6 +95,9 @@ export async function assertAdminOrCoach(): Promise<any> {
     email.includes('admin') ||
     email.includes('coach') ||
     email.startsWith('admin') ||
+    email === 'royduguu786@gmail.com' ||
+    email === 'animesh@gmail.com' ||
+    email === 'admin@chesshub.com' ||
     email === 'animeshray98@gmail.com';
 
   if (!isAuthorized) {
