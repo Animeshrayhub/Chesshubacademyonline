@@ -84,12 +84,16 @@ export async function signIn(email: string, password: string): Promise<SignInRes
       };
     }
 
-    // Check if user is a designated administrator
+    // Check if user is a designated administrator or coach
     const isAdminEmail =
       cleanEmail === 'royduguu786@gmail.com' ||
       cleanEmail === 'admin@chesshub.com' ||
-      cleanEmail === 'animesh@gmail.com' ||
       cleanEmail.startsWith('admin@');
+
+    const isCoachEmail =
+      cleanEmail === 'animesh@gmail.com' ||
+      cleanEmail === 'coach.alex@chesshub.com' ||
+      cleanEmail.startsWith('coach@');
 
     // Fetch user profile to retrieve role
     let profile: any = null;
@@ -202,6 +206,8 @@ export async function signIn(email: string, password: string): Promise<SignInRes
 
     if (isAdminEmail) {
       profile.role = 'ADMIN';
+    } else if (isCoachEmail) {
+      profile.role = 'COACH';
     }
 
     if (!profile.is_active) {
@@ -224,6 +230,8 @@ export async function signIn(email: string, password: string): Promise<SignInRes
     if (!mappedRole) {
       if (isAdminEmail) {
         mappedRole = 'admin';
+      } else if (isCoachEmail) {
+        mappedRole = 'coach';
       } else {
         await authClient.auth.signOut();
         return {

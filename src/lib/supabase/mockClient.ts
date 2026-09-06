@@ -29,6 +29,18 @@ if (!globalForMock.__mockUsers) {
       created_at: '2026-01-01T00:00:00Z',
       archived_at: null,
     },
+    {
+      id: 'usr-coach-animesh',
+      username: 'animesh',
+      email: 'animesh@gmail.com',
+      password: 'Animesh@1',
+      first_name: 'Animesh',
+      last_name: 'Ray',
+      role: 'COACH',
+      is_active: true,
+      created_at: '2026-01-01T00:00:00Z',
+      archived_at: null,
+    },
 
     {
       id: 'usr-student-123',
@@ -160,6 +172,7 @@ export const mockClassroomChat = globalForMock.__mockClassroomChat;
 const mockCredentials: Record<string, { role: 'ADMIN' | 'COACH' | 'STUDENT'; password: string }> = {
   'admin@chesshub.com': { role: 'ADMIN', password: 'Admin123!' },
   'royduguu786@gmail.com': { role: 'ADMIN', password: 'Animesh@1' },
+  'animesh@gmail.com': { role: 'COACH', password: 'Animesh@1' },
   'coach.alex@chesshub.com': { role: 'COACH', password: 'Coach123!' },
   'student@chesshub.com': { role: 'STUDENT', password: 'Student123!' },
   'admin@chesshubacademy.online': { role: 'ADMIN', password: 'AdminPassword123!' },

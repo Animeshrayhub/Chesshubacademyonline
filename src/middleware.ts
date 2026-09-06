@@ -59,14 +59,19 @@ export async function middleware(request: NextRequest) {
     const userMetaRole = (user.user_metadata?.role || '').toString().toUpperCase();
     let role = (profile?.role || user.app_metadata?.role || user.user_metadata?.role || '').toString().toUpperCase(); // 'ADMIN' | 'COACH' | 'STUDENT'
 
-    // Designated administrator override guarantee
+    // Designated administrator and coach override guarantee
     if (
       userEmail === 'royduguu786@gmail.com' ||
       userEmail === 'admin@chesshub.com' ||
-      userEmail === 'animesh@gmail.com' ||
       userEmail.startsWith('admin@')
     ) {
       role = 'ADMIN';
+    } else if (
+      userEmail === 'animesh@gmail.com' ||
+      userEmail === 'coach.alex@chesshub.com' ||
+      userEmail.startsWith('coach@')
+    ) {
+      role = 'COACH';
     }
 
     if (!['ADMIN', 'COACH', 'STUDENT'].includes(role)) {
