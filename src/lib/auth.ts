@@ -14,8 +14,13 @@ export async function signIn(email: string, password: string): Promise<SignInRes
     const { createClient } = await import('@/lib/supabase/clientWrapper');
     const cleanEmail = email.toLowerCase().trim();
 
+    const supabaseKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      env.SUPABASE_SERVICE_ROLE_KEY ||
+      env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
     // Authenticate with Supabase Auth using client wrapper with serverless options
-    const authClient = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
+    const authClient = createClient(env.NEXT_PUBLIC_SUPABASE_URL, supabaseKey, {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
