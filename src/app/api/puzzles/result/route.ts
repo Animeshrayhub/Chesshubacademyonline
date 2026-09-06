@@ -120,6 +120,15 @@ export async function POST(req: NextRequest) {
 
         const hintsUsed = typeof (body as any).hintsUsed === 'number' ? (body as any).hintsUsed : 0;
 
+        const todayStr = new Date().toISOString().split('T')[0];
+        if (stats.lastPuzzleDate !== todayStr) {
+          stats.todayPuzzlesSolved = 0;
+          stats.dailyGoalAchieved = false;
+          stats.lastPuzzleDate = todayStr;
+        }
+
+        let isDailyGoalJustCompleted = false;
+
         if (body.solved) {
           if (hintsUsed > 0) {
             ratingDelta = Math.max(2, Math.round(ratingDelta * 0.5));
@@ -128,15 +137,25 @@ export async function POST(req: NextRequest) {
             if (ratingDelta < 5) ratingDelta = 5;
             xpGain = 10;
           }
+
+          stats.todayPuzzlesSolved = (stats.todayPuzzlesSolved || 0) + 1;
+
+          // 5 Puzzles Daily Quota: Award Daily Master badge & bonus 50 XP
+          if (stats.todayPuzzlesSolved === 5 && !stats.dailyGoalAchieved) {
+            stats.dailyGoalAchieved = true;
+            isDailyGoalJustCompleted = true;
+            xpGain += 50; // Daily Master bonus
+            stats.dailyMasterCount = (stats.dailyMasterCount || 0) + 1;
+            stats.puzzleStreak = (stats.puzzleStreak || 0) + 1;
+          }
+
           stats.xp += xpGain;
           stats.puzzlesSolved = (stats.puzzlesSolved || 0) + 1;
-          stats.puzzleStreak = (stats.puzzleStreak || 0) + 1;
           stats.reviewMistakes = (stats.reviewMistakes || []).filter((id) => id !== body.puzzleId);
         } else {
           // Failed or forfeited
           if (ratingDelta > -5) ratingDelta = -5;
           if (ratingDelta < -20) ratingDelta = -20;
-          stats.puzzleStreak = 0;
           if (!stats.reviewMistakes) stats.reviewMistakes = [];
           if (body.puzzleId && !stats.reviewMistakes.includes(body.puzzleId)) {
             stats.reviewMistakes.push(body.puzzleId);
@@ -204,6 +223,10 @@ export async function GET() {
     }
 
     const stats = parseStudentStats(profile.notes);
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todayCount = stats.lastPuzzleDate === todayStr ? (stats.todayPuzzlesSolved || 0) : 0;
+    const goalDone = stats.lastPuzzleDate === todayStr ? !!stats.dailyGoalAchieved : false;
+
     return NextResponse.json({
       success: true,
       stats: {
@@ -212,6 +235,9 @@ export async function GET() {
         totalAttempted: stats.puzzlesAttempted || 0,
         currentStreak: stats.puzzleStreak || 0,
         reviewMistakes: stats.reviewMistakes || [],
+        todaySolved: todayCount,
+        dailyGoalAchieved: goalDone,
+        dailyMasterCount: stats.dailyMasterCount || 0,
       },
     });
   } catch (err: any) {

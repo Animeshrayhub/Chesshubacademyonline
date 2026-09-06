@@ -81,6 +81,8 @@ export default function StudentPuzzleTrainer() {
   const [puzzlesAttempted, setPuzzlesAttempted] = useState(0);
   const [studentRating, setStudentRating] = useState<number>(1200);
   const [ladderOffset, setLadderOffset] = useState<number>(0);
+  const [todaySolved, setTodaySolved] = useState<number>(0);
+  const [dailyGoalAchieved, setDailyGoalAchieved] = useState<boolean>(false);
   const [mistakesQueue, setMistakesQueue] = useState<string[]>([]);
   const [showForfeitModal, setShowForfeitModal] = useState(false);
   const [petReaction, setPetReaction] = useState<string>('Ready to calculate tactics? Look for checks and captures!');
@@ -214,6 +216,8 @@ export default function StudentPuzzleTrainer() {
           setPuzzlesAttempted(hydrated.totalAttempted);
           setStreak(hydrated.currentStreak);
           setMistakesQueue(hydrated.reviewMistakes || []);
+          if (typeof dbStats.todaySolved === 'number') setTodaySolved(dbStats.todaySolved);
+          if (typeof dbStats.dailyGoalAchieved === 'boolean') setDailyGoalAchieved(dbStats.dailyGoalAchieved);
         }
       })
       .catch((e) => console.warn('Could not sync DB puzzle stats on mount:', e));
@@ -392,6 +396,11 @@ export default function StudentPuzzleTrainer() {
 
     if (currentPuzzle) {
       setLadderOffset((prev) => prev + 30);
+      setTodaySolved((prev) => {
+        const nextCount = prev + 1;
+        if (nextCount >= 5) setDailyGoalAchieved(true);
+        return nextCount;
+      });
       const recordRes = recordPuzzleAttempt(
         currentPuzzle.id,
         currentPuzzle.rating,
@@ -737,6 +746,47 @@ export default function StudentPuzzleTrainer() {
             ))}
           </div>
         )}
+      </div>
+
+      {/* Daily Tactical Quota Progress Banner */}
+      <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-xl shrink-0">
+            🎯
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-extrabold text-white">Daily Tactical Quota:</span>
+              <span className="text-amber-400 font-mono font-black text-xs">{Math.min(todaySolved, 5)} / 5 Solved</span>
+              {dailyGoalAchieved && (
+                <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-extrabold px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                  <span>👑</span>
+                  <span>Daily Master Achieved (+50 XP)</span>
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Solve 5 puzzles daily to earn the Daily Master badge and keep your solving streak alive!
+            </p>
+          </div>
+        </div>
+
+        {/* 5-Step Progress Indicators */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {[1, 2, 3, 4, 5].map((step) => (
+            <div
+              key={step}
+              className={`w-7 h-7 rounded-xl flex items-center justify-center text-xs font-black transition-all ${
+                todaySolved >= step
+                  ? 'bg-amber-500 text-slate-950 shadow-gold scale-105'
+                  : 'bg-slate-950 border border-slate-800 text-slate-500'
+              }`}
+              title={`Puzzle ${step} of 5`}
+            >
+              {step === 5 ? (todaySolved >= 5 ? '👑' : '5') : (todaySolved >= step ? '✓' : step)}
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* KPI Stats Bar */}

@@ -13,6 +13,10 @@ export interface StudentStats {
   puzzlesAttempted?: number;
   puzzleStreak?: number;
   reviewMistakes?: string[];
+  todayPuzzlesSolved?: number;
+  lastPuzzleDate?: string;
+  dailyGoalAchieved?: boolean;
+  dailyMasterCount?: number;
 }
 
 export function parseStudentStats(notes: string | null): StudentStats {
@@ -31,6 +35,10 @@ export function parseStudentStats(notes: string | null): StudentStats {
     puzzlesAttempted: 0,
     puzzleStreak: 0,
     reviewMistakes: [],
+    todayPuzzlesSolved: 0,
+    lastPuzzleDate: undefined,
+    dailyGoalAchieved: false,
+    dailyMasterCount: 0,
   };
   if (!notes) return defaultStats;
 
@@ -54,6 +62,10 @@ export function parseStudentStats(notes: string | null): StudentStats {
       puzzlesAttempted: typeof parsed.puzzlesAttempted === 'number' ? parsed.puzzlesAttempted : 0,
       puzzleStreak: typeof parsed.puzzleStreak === 'number' ? parsed.puzzleStreak : 0,
       reviewMistakes: Array.isArray(parsed.reviewMistakes) ? parsed.reviewMistakes : [],
+      todayPuzzlesSolved: typeof parsed.todayPuzzlesSolved === 'number' ? parsed.todayPuzzlesSolved : 0,
+      lastPuzzleDate: typeof parsed.lastPuzzleDate === 'string' ? parsed.lastPuzzleDate : undefined,
+      dailyGoalAchieved: typeof parsed.dailyGoalAchieved === 'boolean' ? parsed.dailyGoalAchieved : false,
+      dailyMasterCount: typeof parsed.dailyMasterCount === 'number' ? parsed.dailyMasterCount : 0,
     };
   } catch {
     return defaultStats;
