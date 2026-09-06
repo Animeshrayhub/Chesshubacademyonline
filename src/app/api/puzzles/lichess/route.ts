@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { Chess } from 'chess.js';
+import { getPuzzleBank } from '@/lib/puzzles/puzzleBankService';
 
 export interface LichessPuzzleResponse {
   id: string;
@@ -8,8 +9,12 @@ export interface LichessPuzzleResponse {
   solution: string[];
   themes: string[];
   sideToMove: 'white' | 'black';
-  initialPly: number;
+  initialPly?: number;
   category: string;
+  source?: 'ACADEMY' | 'LICHESS';
+  title?: string;
+  hint1?: string;
+  explanation?: string;
   opponentMove?: { from: string; to: string; san?: string };
 }
 
@@ -175,6 +180,48 @@ export async function GET(req: Request) {
     const category = (searchParams.get('category') || 'MIXED').toUpperCase();
     const indexStr = searchParams.get('index') || '0';
     const index = parseInt(indexStr, 10) || 0;
+    const targetRatingStr = searchParams.get('rating');
+    const targetRating = targetRatingStr ? parseInt(targetRatingStr, 10) : undefined;
+    const requestedPuzzleId = searchParams.get('puzzleId');
+
+    // 0. Specific puzzle lookup (e.g. for "Review Mistakes" queue)
+    if (requestedPuzzleId) {
+      const allPool = VERIFIED_CATEGORY_PUZZLES.MIXED;
+      const foundInPool = allPool.find((p) => p.id === requestedPuzzleId);
+      if (foundInPool) {
+        return NextResponse.json({
+          success: true,
+          puzzle: foundInPool,
+        });
+      }
+      try {
+        const bankRes = await getPuzzleBank({ search: requestedPuzzleId });
+        if (bankRes.success && bankRes.data.puzzles.length > 0) {
+          const p = bankRes.data.puzzles[0];
+          let sideToMove: 'white' | 'black' = 'white';
+          try {
+            const c = new Chess(p.fen);
+            sideToMove = c.turn() === 'w' ? 'white' : 'black';
+          } catch {}
+          return NextResponse.json({
+            success: true,
+            puzzle: {
+              id: p.id,
+              rating: p.rating,
+              fen: p.fen,
+              solution: p.solution,
+              themes: [p.theme || 'tactics'],
+              category: p.difficulty || category,
+              sideToMove,
+              source: 'ACADEMY',
+              title: p.title,
+              hint1: p.hint_1,
+              explanation: p.explanation,
+            },
+          });
+        }
+      } catch {}
+    }
 
     // 1. Live Daily Puzzle from Lichess official endpoint
     if (type === 'daily') {
@@ -239,15 +286,65 @@ export async function GET(req: Request) {
       });
     }
 
-    // 2. Category Practice Puzzles (Continuous Practice)
+    // 2. Academy Puzzle Bank Priority (Matching category and rating)
+    try {
+      const minR = targetRating ? Math.max(400, targetRating - 200) : undefined;
+      const maxR = targetRating ? targetRating + 200 : undefined;
+      const bankRes = await getPuzzleBank({
+        theme: category === 'MIXED' ? undefined : category,
+        minRating: minR,
+        maxRating: maxR,
+        limit: 30,
+      });
+
+      if (bankRes.success && bankRes.data.puzzles.length > 0) {
+        const academyList = bankRes.data.puzzles;
+        const p = academyList[index % academyList.length];
+        let sideToMove: 'white' | 'black' = 'white';
+        try {
+          const c = new Chess(p.fen);
+          sideToMove = c.turn() === 'w' ? 'white' : 'black';
+        } catch {}
+
+        return NextResponse.json({
+          success: true,
+          puzzle: {
+            id: p.id,
+            rating: p.rating,
+            fen: p.fen,
+            solution: p.solution,
+            themes: [p.theme || 'tactics'],
+            category: p.difficulty || category,
+            sideToMove,
+            source: 'ACADEMY',
+            title: p.title,
+            hint1: p.hint_1,
+            explanation: p.explanation,
+          },
+          source: 'ACADEMY_BANK',
+          totalInCategory: academyList.length,
+          nextIndex: (index + 1) % academyList.length,
+        });
+      }
+    } catch (e) {
+      console.warn('[Puzzles Route] Error querying Academy Puzzle Bank:', e);
+    }
+
+    // 3. Fallback to Verified Category Puzzles with adaptive rating proximity
     const pool = VERIFIED_CATEGORY_PUZZLES[category] || VERIFIED_CATEGORY_PUZZLES.MIXED;
-    const selectedPuzzle = pool[index % pool.length] || pool[0];
+    let sortedPool = pool;
+    if (targetRating) {
+      sortedPool = [...pool].sort(
+        (a, b) => Math.abs(a.rating - targetRating) - Math.abs(b.rating - targetRating)
+      );
+    }
+    const selectedPuzzle = sortedPool[index % sortedPool.length] || pool[0];
 
     return NextResponse.json({
       success: true,
       puzzle: selectedPuzzle,
-      totalInCategory: pool.length,
-      nextIndex: (index + 1) % pool.length,
+      totalInCategory: sortedPool.length,
+      nextIndex: (index + 1) % sortedPool.length,
     });
   } catch (err: any) {
     return NextResponse.json(

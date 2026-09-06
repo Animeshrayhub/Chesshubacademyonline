@@ -23,6 +23,7 @@ export interface StudentPuzzleStats {
   xp: number;
   themeAccuracy: Record<string, ThemeStat>;
   historyLog: PuzzleLogEntry[];
+  reviewMistakes: string[];
 }
 
 const STORAGE_KEY = 'chess_student_puzzle_stats_v1';
@@ -60,6 +61,7 @@ export function getDefaultPuzzleStats(): StudentPuzzleStats {
       zugzwang: { correct: 0, total: 0 },
     },
     historyLog: [],
+    reviewMistakes: [],
   };
 }
 
@@ -168,14 +170,24 @@ export interface RecordResult {
   rank: { title: string; badge: string };
 }
 
+export interface RecordPuzzleOptions {
+  hintsUsed?: number;
+  isForfeit?: boolean;
+}
+
 export function recordPuzzleAttempt(
   puzzleId: string,
   puzzleRating: number,
   isCorrect: boolean,
-  themes: string[] = ['tactics']
+  themes: string[] = ['tactics'],
+  options?: RecordPuzzleOptions
 ): RecordResult {
   const stats = getStudentPuzzleStats();
   const today = getTodayDateString();
+
+  if (!Array.isArray(stats.reviewMistakes)) {
+    stats.reviewMistakes = [];
+  }
 
   // 1. Elo Calculation
   const kFactor = 32;
@@ -183,25 +195,24 @@ export function recordPuzzleAttempt(
   const actualScore = isCorrect ? 1 : 0;
   let ratingDelta = Math.round(kFactor * (actualScore - expectedScore));
 
-  if (isCorrect) {
-    if (ratingDelta < 5) ratingDelta = 5; // minimum reward on solve
-  } else {
-    if (ratingDelta > -5) ratingDelta = -5; // minimum penalty on fail
-    if (ratingDelta < -20) ratingDelta = -20; // max cap on single failure loss
-  }
-
-  stats.tacticalRating = Math.max(400, stats.tacticalRating + ratingDelta);
-  stats.totalAttempted += 1;
-
   let xpGain = 0;
   let isGoalJustCompleted = false;
 
   if (isCorrect) {
+    // If hints were used, reduce rating and XP reward
+    if (options?.hintsUsed && options.hintsUsed > 0) {
+      ratingDelta = Math.max(2, Math.round(ratingDelta * 0.5));
+      xpGain = 5;
+    } else {
+      if (ratingDelta < 5) ratingDelta = 5; // minimum reward on clean solve
+      xpGain = 10;
+    }
+
+    // Remove from review mistakes if it was previously failed
+    stats.reviewMistakes = stats.reviewMistakes.filter((id) => id !== puzzleId);
+
     stats.totalSolved += 1;
     stats.todaySolvedCount += 1;
-
-    // XP calculation
-    xpGain += 10;
 
     // Daily Goal Check
     if (stats.todaySolvedCount === stats.dailyGoal) {
@@ -230,8 +241,23 @@ export function recordPuzzleAttempt(
       }
       stats.lastSolvedDate = today;
     }
+  } else {
+    // Failed or Forfeited
+    if (ratingDelta > -5) ratingDelta = -5; // minimum penalty on fail
+    if (ratingDelta < -20) ratingDelta = -20; // max cap on single failure loss
+
+    // Reset current solving streak on failure
+    stats.currentStreak = 0;
+
+    // Add to review mistakes queue for spaced repetition
+    if (puzzleId && !stats.reviewMistakes.includes(puzzleId)) {
+      stats.reviewMistakes.push(puzzleId);
+    }
   }
 
+  // Apply rating change with minimum floor of 400
+  stats.tacticalRating = Math.max(400, stats.tacticalRating + ratingDelta);
+  stats.totalAttempted += 1;
   stats.xp += xpGain;
 
   // Update Theme Accuracy
@@ -268,4 +294,18 @@ export function recordPuzzleAttempt(
     isGoalJustCompleted,
     rank,
   };
+}
+
+export function hydrateStatsFromDb(dbStats: Partial<StudentPuzzleStats>): StudentPuzzleStats {
+  const current = getStudentPuzzleStats();
+  const updated: StudentPuzzleStats = {
+    ...current,
+    tacticalRating: typeof dbStats.tacticalRating === 'number' && dbStats.tacticalRating >= 400 ? dbStats.tacticalRating : current.tacticalRating,
+    totalSolved: typeof dbStats.totalSolved === 'number' ? Math.max(dbStats.totalSolved, current.totalSolved) : current.totalSolved,
+    totalAttempted: typeof dbStats.totalAttempted === 'number' ? Math.max(dbStats.totalAttempted, current.totalAttempted) : current.totalAttempted,
+    currentStreak: typeof dbStats.currentStreak === 'number' ? dbStats.currentStreak : current.currentStreak,
+    reviewMistakes: Array.isArray(dbStats.reviewMistakes) ? dbStats.reviewMistakes : (current.reviewMistakes || []),
+  };
+  saveStudentPuzzleStats(updated);
+  return updated;
 }

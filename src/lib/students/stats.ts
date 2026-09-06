@@ -8,6 +8,11 @@ export interface StudentStats {
   loginDates?: string[];
   loginStreak?: number;
   milestonesClaimed?: number[];
+  tacticalRating?: number;
+  puzzlesSolved?: number;
+  puzzlesAttempted?: number;
+  puzzleStreak?: number;
+  reviewMistakes?: string[];
 }
 
 export function parseStudentStats(notes: string | null): StudentStats {
@@ -21,6 +26,11 @@ export function parseStudentStats(notes: string | null): StudentStats {
     loginDates: [],
     loginStreak: 0,
     milestonesClaimed: [],
+    tacticalRating: 1200,
+    puzzlesSolved: 0,
+    puzzlesAttempted: 0,
+    puzzleStreak: 0,
+    reviewMistakes: [],
   };
   if (!notes) return defaultStats;
 
@@ -39,6 +49,11 @@ export function parseStudentStats(notes: string | null): StudentStats {
       loginDates: Array.isArray(parsed.loginDates) ? parsed.loginDates : [],
       loginStreak: typeof parsed.loginStreak === 'number' ? parsed.loginStreak : 0,
       milestonesClaimed: Array.isArray(parsed.milestonesClaimed) ? parsed.milestonesClaimed : [],
+      tacticalRating: typeof parsed.tacticalRating === 'number' ? parsed.tacticalRating : 1200,
+      puzzlesSolved: typeof parsed.puzzlesSolved === 'number' ? parsed.puzzlesSolved : 0,
+      puzzlesAttempted: typeof parsed.puzzlesAttempted === 'number' ? parsed.puzzlesAttempted : 0,
+      puzzleStreak: typeof parsed.puzzleStreak === 'number' ? parsed.puzzleStreak : 0,
+      reviewMistakes: Array.isArray(parsed.reviewMistakes) ? parsed.reviewMistakes : [],
     };
   } catch {
     return defaultStats;

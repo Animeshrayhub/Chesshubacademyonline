@@ -83,33 +83,50 @@ export async function POST(req: NextRequest) {
       return res;
     });
 
-    if (body.solved) {
-      try {
-        const prof = await withRetry(async () => {
-          const { data, error } = await admin
-            .from('student_profiles')
-            .select('notes')
-            .eq('id', studentProfileId)
-            .single();
-          if (error) throw error;
-          return data;
-        });
-        
-        if (prof) {
-          const stats = parseStudentStats(prof.notes);
-          stats.xp += 10;
-          const updatedNotes = serializeStudentStats(prof.notes, stats);
-          await withRetry(async () => {
-            const { error } = await admin
-              .from('student_profiles')
-              .update({ notes: updatedNotes })
-              .eq('id', studentProfileId);
-            if (error) throw error;
-          });
+    try {
+      const prof = await withRetry(async () => {
+        const { data, error } = await admin
+          .from('student_profiles')
+          .select('notes')
+          .eq('id', studentProfileId)
+          .single();
+        if (error) throw error;
+        return data;
+      });
+
+      if (prof) {
+        const stats = parseStudentStats(prof.notes);
+        if (body.solved) {
+          const gain = typeof (body as any).xpGain === 'number' ? (body as any).xpGain : 10;
+          stats.xp += gain;
+          stats.puzzlesSolved = (stats.puzzlesSolved || 0) + 1;
+          stats.puzzleStreak = (stats.puzzleStreak || 0) + 1;
+          stats.reviewMistakes = (stats.reviewMistakes || []).filter((id) => id !== body.puzzleId);
+        } else {
+          stats.puzzleStreak = 0;
+          if (!stats.reviewMistakes) stats.reviewMistakes = [];
+          if (body.puzzleId && !stats.reviewMistakes.includes(body.puzzleId)) {
+            stats.reviewMistakes.push(body.puzzleId);
+          }
         }
-      } catch (err) {
-        console.error('Failed to reward XP:', err);
+
+        stats.puzzlesAttempted = (stats.puzzlesAttempted || 0) + 1;
+
+        if (typeof (body as any).tacticalRating === 'number') {
+          stats.tacticalRating = (body as any).tacticalRating;
+        }
+
+        const updatedNotes = serializeStudentStats(prof.notes, stats);
+        await withRetry(async () => {
+          const { error } = await admin
+            .from('student_profiles')
+            .update({ notes: updatedNotes })
+            .eq('id', studentProfileId);
+          if (error) throw error;
+        });
       }
+    } catch (err) {
+      console.error('Failed to sync student tactical stats:', err);
     }
 
     return NextResponse.json({ id: result.data.id }, { status: 201 });
@@ -119,5 +136,40 @@ export async function POST(req: NextRequest) {
       { error: 'Internal server error' },
       { status: 500 }
     );
+  }
+}
+
+export async function GET() {
+  try {
+    const supabase = createServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const admin = createSupabaseAdmin();
+    const { data: profile } = await admin
+      .from('student_profiles')
+      .select('notes')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (!profile) {
+      return NextResponse.json({ success: true, stats: null });
+    }
+
+    const stats = parseStudentStats(profile.notes);
+    return NextResponse.json({
+      success: true,
+      stats: {
+        tacticalRating: stats.tacticalRating || 1200,
+        totalSolved: stats.puzzlesSolved || 0,
+        totalAttempted: stats.puzzlesAttempted || 0,
+        currentStreak: stats.puzzleStreak || 0,
+        reviewMistakes: stats.reviewMistakes || [],
+      },
+    });
+  } catch (err: any) {
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
