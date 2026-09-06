@@ -80,6 +80,7 @@ export default function StudentPuzzleTrainer() {
   const [puzzlesSolved, setPuzzlesSolved] = useState(0);
   const [puzzlesAttempted, setPuzzlesAttempted] = useState(0);
   const [studentRating, setStudentRating] = useState<number>(1200);
+  const [ladderOffset, setLadderOffset] = useState<number>(0);
   const [mistakesQueue, setMistakesQueue] = useState<string[]>([]);
   const [showForfeitModal, setShowForfeitModal] = useState(false);
   const [petReaction, setPetReaction] = useState<string>('Ready to calculate tactics? Look for checks and captures!');
@@ -390,6 +391,7 @@ export default function StudentPuzzleTrainer() {
     const accuracyVal = attempts === 1 ? 100 : Math.max(50, Math.round(100 / attempts));
 
     if (currentPuzzle) {
+      setLadderOffset((prev) => prev + 30);
       const recordRes = recordPuzzleAttempt(
         currentPuzzle.id,
         currentPuzzle.rating,
@@ -477,6 +479,7 @@ export default function StudentPuzzleTrainer() {
 
     setIsFailed(true);
     playChessSound('quiz_wrong');
+    setLadderOffset((prev) => Math.max(-500, prev - 50));
 
     const durationSec = Math.max(1, Math.round((Date.now() - solveStartTime) / 1000));
     const recordRes = recordPuzzleAttempt(
@@ -640,16 +643,18 @@ export default function StudentPuzzleTrainer() {
       return;
     }
 
+    const targetMatchRating = Math.max(400, studentRating + ladderOffset);
+
     if (practiceMode === 'daily') {
       setPracticeMode('unlimited');
       setCategoryIndex((prev) => prev + 1);
-      fetchPuzzle('unlimited', selectedCategory, categoryIndex + 1, studentRating);
+      fetchPuzzle('unlimited', selectedCategory, categoryIndex + 1, targetMatchRating);
     } else if (practiceMode === 'mistakes') {
       setCategoryIndex((prev) => prev + 1);
-      fetchPuzzle('mistakes', selectedCategory, categoryIndex + 1, studentRating);
+      fetchPuzzle('mistakes', selectedCategory, categoryIndex + 1, targetMatchRating);
     } else {
       setCategoryIndex((prev) => prev + 1);
-      fetchPuzzle('unlimited', selectedCategory, categoryIndex + 1, studentRating);
+      fetchPuzzle('unlimited', selectedCategory, categoryIndex + 1, targetMatchRating);
     }
   };
 
@@ -663,7 +668,7 @@ export default function StudentPuzzleTrainer() {
             type="button"
             onClick={() => {
               setPracticeMode('daily');
-              fetchPuzzle('daily', selectedCategory, 0, studentRating);
+              fetchPuzzle('daily', selectedCategory, 0, Math.max(400, studentRating + ladderOffset));
             }}
             className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1.5 ${
               practiceMode === 'daily'
@@ -679,7 +684,7 @@ export default function StudentPuzzleTrainer() {
             type="button"
             onClick={() => {
               setPracticeMode('unlimited');
-              fetchPuzzle('unlimited', selectedCategory, categoryIndex, studentRating);
+              fetchPuzzle('unlimited', selectedCategory, categoryIndex, Math.max(400, studentRating + ladderOffset));
             }}
             className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1.5 ${
               practiceMode === 'unlimited'
@@ -696,7 +701,7 @@ export default function StudentPuzzleTrainer() {
             onClick={() => {
               setPracticeMode('mistakes');
               setCategoryIndex(0);
-              fetchPuzzle('mistakes', selectedCategory, 0, studentRating);
+              fetchPuzzle('mistakes', selectedCategory, 0, Math.max(400, studentRating + ladderOffset));
             }}
             className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1.5 ${
               practiceMode === 'mistakes'
@@ -719,7 +724,7 @@ export default function StudentPuzzleTrainer() {
                 onClick={() => {
                   setSelectedCategory(cat);
                   setCategoryIndex(0);
-                  fetchPuzzle('unlimited', cat, 0, studentRating);
+                  fetchPuzzle('unlimited', cat, 0, Math.max(400, studentRating + ladderOffset));
                 }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                   selectedCategory === cat
@@ -780,6 +785,18 @@ export default function StudentPuzzleTrainer() {
               <span className="text-xl font-extrabold font-mono text-purple-400">
                 {currentPuzzle?.rating || '—'}
               </span>
+              {ladderOffset !== 0 && (
+                <span
+                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                    ladderOffset > 0
+                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                      : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                  }`}
+                  title="Dynamic Ladder: +30 on solve, -50 on fail"
+                >
+                  Ladder {ladderOffset > 0 ? `+${ladderOffset}` : ladderOffset}
+                </span>
+              )}
               {currentPuzzle?.source === 'ACADEMY' && (
                 <span className="text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1 py-0.2 rounded uppercase">
                   Academy
