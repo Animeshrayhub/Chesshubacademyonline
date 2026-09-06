@@ -459,6 +459,15 @@ export async function getStudentDashboardStats(): Promise<Result<{
   streak: number;
   shields: number;
   todaySolved: boolean;
+  todayLoggedIn?: boolean;
+  isFirstLoginToday?: boolean;
+  loginBonusXp?: number;
+  unlockedMilestone?: {
+    days: number;
+    bonusXp: number;
+    bonusShields: number;
+    title: string;
+  } | null;
   solvedDates: string[];
   equippedPet: string;
   equippedGear: string;
@@ -587,10 +596,14 @@ export async function getStudentDashboardStats(): Promise<Result<{
         totalEnrolledClasses: totalEnrolled,
         attendanceRate,
         level: studentProfile.level || 'Beginner',
-        xp: realXp,
+        xp: streakData.xp ?? realXp,
         streak: streakData.streak ?? 0,
         shields: streakData.shields ?? 0,
         todaySolved: streakData.todaySolved ?? false,
+        todayLoggedIn: streakData.todayLoggedIn ?? true,
+        isFirstLoginToday: streakData.isFirstLoginToday ?? false,
+        loginBonusXp: streakData.loginBonusXp ?? 0,
+        unlockedMilestone: streakData.unlockedMilestone ?? null,
         solvedDates: streakData.solvedDates ?? [],
         equippedPet: dbStats.equippedPet || 'dragon',
         equippedGear: dbStats.equippedGear || 'none',

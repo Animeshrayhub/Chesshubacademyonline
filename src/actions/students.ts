@@ -219,3 +219,30 @@ export async function awardPlaygroundXpAction(xpAmount: number, challengeName: s
     return { success: false, error: err?.message || 'Failed to award playground XP' };
   }
 }
+
+export async function recordDailyLoginAction() {
+  try {
+    const { getCurrentUser } = await import('@/lib/supabase/auth');
+    const { createSupabaseAdmin } = await import('@/lib/supabase/admin');
+    const { calculateAndProtectStreak } = await import('@/lib/puzzles/properties');
+
+    const user = await getCurrentUser();
+    if (!user) return { success: false, error: 'Unauthorized' };
+
+    const admin = createSupabaseAdmin();
+    const { data: profile } = await admin
+      .from('student_profiles')
+      .select('id')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (!profile) return { success: false, error: 'Student profile not found' };
+
+    const streakData = await calculateAndProtectStreak(profile.id);
+    revalidatePath('/dashboard/student');
+    return { success: true, data: streakData };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to record daily login' };
+  }
+}
+

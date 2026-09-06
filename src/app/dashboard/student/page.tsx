@@ -25,6 +25,7 @@ import AiBlunderRadarWidget from '@/features/student/AiBlunderRadarWidget';
 import DailyPuzzleChallengeWidget from '@/features/student/DailyPuzzleChallengeWidget';
 import StudentReferralWidget from '@/features/student/StudentReferralWidget';
 import KidsPetCompanionCard from '@/features/student/KidsPetCompanionCard';
+import DailyLoginTrigger from '@/components/dashboard/ui/DailyLoginTrigger';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,6 +52,10 @@ export default async function StudentOverviewPage() {
     streak: 0,
     shields: 0,
     todaySolved: false,
+    todayLoggedIn: true,
+    isFirstLoginToday: false,
+    loginBonusXp: 0,
+    unlockedMilestone: null,
     solvedDates: [] as string[],
     equippedPet: 'dragon',
     equippedGear: 'none',
@@ -202,6 +207,18 @@ export default async function StudentOverviewPage() {
           <span className="text-base group-hover:translate-x-1 transition-transform">➔</span>
         </a>
       </div>
+
+      {/* ☀️ Daily Login Streak & First-Login Celebration Trigger */}
+      <DailyLoginTrigger
+        isFirstLoginToday={stats.isFirstLoginToday}
+        streak={stats.streak ?? 1}
+        xpEarned={stats.loginBonusXp || 15}
+        shields={stats.shields ?? 0}
+        unlockedMilestone={stats.unlockedMilestone}
+        studentName={user?.firstName || 'Champion'}
+        equippedPet={stats.equippedPet || 'dragon'}
+        studentProfileId={user?.id || ''}
+      />
 
       {/* 🦁 Kids Companion & Pet Avatar Card */}
       <KidsPetCompanionCard
@@ -366,8 +383,11 @@ export default async function StudentOverviewPage() {
         <DailyStreakWidget
           currentStreak={stats.streak ?? stats.puzzleStats?.streak ?? 0}
           totalXp={stats.xp ?? 0}
+          shields={stats.shields ?? 0}
           todaySolved={stats.todaySolved ?? false}
+          todayLoggedIn={stats.todayLoggedIn ?? true}
           solvedDates={stats.solvedDates ?? []}
+          equippedPet={stats.equippedPet || 'dragon'}
         />
         <StudentBattleArena studentName={user?.firstName || 'Student'} />
       </div>

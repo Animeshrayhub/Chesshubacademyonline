@@ -4,6 +4,10 @@ export interface StudentStats {
   equippedPet?: string;
   equippedGear?: string;
   unlockedGear?: string[];
+  lastLoginDate?: string;
+  loginDates?: string[];
+  loginStreak?: number;
+  milestonesClaimed?: number[];
 }
 
 export function parseStudentStats(notes: string | null): StudentStats {
@@ -13,6 +17,10 @@ export function parseStudentStats(notes: string | null): StudentStats {
     equippedPet: 'dragon',
     equippedGear: 'none',
     unlockedGear: ['none'],
+    lastLoginDate: undefined,
+    loginDates: [],
+    loginStreak: 0,
+    milestonesClaimed: [],
   };
   if (!notes) return defaultStats;
 
@@ -27,6 +35,10 @@ export function parseStudentStats(notes: string | null): StudentStats {
       equippedPet: typeof parsed.equippedPet === 'string' ? parsed.equippedPet : 'dragon',
       equippedGear: typeof parsed.equippedGear === 'string' ? parsed.equippedGear : 'none',
       unlockedGear: Array.isArray(parsed.unlockedGear) ? parsed.unlockedGear : ['none'],
+      lastLoginDate: typeof parsed.lastLoginDate === 'string' ? parsed.lastLoginDate : undefined,
+      loginDates: Array.isArray(parsed.loginDates) ? parsed.loginDates : [],
+      loginStreak: typeof parsed.loginStreak === 'number' ? parsed.loginStreak : 0,
+      milestonesClaimed: Array.isArray(parsed.milestonesClaimed) ? parsed.milestonesClaimed : [],
     };
   } catch {
     return defaultStats;
@@ -38,3 +50,4 @@ export function serializeStudentStats(notes: string | null, stats: StudentStats)
   const jsonStr = JSON.stringify(stats);
   return baseNotes ? `${baseNotes}\n\n=== CHESSHUB_STATS ===\n${jsonStr}` : `=== CHESSHUB_STATS ===\n${jsonStr}`;
 }
+

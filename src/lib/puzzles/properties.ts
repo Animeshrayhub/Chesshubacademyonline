@@ -1,12 +1,30 @@
 import { createSupabaseAdmin } from '../supabase/admin';
 import { parseStudentStats, serializeStudentStats } from '../students/stats';
 
+export interface StreakMilestone {
+  days: number;
+  bonusXp: number;
+  bonusShields: number;
+  title: string;
+}
+
+export const STREAK_MILESTONES: StreakMilestone[] = [
+  { days: 3, bonusXp: 50, bonusShields: 1, title: '3-Day Fire Starter' },
+  { days: 7, bonusXp: 100, bonusShields: 1, title: '7-Day Master Cadet' },
+  { days: 14, bonusXp: 150, bonusShields: 1, title: '14-Day Tactical Champion' },
+  { days: 30, bonusXp: 250, bonusShields: 2, title: '30-Day Grandmaster Legend' },
+];
+
 export interface StreakData {
   streak: number;
   xp: number;
   shields: number;
   wasProtected: boolean;
   todaySolved: boolean;
+  todayLoggedIn: boolean;
+  isFirstLoginToday: boolean;
+  loginBonusXp: number;
+  unlockedMilestone: StreakMilestone | null;
   solvedDates: string[];
 }
 
@@ -31,22 +49,20 @@ export async function calculateAndProtectStreak(studentProfileId: string): Promi
     .eq('solved', true)
     .order('solved_at', { ascending: false });
 
-  // 3. Also check student_activities for real solved puzzles
+  // 3. Also check student_activities for real solved puzzles and logins
   let actResults: any[] = [];
   if (profile?.user_id) {
     try {
       const { data: acts } = await admin
         .from('student_activities')
-        .select('created_at, started_at')
+        .select('created_at, started_at, activity_type, result')
         .eq('student_id', profile.user_id)
-        .in('activity_type', ['PUZZLE', 'DAILY_PUZZLE'])
-        .eq('result', 'SOLVED')
         .order('created_at', { ascending: false });
       if (acts) actResults = acts;
     } catch {}
   }
 
-  // 4. Collect unique solved dates in ISO format (YYYY-MM-DD)
+  // 4. Collect unique active dates in ISO format (YYYY-MM-DD)
   const dateSet = new Set<string>();
 
   if (results && results.length > 0) {
@@ -74,100 +90,156 @@ export async function calculateAndProtectStreak(studentProfileId: string): Promi
     }
   }
 
+  // Also include past recorded login dates from student stats
+  if (stats.loginDates && stats.loginDates.length > 0) {
+    for (const ld of stats.loginDates) {
+      if (typeof ld === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(ld)) {
+        dateSet.add(ld);
+      }
+    }
+  }
+  if (stats.lastLoginDate) {
+    dateSet.add(stats.lastLoginDate);
+  }
+
   const now = new Date();
   const todayIso = now.toISOString().split('T')[0];
   const todayLocal = now.toLocaleDateString('en-CA');
-  const todaySolved = dateSet.has(todayIso) || dateSet.has(todayLocal);
 
   const yDate = new Date();
   yDate.setDate(yDate.getDate() - 1);
   const yIso = yDate.toISOString().split('T')[0];
   const yLocal = yDate.toLocaleDateString('en-CA');
-  const yesterdaySolved = dateSet.has(yIso) || dateSet.has(yLocal);
+  const yesterdayActive = dateSet.has(yIso) || dateSet.has(yLocal);
 
-  let streak = 0;
+  const alreadyLoggedInToday = stats.lastLoginDate === todayIso || stats.lastLoginDate === todayLocal;
+  let isFirstLoginToday = false;
+  let loginBonusXp = 0;
+  let unlockedMilestone: StreakMilestone | null = null;
   let wasProtected = false;
+  let streak = stats.loginStreak && stats.loginStreak > 0 ? stats.loginStreak : 0;
+  let shields = stats.shields;
+  let xp = stats.xp;
 
-  if (todaySolved) {
-    streak = 1;
-    let current = new Date();
-    current.setDate(current.getDate() - 1); // check backwards starting from yesterday
-    while (true) {
-      const checkIso = current.toISOString().split('T')[0];
-      const checkLocal = current.toLocaleDateString('en-CA');
-      if (dateSet.has(checkIso) || dateSet.has(checkLocal)) {
-        streak++;
-        current.setDate(current.getDate() - 1);
-      } else {
-        break;
+  // Add today to active dateSet right away
+  dateSet.add(todayIso);
+  dateSet.add(todayLocal);
+
+  if (!alreadyLoggedInToday) {
+    // ── First Login of Today ───────────────────────────────────────────────────
+    isFirstLoginToday = true;
+
+    if (yesterdayActive) {
+      // Streak continues consecutively!
+      streak = (streak > 0 ? streak : 0) + 1;
+    } else if (dateSet.size > 2) {
+      // Missed yesterday! Check if Streak Shield can protect
+      if (shields === 0 && xp >= 100) {
+        // Auto-buy shield with real earned XP
+        xp -= 100;
+        shields += 1;
       }
-    }
-  } else if (yesterdaySolved) {
-    // Solved yesterday, streak is currently active today
-    streak = 1;
-    let current = new Date();
-    current.setDate(current.getDate() - 2); // check backwards starting from day before yesterday
-    while (true) {
-      const checkIso = current.toISOString().split('T')[0];
-      const checkLocal = current.toLocaleDateString('en-CA');
-      if (dateSet.has(checkIso) || dateSet.has(checkLocal)) {
-        streak++;
-        current.setDate(current.getDate() - 1);
+
+      if (shields > 0) {
+        shields -= 1;
+        wasProtected = true;
+        streak = (streak > 0 ? streak : 1) + 1; // Preserve streak
       } else {
-        break;
+        streak = 1; // Reset to Day 1
       }
-    }
-  } else if (dateSet.size > 0) {
-    // Missed yesterday! Check if Streak Shield can protect
-    let shields = stats.shields;
-    let xp = stats.xp;
-
-    if (shields === 0 && xp >= 100) {
-      // Auto-buy shield with real earned XP
-      xp -= 100;
-      shields += 1;
-    }
-
-    if (shields > 0) {
-      // Consume shield to protect
-      shields -= 1;
-      wasProtected = true;
-
-      // Save updated real stats back to DB
-      stats.xp = xp;
-      stats.shields = shields;
-      const newNotes = serializeStudentStats(notes, stats);
-      await admin
-        .from('student_profiles')
-        .update({ notes: newNotes })
-        .eq('id', studentProfileId);
-
-      // Keep streak alive as if yesterday was solved!
+    } else {
       streak = 1;
-      let current = new Date();
-      current.setDate(current.getDate() - 2); // check day before yesterday
-      while (true) {
-        const checkIso = current.toISOString().split('T')[0];
-        const checkLocal = current.toLocaleDateString('en-CA');
-        if (dateSet.has(checkIso) || dateSet.has(checkLocal)) {
-          streak++;
-          current.setDate(current.getDate() - 1);
-        } else {
-          break;
-        }
+    }
+
+    // Award +15 XP base for daily login attendance
+    loginBonusXp = 15;
+    xp += 15;
+
+    // Check streak milestones
+    const claimed = stats.milestonesClaimed || [];
+    for (const m of STREAK_MILESTONES) {
+      if (streak >= m.days && !claimed.includes(m.days)) {
+        xp += m.bonusXp;
+        shields += m.bonusShields;
+        claimed.push(m.days);
+        unlockedMilestone = m;
+        loginBonusXp += m.bonusXp;
+        break;
       }
     }
+
+    // Save updated stats to DB
+    stats.xp = xp;
+    stats.shields = shields;
+    stats.loginStreak = streak;
+    stats.lastLoginDate = todayIso;
+    stats.loginDates = Array.from(new Set([...(stats.loginDates || []), todayIso]));
+    stats.milestonesClaimed = claimed;
+
+    const newNotes = serializeStudentStats(notes, stats);
+    await admin
+      .from('student_profiles')
+      .update({ notes: newNotes })
+      .eq('id', studentProfileId);
+
+    // Record verified student activity
+    if (profile?.user_id) {
+      try {
+        await admin.from('student_activities').insert({
+          student_id: profile.user_id,
+          activity_type: 'LOGIN',
+          started_at: now.toISOString(),
+          completed_at: now.toISOString(),
+          result: 'SUCCESS',
+          score: 15,
+          metadata: { streak, milestone: unlockedMilestone },
+          created_at: now.toISOString(),
+        });
+      } catch {}
+    }
+  } else {
+    // Already logged in today, ensure streak is at least 1
+    if (streak === 0) streak = 1;
   }
+
+  // Determine if a tactical puzzle has been solved today
+  const todaySolved =
+    (results &&
+      results.some((r: any) => {
+        if (!r.solved_at) return false;
+        const d = new Date(r.solved_at);
+        const iso = d.toISOString().split('T')[0];
+        const loc = d.toLocaleDateString('en-CA');
+        return iso === todayIso || loc === todayLocal;
+      })) ||
+    (actResults &&
+      actResults.some((a: any) => {
+        const ts = a.created_at || a.started_at;
+        if (!ts) return false;
+        const d = new Date(ts);
+        const iso = d.toISOString().split('T')[0];
+        const loc = d.toLocaleDateString('en-CA');
+        return (
+          (iso === todayIso || loc === todayLocal) &&
+          ['PUZZLE', 'DAILY_PUZZLE'].includes(a.activity_type) &&
+          a.result === 'SOLVED'
+        );
+      })) ||
+    false;
 
   // Filter unique valid ISO dates for UI calendar
   const solvedDates = Array.from(dateSet).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d));
 
   return {
     streak,
-    xp: stats.xp,
-    shields: stats.shields,
+    xp,
+    shields,
     wasProtected,
     todaySolved,
+    todayLoggedIn: true,
+    isFirstLoginToday,
+    loginBonusXp,
+    unlockedMilestone,
     solvedDates,
   };
 }

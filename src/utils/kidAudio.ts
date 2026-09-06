@@ -142,6 +142,35 @@ export function playVictoryFanfare(): void {
   } catch {}
 }
 
+/** Sparkling ascending celebration chime for daily check-in */
+export function playDailyChime(): void {
+  if (isSoundMuted()) return;
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    // G4, B4, D5, G5 chime arpeggio with warm sine tones
+    const notes = [392.0, 493.88, 587.33, 783.99];
+    notes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const startTime = ctx.currentTime + idx * 0.09;
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, startTime);
+
+      gain.gain.setValueAtTime(0.22, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.4);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(startTime);
+      osc.stop(startTime + 0.4);
+    });
+  } catch {}
+}
+
 /** Soft boing sound for wrong attempt */
 export function playBoingSound(): void {
   if (isSoundMuted()) return;
