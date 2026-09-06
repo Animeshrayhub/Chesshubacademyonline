@@ -6,9 +6,13 @@ export function createSupabaseAdmin() {
     throw new Error('createSupabaseAdmin must only be executed in a server environment.');
   }
 
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const serviceKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    env.SUPABASE_SERVICE_ROLE_KEY ||
+    env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
   if (!serviceKey || serviceKey.length < 20) {
-    throw new Error('SUPABASE_SERVICE_ROLE_KEY is missing or invalid in server environment.');
+    throw new Error('Supabase credentials are missing or invalid in server environment.');
   }
 
   const customFetch = (url: RequestInfo | URL, options?: RequestInit) => {

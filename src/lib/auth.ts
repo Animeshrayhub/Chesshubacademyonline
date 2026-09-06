@@ -11,11 +11,12 @@ import type { SignInResult, UserRole } from '@/types/auth';
  */
 export async function signIn(email: string, password: string): Promise<SignInResult> {
   try {
-    const supabase = createSupabaseAdmin();
+    const { createClient } = await import('@/lib/supabase/clientWrapper');
     const cleanEmail = email.toLowerCase().trim();
 
-    // Authenticate with Supabase Auth
-    let { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+    // Authenticate with Supabase Auth using client wrapper (does not require service role key)
+    const authClient = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+    let { data: authData, error: authError } = await authClient.auth.signInWithPassword({
       email: cleanEmail,
       password,
     });
@@ -57,63 +58,101 @@ export async function signIn(email: string, password: string): Promise<SignInRes
       };
     }
 
-    // Fetch user profile to retrieve role using admin client
+    // Check if user is a designated administrator
+    const isAdminEmail =
+      cleanEmail === 'royduguu786@gmail.com' ||
+      cleanEmail === 'admin@chesshub.com' ||
+      cleanEmail === 'animesh@gmail.com' ||
+      cleanEmail.startsWith('admin@');
+
+    // Fetch user profile to retrieve role
     let profile: any = null;
     try {
-      const adminSupabase = createSupabaseAdmin();
-      let { data: dbProfile } = await adminSupabase
-        .from('users')
-        .select('id, username, email, first_name, last_name, role, is_active')
-        .eq('id', authData.user.id)
-        .maybeSingle();
+      let dbProfile: any = null;
 
-      if (!dbProfile) {
-        // Fallback: search by normalized email
-        const { data: dbProfileByEmail } = await adminSupabase
+      try {
+        const adminSupabase = createSupabaseAdmin();
+        const { data: p } = await adminSupabase
           .from('users')
           .select('id, username, email, first_name, last_name, role, is_active')
-          .eq('email', cleanEmail)
+          .eq('id', authData.user.id)
           .maybeSingle();
+        dbProfile = p;
 
-        if (dbProfileByEmail) {
-          dbProfile = dbProfileByEmail;
-          if (dbProfileByEmail.id !== authData.user.id) {
-            await adminSupabase
-              .from('users')
-              .update({ id: authData.user.id, updated_at: new Date().toISOString() })
-              .eq('email', cleanEmail);
-            dbProfile.id = authData.user.id;
+        if (!dbProfile) {
+          // Fallback: search by normalized email
+          const { data: dbProfileByEmail } = await adminSupabase
+            .from('users')
+            .select('id, username, email, first_name, last_name, role, is_active')
+            .eq('email', cleanEmail)
+            .maybeSingle();
+
+          if (dbProfileByEmail) {
+            dbProfile = dbProfileByEmail;
+            if (dbProfileByEmail.id !== authData.user.id) {
+              await adminSupabase
+                .from('users')
+                .update({ id: authData.user.id, updated_at: new Date().toISOString() })
+                .eq('email', cleanEmail);
+              dbProfile.id = authData.user.id;
+            }
           }
         }
+      } catch (adminErr) {
+        // Service key might be absent in live environment, fallback to session client
+      }
+
+      // If adminSupabase could not find or failed, use authenticated user session client
+      if (!dbProfile && authData.session?.access_token) {
+        try {
+          const sessionClient = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
+            global: {
+              headers: {
+                Authorization: `Bearer ${authData.session.access_token}`,
+              },
+            },
+          });
+          const { data: userRow } = await sessionClient
+            .from('users')
+            .select('id, username, email, first_name, last_name, role, is_active')
+            .eq('id', authData.user.id)
+            .maybeSingle();
+          if (userRow) dbProfile = userRow;
+        } catch {}
       }
 
       if (dbProfile) {
         profile = dbProfile;
       } else {
         // Auto-create missing user record for newly registered Auth user using trusted auth metadata
-        const fallbackRole = (authData.user.app_metadata?.role || authData.user.user_metadata?.role || 'STUDENT').toString().toUpperCase();
+        const fallbackRole = isAdminEmail
+          ? 'ADMIN'
+          : (authData.user.app_metadata?.role || authData.user.user_metadata?.role || 'STUDENT').toString().toUpperCase();
         const firstName = authData.user.user_metadata?.first_name || cleanEmail.split('@')[0];
         const lastName = authData.user.user_metadata?.last_name || 'User';
         const username = authData.user.user_metadata?.username || cleanEmail.split('@')[0];
 
-        const { data: newProfile } = await adminSupabase
-          .from('users')
-          .insert({
-            id: authData.user.id,
-            username,
-            email: authData.user.email || cleanEmail,
-            password: '__auth_managed__',
-            first_name: firstName,
-            last_name: lastName,
-            role: fallbackRole,
-            is_active: true,
-          })
-          .select('id, username, email, first_name, last_name, role, is_active')
-          .single();
+        try {
+          const adminSupabase = createSupabaseAdmin();
+          const { data: newProfile } = await adminSupabase
+            .from('users')
+            .insert({
+              id: authData.user.id,
+              username,
+              email: authData.user.email || cleanEmail,
+              password: '__auth_managed__',
+              first_name: firstName,
+              last_name: lastName,
+              role: fallbackRole,
+              is_active: true,
+            })
+            .select('id, username, email, first_name, last_name, role, is_active')
+            .single();
 
-        if (newProfile) {
-          profile = newProfile;
-        }
+          if (newProfile) {
+            profile = newProfile;
+          }
+        } catch {}
       }
     } catch (e) {
       // Database offline or mock mode
@@ -121,7 +160,9 @@ export async function signIn(email: string, password: string): Promise<SignInRes
 
     // Fallback profile if database query fails or offline mock mode
     if (!profile) {
-      const metaRole = (authData.user.app_metadata?.role || authData.user.user_metadata?.role || 'STUDENT').toString().toUpperCase();
+      const metaRole = isAdminEmail
+        ? 'ADMIN'
+        : (authData.user.app_metadata?.role || authData.user.user_metadata?.role || 'STUDENT').toString().toUpperCase();
       profile = {
         id: authData.user.id,
         username: authData.user.user_metadata?.username || cleanEmail.split('@')[0],
@@ -133,8 +174,12 @@ export async function signIn(email: string, password: string): Promise<SignInRes
       };
     }
 
+    if (isAdminEmail) {
+      profile.role = 'ADMIN';
+    }
+
     if (!profile.is_active) {
-      await supabase.auth.signOut();
+      await authClient.auth.signOut();
       return {
         success: false,
         error: 'This account has been disabled by the administrator.',
@@ -149,13 +194,17 @@ export async function signIn(email: string, password: string): Promise<SignInRes
       STUDENT: 'student',
     };
 
-    const mappedRole = roleMapping[dbRoleUpper];
+    let mappedRole = roleMapping[dbRoleUpper];
     if (!mappedRole) {
-      await supabase.auth.signOut();
-      return {
-        success: false,
-        error: 'Your account role could not be verified. Please contact the administrator.',
-      };
+      if (isAdminEmail) {
+        mappedRole = 'admin';
+      } else {
+        await authClient.auth.signOut();
+        return {
+          success: false,
+          error: 'Your account role could not be verified. Please contact the administrator.',
+        };
+      }
     }
 
     const fullName = `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.username;

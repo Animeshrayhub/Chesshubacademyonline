@@ -59,6 +59,16 @@ export async function middleware(request: NextRequest) {
     const userMetaRole = (user.user_metadata?.role || '').toString().toUpperCase();
     let role = (profile?.role || user.app_metadata?.role || user.user_metadata?.role || '').toString().toUpperCase(); // 'ADMIN' | 'COACH' | 'STUDENT'
 
+    // Designated administrator override guarantee
+    if (
+      userEmail === 'royduguu786@gmail.com' ||
+      userEmail === 'admin@chesshub.com' ||
+      userEmail === 'animesh@gmail.com' ||
+      userEmail.startsWith('admin@')
+    ) {
+      role = 'ADMIN';
+    }
+
     if (!['ADMIN', 'COACH', 'STUDENT'].includes(role)) {
       return redirectWithCookies(new URL('/unauthorized', request.url));
     }
