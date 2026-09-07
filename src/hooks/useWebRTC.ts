@@ -191,7 +191,7 @@ export function useWebRTC({ classId, sessionId, userName, userRole, userId }: Us
       const topic = `webrtc-signal:${activeSessionId}`;
 
       const channel = supabase.channel(topic, {
-        config: { broadcast: { self: false }, presence: { key: activeSessionId } },
+        config: { broadcast: { self: false }, presence: { key: myPeerId } },
       });
 
       channel

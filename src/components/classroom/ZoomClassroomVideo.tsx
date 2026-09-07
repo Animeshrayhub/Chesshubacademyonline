@@ -81,20 +81,42 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
         if (!clientRef.current || !isJoinedRef.current) return false;
         try {
           const nextMute = !audioMuted;
-          if (typeof clientRef.current.mute === 'function') {
+          if (typeof clientRef.current.muteAudio === 'function') {
+            await clientRef.current.muteAudio(nextMute);
+          } else if (typeof clientRef.current.mute === 'function') {
             await clientRef.current.mute(nextMute);
           }
           setAudioMuted(nextMute);
           onMediaStatusChange?.({ isVideoOn: videoActive, isMuted: nextMute });
           return nextMute;
-        } catch {
+        } catch (err) {
+          console.warn('[Zoom toggleMute]', err);
           return audioMuted;
         }
       },
       toggleVideo: async () => {
         if (!clientRef.current || !isJoinedRef.current) return false;
-        updateMediaStateFromClient();
-        return videoActive;
+        try {
+          if (videoActive) {
+            if (typeof clientRef.current.stopVideo === 'function') {
+              await clientRef.current.stopVideo();
+            }
+            setVideoActive(false);
+            onMediaStatusChange?.({ isVideoOn: false, isMuted: audioMuted });
+            return false;
+          } else {
+            if (typeof clientRef.current.startVideo === 'function') {
+              await clientRef.current.startVideo();
+            }
+            setVideoActive(true);
+            onMediaStatusChange?.({ isVideoOn: true, isMuted: audioMuted });
+            return true;
+          }
+        } catch (err) {
+          console.warn('[Zoom toggleVideo]', err);
+          updateMediaStateFromClient();
+          return videoActive;
+        }
       },
       isMuted: () => audioMuted,
       isVideoOn: () => videoActive,
@@ -182,6 +204,15 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
         onMeetingJoin?.();
         onConnectionChange?.('connected');
 
+        // Start computer audio after joining Zoom meeting
+        try {
+          if (typeof (zoomClient as any)?.startAudio === 'function') {
+            await (zoomClient as any).startAudio();
+          }
+        } catch (audioErr) {
+          console.warn('[Zoom startAudio Notice]', audioErr);
+        }
+
         try {
           zoomClient.on('user-updated', () => {
             updateMediaStateFromClient();
@@ -212,6 +243,25 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
       setErrorMsg(null);
       initZoomMeeting();
     }, [initZoomMeeting]);
+
+    // Observe container resize (e.g. mini-view <-> gallery <-> full screen)
+    useEffect(() => {
+      if (!containerRef.current || typeof ResizeObserver === 'undefined') return;
+      const observer = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const { width, height } = entry.contentRect;
+          if (width > 50 && height > 50 && clientRef.current && isJoinedRef.current) {
+            try {
+              if (typeof clientRef.current.recenterVideo === 'function') {
+                clientRef.current.recenterVideo();
+              }
+            } catch {}
+          }
+        }
+      });
+      observer.observe(containerRef.current);
+      return () => observer.disconnect();
+    }, []);
 
     useEffect(() => {
       let mounted = true;

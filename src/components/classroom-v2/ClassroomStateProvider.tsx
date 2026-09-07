@@ -157,6 +157,7 @@ export function ClassroomStateProvider({
 
   const snapshotRef = useRef(snapshot);
   snapshotRef.current = snapshot;
+  const activeChannelRef = useRef<any>(null);
 
   const clearError = useCallback(() => setErrorMessage(null), []);
 
@@ -189,57 +190,84 @@ export function ClassroomStateProvider({
     });
   }, [classId]);
 
-  // ── Realtime WebSocket Setup ──────────────────────────────────────────────
+  // ── Realtime WebSocket Setup & Connection Resilience ─────────────────────
   useEffect(() => {
+    let isMounted = true;
     const supabase = createSupabaseClient();
     const channelName = `live-session:${sessionId}`;
-    const channel = supabase.channel(channelName, {
-      config: {
-        presence: {
-          key: userId,
-        },
-      },
-    });
+    let currentChannel: any = null;
+    let reconnectTimeout: NodeJS.Timeout | null = null;
+    let reconnectAttempts = 0;
 
-    // Redundant PostgreSQL replication listener: updates board state immediately upon DB write
-    channel.on(
-      'postgres_changes',
-      {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'live_session_board_state',
-        filter: `session_id=eq.${sessionId}`,
-      },
-      (changePayload: any) => {
-        const row = changePayload?.new;
-        if (!row) return;
-        setSnapshot((current) => {
-          const rawMoves = Array.isArray(row.moves) ? row.moves : [];
-          const moveIdx = row.current_move_index ?? (rawMoves.length - 1);
-          if (moveIdx < current.board.currentMoveIndex) return current;
-          return {
-            ...current,
-            board: {
-              ...current.board,
-              fen: row.fen || current.board.fen,
-              moves: rawMoves.length > 0 ? rawMoves : current.board.moves,
-              currentMoveIndex: moveIdx,
-              allowIllegalMoves: Boolean(row.allow_illegal_moves),
-              sideToMove: ((row.fen?.split(' ')[1] as 'w' | 'b') || current.board.sideToMove),
-            },
-            permissions: {
-              ...current.permissions,
-              boardControllerId: row.board_controller_id || null,
-            },
-          };
-        });
+    const initChannel = () => {
+      if (!isMounted) return;
+      if (currentChannel) {
+        try {
+          supabase.removeChannel(currentChannel);
+        } catch {}
       }
-    );
 
-    channel
-      .on('broadcast', { event: '*' }, (eventPayload: any) => {
+      const channel = supabase.channel(channelName, {
+        config: {
+          presence: {
+            key: userId,
+          },
+        },
+      });
+
+      // Redundant PostgreSQL replication listener: updates board state immediately upon DB write
+      channel.on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'live_session_board_state',
+          filter: `session_id=eq.${sessionId}`,
+        },
+        (changePayload: any) => {
+          const row = changePayload?.new;
+          if (!row) return;
+          setSnapshot((current) => {
+            const rawMoves = Array.isArray(row.moves) ? row.moves : [];
+            const moveIdx = row.current_move_index ?? (rawMoves.length - 1);
+            if (moveIdx < current.board.currentMoveIndex) return current;
+            return {
+              ...current,
+              board: {
+                ...current.board,
+                fen: row.fen || current.board.fen,
+                moves: rawMoves.length > 0 ? rawMoves : current.board.moves,
+                currentMoveIndex: moveIdx,
+                allowIllegalMoves: Boolean(row.allow_illegal_moves),
+                sideToMove: ((row.fen?.split(' ')[1] as 'w' | 'b') || current.board.sideToMove),
+              },
+              permissions: {
+                ...current.permissions,
+                boardControllerId: row.board_controller_id || null,
+              },
+            };
+          });
+        }
+      );
+
+      channel.on('broadcast', { event: '*' }, (eventPayload: any) => {
         const payload = eventPayload?.payload;
         if (!payload) return;
+
+        // Instant direct client board drawing handler (<50ms)
+        if (payload.type === 'BOARD_DRAWING') {
+          if (payload.senderId !== userId) {
+            setSnapshot((current) => ({
+              ...current,
+              board: {
+                ...current.board,
+                arrows: Array.isArray(payload.arrows) ? payload.arrows : [],
+                highlights: Array.isArray(payload.highlights) ? payload.highlights : [],
+              },
+            }));
+          }
+          return;
+        }
 
         // Apply reducer for canonical board/puzzle/quiz states immediately — never drop moves!
         setSnapshot((current) => classroomReducer(current, payload));
@@ -252,24 +280,30 @@ export function ClassroomStateProvider({
 
         // Special handling for secondary real-time entities
         if (payload.type === 'CHAT_MESSAGE' || payload.type === 'PRIVATE_CHAT_MESSAGE') {
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === payload.message.id)) return prev;
-            return [...prev, payload.message];
-          });
+          const isForMe = !payload.isPrivate || isCoach || payload.recipientId === userId || payload.senderId === userId;
+          if (isForMe && payload.message) {
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === payload.message.id)) return prev;
+              return [...prev, payload.message];
+            });
+          }
         } else if (payload.type === 'REACTION') {
           setReactions((prev) => [
             ...prev.slice(-15),
             { id: `rx_${Date.now()}_${Math.random()}`, emoji: payload.emoji, userName: payload.userName },
           ]);
         } else if (payload.type === 'STUDENT_RESPONSE') {
-          setResponses((prev) => {
-            if (prev.some((r) => r.id === payload.response.id)) return prev;
-            return [payload.response, ...prev];
-          });
+          // Blind response mode: coach sees all responses, students see only their own
+          const isForMe = isCoach || payload.response?.studentId === userId;
+          if (isForMe && payload.response) {
+            setResponses((prev) => {
+              if (prev.some((r) => r.id === payload.response.id)) return prev;
+              return [payload.response, ...prev];
+            });
+          }
         } else if (payload.type === 'BOOKMARK_CREATED') {
           setBookmarks((prev) => [payload.bookmark, ...prev]);
         } else if (payload.type === 'PUZZLE_SOLVED') {
-          // Update puzzle attempt result (shown as inline feedback on board)
           setPuzzleAttemptResult({
             puzzleId: payload.puzzleId,
             studentId: payload.studentId,
@@ -277,7 +311,6 @@ export function ClassroomStateProvider({
             attempts: payload.attempts,
             timestamp: payload.timestamp,
           });
-          // Auto-clear after 4 seconds for student
           if (payload.studentId === userId) {
             setTimeout(() => setPuzzleAttemptResult(null), 4000);
           }
@@ -305,72 +338,97 @@ export function ClassroomStateProvider({
         }
       });
 
-    // Realtime Presence tracking — accurately maps presence key and payload to onlineUserIds
-    channel
-      .on('presence', { event: 'sync' }, () => {
-        const state = channel.presenceState();
-        const online = new Set<string>();
-        for (const [key, presences] of Object.entries(state)) {
-          if (key) online.add(key);
-          if (Array.isArray(presences)) {
-            for (const p of presences as any[]) {
-              if (p?.userId) online.add(p.userId);
+      // Realtime Presence tracking — accurately maps presence key and payload to onlineUserIds
+      channel
+        .on('presence', { event: 'sync' }, () => {
+          const state = channel.presenceState();
+          const online = new Set<string>();
+          for (const [key, presences] of Object.entries(state)) {
+            if (key) online.add(key);
+            if (Array.isArray(presences)) {
+              for (const p of presences as any[]) {
+                if (p?.userId) online.add(p.userId);
+              }
             }
           }
+          setOnlineUserIds(online);
+        })
+        .on('presence', { event: 'join' }, ({ key, newPresences }: any) => {
+          setOnlineUserIds((prev) => {
+            const next = new Set(prev);
+            if (key) next.add(key);
+            if (Array.isArray(newPresences)) {
+              for (const p of newPresences) {
+                if (p?.userId) next.add(p.userId);
+              }
+            }
+            return next;
+          });
+        })
+        .on('presence', { event: 'leave' }, ({ key, leftPresences }: any) => {
+          setOnlineUserIds((prev) => {
+            const next = new Set(prev);
+            if (key) next.delete(key);
+            if (Array.isArray(leftPresences)) {
+              for (const p of leftPresences) {
+                if (p?.userId) next.delete(p.userId);
+              }
+            }
+            return next;
+          });
+        });
+
+      channel.subscribe((status: string) => {
+        if (!isMounted) return;
+        if (status === 'SUBSCRIBED') {
+          reconnectAttempts = 0;
+          setConnectionState('connected');
+          channel.track({
+            userId,
+            userName,
+            role,
+            onlineAt: new Date().toISOString(),
+          });
+          reconcileSnapshot();
+        } else if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+          scheduleReconnect();
         }
-        setOnlineUserIds(online);
-      })
-      .on('presence', { event: 'join' }, ({ key, newPresences }: any) => {
-        setOnlineUserIds((prev) => {
-          const next = new Set(prev);
-          if (key) next.add(key);
-          if (Array.isArray(newPresences)) {
-            for (const p of newPresences) {
-              if (p?.userId) next.add(p.userId);
-            }
-          }
-          return next;
-        });
-      })
-      .on('presence', { event: 'leave' }, ({ key, leftPresences }: any) => {
-        setOnlineUserIds((prev) => {
-          const next = new Set(prev);
-          if (key) next.delete(key);
-          if (Array.isArray(leftPresences)) {
-            for (const p of leftPresences) {
-              if (p?.userId) next.delete(p.userId);
-            }
-          }
-          return next;
-        });
       });
 
-    channel.subscribe((status: string) => {
-      if (status === 'SUBSCRIBED') {
-        setConnectionState('connected');
-        channel.track({
-          userId,
-          userName,
-          role,
-          onlineAt: new Date().toISOString(),
-        });
-      } else if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR') {
-        setConnectionState('reconnecting');
-      } else if (status === 'CLOSED') {
-        setConnectionState('disconnected');
-      }
-    });
+      currentChannel = channel;
+      activeChannelRef.current = channel;
+    };
+
+    const scheduleReconnect = () => {
+      if (reconnectTimeout || !isMounted) return;
+      reconnectAttempts++;
+      const delay = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), 10000) + Math.floor(Math.random() * 500);
+      setConnectionState('reconnecting');
+      reconnectTimeout = setTimeout(() => {
+        reconnectTimeout = null;
+        if (!isMounted) return;
+        initChannel();
+      }, delay);
+    };
+
+    initChannel();
 
     const handleOnline = () => {
       setConnectionState('reconnecting');
       reconcileSnapshot().then(() => setConnectionState('connected'));
+      if (activeChannelRef.current?.state !== 'joined') {
+        scheduleReconnect();
+      }
     };
 
     const handleFocus = () => {
       reconcileSnapshot();
     };
 
-    // Periodic background chat sync (every 6 seconds) to guarantee zero message loss
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('focus', handleFocus);
+
+    // Periodic background chat sync (every 10 seconds fallback)
     const chatSyncInterval = setInterval(() => {
       getClassroomChatHistoryAction(classId).then((res) => {
         if (res.success && Array.isArray(res.messages) && res.messages.length > 0) {
@@ -382,13 +440,18 @@ export function ClassroomStateProvider({
           });
         }
       }).catch(() => {});
-    }, 6000);
+    }, 10000);
 
     return () => {
+      isMounted = false;
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
       clearInterval(chatSyncInterval);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('focus', handleFocus);
-      supabase.removeChannel(channel);
+      if (currentChannel) {
+        supabase.removeChannel(currentChannel);
+      }
+      activeChannelRef.current = null;
     };
   }, [classId, sessionId, userId, userName, role, isCoach, router, reconcileSnapshot]);
 
@@ -660,10 +723,39 @@ export function ClassroomStateProvider({
 
   const onSetDrawing = useCallback(
     async (arrows: BoardArrow[], highlights: BoardHighlight[]): Promise<boolean> => {
-      const res = await mutateClassroomSetDrawingAction(sessionId, arrows, highlights, snapshotRef.current.version);
-      return res.success;
+      // 1. Optimistic local update (0ms)
+      setSnapshot((current) => ({
+        ...current,
+        board: {
+          ...current.board,
+          arrows,
+          highlights,
+        },
+      }));
+
+      // 2. Direct client broadcast (<50ms across all students)
+      try {
+        activeChannelRef.current?.send({
+          type: 'broadcast',
+          event: 'BOARD_DRAWING',
+          payload: {
+            type: 'BOARD_DRAWING',
+            arrows,
+            highlights,
+            sessionId,
+            senderId: userId,
+            timestamp: new Date().toISOString(),
+          },
+        });
+      } catch (err) {
+        console.warn('[onSetDrawing Broadcast Error]', err);
+      }
+
+      // 3. Persist to server (debounced / background)
+      mutateClassroomSetDrawingAction(sessionId, arrows, highlights, snapshotRef.current.version).catch(() => {});
+      return true;
     },
-    [sessionId]
+    [sessionId, userId]
   );
 
   const onStartQuiz = useCallback(
@@ -698,18 +790,74 @@ export function ClassroomStateProvider({
 
   const onSubmitResponse = useCallback(
     async (prompt: string, response: string): Promise<boolean> => {
+      // 1. Optimistically append locally for student
+      const respItem: StudentResponseItem = {
+        id: `resp_${Date.now()}_${Math.random()}`,
+        sessionId,
+        studentId: userId,
+        studentName: userName,
+        prompt,
+        response,
+        createdAt: new Date().toISOString(),
+      };
+      setResponses((prev) => [respItem, ...prev]);
+
+      // 2. Direct broadcast on active channel
+      try {
+        activeChannelRef.current?.send({
+          type: 'broadcast',
+          event: 'STUDENT_RESPONSE',
+          payload: {
+            type: 'STUDENT_RESPONSE',
+            sessionId,
+            response: respItem,
+          },
+        });
+      } catch {}
+
+      // 3. Persist to DB
       const res = await mutateClassroomSubmitResponseAction(sessionId, classId, prompt, response);
       return res.success;
     },
-    [sessionId, classId]
+    [sessionId, classId, userId, userName]
   );
 
   const onSendMessage = useCallback(
     async (message: string, isPrivate: boolean, recipientId?: string): Promise<boolean> => {
-      const res = await mutateClassroomSendChatAction(classId, sessionId, message, isPrivate, recipientId);
-      return res.success;
+      // 1. Optimistically append message locally (0ms)
+      const optimisticMsg: ChatMessage = {
+        id: `msg_${Date.now()}_${Math.random()}`,
+        sessionId,
+        senderId: userId,
+        senderName: userName,
+        senderRole: role,
+        message,
+        isPrivate,
+        recipientId,
+        createdAt: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, optimisticMsg]);
+
+      // 2. Direct client broadcast
+      try {
+        activeChannelRef.current?.send({
+          type: 'broadcast',
+          event: isPrivate ? 'PRIVATE_CHAT_MESSAGE' : 'CHAT_MESSAGE',
+          payload: {
+            type: isPrivate ? 'PRIVATE_CHAT_MESSAGE' : 'CHAT_MESSAGE',
+            message: optimisticMsg,
+            isPrivate,
+            recipientId,
+            senderId: userId,
+          },
+        });
+      } catch {}
+
+      // 3. Background persist
+      mutateClassroomSendChatAction(classId, sessionId, message, isPrivate, recipientId).catch(() => {});
+      return true;
     },
-    [classId, sessionId]
+    [classId, sessionId, userId, userName, role]
   );
 
   const onCreateBookmark = useCallback(
@@ -734,9 +882,7 @@ export function ClassroomStateProvider({
   const onSendReaction = useCallback(
     async (emoji: string): Promise<boolean> => {
       try {
-        const supabase = createSupabaseClient();
-        const channel = supabase.channel(`live-session:${sessionId}`);
-        await channel.send({
+        activeChannelRef.current?.send({
           type: 'broadcast',
           event: 'REACTION',
           payload: {
@@ -756,16 +902,14 @@ export function ClassroomStateProvider({
         return false;
       }
     },
-    [sessionId, userId, userName]
+    [userId, userName]
   );
 
   const onAskQuestion = useCallback(
     async (question: CoachQuestion): Promise<boolean> => {
       if (!isCoach) return false;
       try {
-        const supabase = createSupabaseClient();
-        const channel = supabase.channel(`live-session:${sessionId}`);
-        await channel.send({
+        activeChannelRef.current?.send({
           type: 'broadcast',
           event: 'COACH_QUESTION',
           payload: {
