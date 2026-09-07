@@ -30,6 +30,7 @@ export default function ClassroomZoom({
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [camAllowed, setCamAllowed] = useState(false);
   const [micAllowed, setMicAllowed] = useState(false);
+  const [isMirrored, setIsMirrored] = useState(false);
 
   const [layoutMode, setLayoutMode] = useState<'gallery' | 'speaker'>(() => {
     if (typeof window !== 'undefined') {
@@ -142,6 +143,30 @@ export default function ClassroomZoom({
 
           <button
             type="button"
+            onClick={() => setIsMirrored((v) => !v)}
+            className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${
+              isMirrored ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+            }`}
+            title={isMirrored ? 'Disable Mirror (Show as-is)' : 'Flip Mirror Camera (Fix backward text/logos)'}
+          >
+            🪞 {isMirrored ? 'Mirrored' : 'Normal'}
+          </button>
+
+          {zoomMeetingId && (
+            <a
+              href={`https://zoom.us/j/${zoomMeetingId.replace(/[^0-9]/g, '')}?pwd=${zoomPasscode}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-600 hover:bg-blue-500 text-white transition-colors flex items-center gap-1 shadow-sm"
+              title="Open in Native Zoom App or Browser"
+            >
+              <span>↗️</span>
+              <span className="hidden sm:inline">Zoom App</span>
+            </a>
+          )}
+
+          <button
+            type="button"
             data-testid="zoom-minimize-btn"
             onClick={() => setIsMinimized((v) => !v)}
             className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
@@ -166,10 +191,13 @@ export default function ClassroomZoom({
 
       {/* Main Video Element — Hidden via CSS when minimized, NEVER remounted */}
       <div
-        className={`flex-1 relative w-full h-full ${isMinimized ? 'hidden' : 'min-h-[140px]'} bg-slate-950 flex items-center justify-center overflow-hidden ${
+        className={`flex-1 relative w-full h-full ${isMinimized ? 'hidden' : 'min-h-[140px]'} bg-slate-950 flex items-center justify-center overflow-hidden transition-transform duration-200 ${
           layoutMode === 'gallery' ? 'zoom-layout-gallery' : 'zoom-layout-speaker'
         }`}
-        style={isMinimized ? { display: 'none' } : undefined}
+        style={{
+          display: isMinimized ? 'none' : undefined,
+          transform: isMirrored ? 'scaleX(-1)' : 'scaleX(1)',
+        }}
       >
         <ZoomClassroomVideo
           ref={zoomRef}
@@ -181,6 +209,32 @@ export default function ClassroomZoom({
           onMediaStatusChange={handleMediaStatusChange}
           className="w-full h-full"
         />
+
+        {/* Floating Quick Media Controls Bar */}
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 px-2.5 py-1 bg-slate-900/90 border border-slate-700/80 rounded-full shadow-2xl backdrop-blur-md select-none pointer-events-auto">
+          <button
+            type="button"
+            onClick={handleToggleMute}
+            className={`px-2.5 py-1 rounded-full transition-all text-xs font-bold flex items-center gap-1 shadow-sm ${
+              isMuted ? 'bg-rose-600 hover:bg-rose-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+            }`}
+            title={isMuted ? 'Unmute Microphone' : 'Mute Microphone'}
+          >
+            <span>{isMuted ? '🔇' : '🎙️'}</span>
+            <span className="text-[10px] font-mono">{isMuted ? 'Unmute' : 'Mute'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleToggleVideo}
+            className={`px-2.5 py-1 rounded-full transition-all text-xs font-bold flex items-center gap-1 shadow-sm ${
+              !isVideoOn ? 'bg-rose-600 hover:bg-rose-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+            }`}
+            title={isVideoOn ? 'Stop Camera' : 'Start Camera'}
+          >
+            <span>{isVideoOn ? '📹' : '🚫'}</span>
+            <span className="text-[10px] font-mono">{isVideoOn ? 'Stop' : 'Start'}</span>
+          </button>
+        </div>
 
         {/* Non-blocking permission notification if blocked by browser */}
         {permissionError && (

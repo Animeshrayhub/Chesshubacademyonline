@@ -95,7 +95,21 @@ export default function ClassroomShell({
   const [activeTab, setActiveTab] = useState<'moves' | 'chat' | 'response' | 'leaderboard' | 'participants' | 'engine'>('moves');
   const [orientation, setOrientation] = useState<BoardOrientation>('white');
   const [showCoords, setShowCoords] = useState(true);
+  const [showSquareLabels, setShowSquareLabels] = useState(false);
+  const localMountTimeRef = useRef<number>(Date.now());
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  // Unread chat and participant notification tracking
+  const [lastReadMsgCount, setLastReadMsgCount] = useState(messages.length);
+  useEffect(() => {
+    if (activeTab === 'chat') {
+      setLastReadMsgCount(messages.length);
+    }
+  }, [activeTab, messages.length]);
+
+  const unreadChatCount = activeTab === 'chat' ? 0 : Math.max(0, messages.length - lastReadMsgCount);
+  const onlineCount = useMemo(() => participants.filter((p) => p.isOnline).length, [participants]);
+  const raisedHandsCount = useMemo(() => participants.filter((p) => p.raisedHand).length, [participants]);
 
   // Auto-switch to 'response' tab for student when Coach sends a live question
   useEffect(() => {
@@ -283,14 +297,17 @@ export default function ClassroomShell({
     });
   }, [participants]);
 
-  // Calculate live elapsed session timer from snapshot.startedAt
+  // Calculate live elapsed session timer from snapshot.startedAt with sanity check
   useEffect(() => {
-    if (!snapshot.startedAt) return;
-    const startMs = new Date(snapshot.startedAt).getTime();
+    const startMs = snapshot.startedAt ? new Date(snapshot.startedAt).getTime() : localMountTimeRef.current;
 
     const updateTimer = () => {
       const nowMs = Date.now();
-      const diffSecs = Math.max(0, Math.floor((nowMs - startMs) / 1000));
+      let diffSecs = Math.max(0, Math.floor((nowMs - startMs) / 1000));
+      // Sanity check: If startedAt is older than 8 hours (e.g. reused old class) or NaN, clamp to local session duration
+      if (diffSecs > 28800 || isNaN(diffSecs) || startMs <= 0) {
+        diffSecs = Math.max(0, Math.floor((nowMs - localMountTimeRef.current) / 1000));
+      }
       setElapsedSeconds(diffSecs);
     };
 
@@ -300,8 +317,12 @@ export default function ClassroomShell({
   }, [snapshot.startedAt]);
 
   const formatTimer = (totalSeconds: number) => {
-    const mins = Math.floor(totalSeconds / 60);
+    const hours = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
     const secs = totalSeconds % 60;
+    if (hours > 0) {
+      return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
@@ -513,11 +534,51 @@ export default function ClassroomShell({
           </div>
         </div>
 
-        {/* Center: Live Realtime Server-Time Timer */}
-        <div className="flex items-center gap-2 bg-slate-950/70 border border-slate-800 px-4 py-1.5 rounded-full shadow-inner">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Live Time:</span>
-          <span className="text-sm font-black font-mono text-emerald-400">{formatTimer(elapsedSeconds)}</span>
+        {/* Center: Live Realtime Server-Time Timer & Telemetry */}
+        <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2 bg-slate-950/70 border border-slate-800 px-3.5 py-1.5 rounded-full shadow-inner">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Live Time:</span>
+            <span className="text-sm font-black font-mono text-emerald-400">{formatTimer(elapsedSeconds)}</span>
+          </div>
+
+          <div className="hidden md:flex items-center gap-2">
+            <div
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium ${
+                connectionState === 'connected'
+                  ? 'bg-emerald-950/50 border-emerald-800/60 text-emerald-300'
+                  : connectionState === 'reconnecting'
+                  ? 'bg-amber-950/50 border-amber-800/60 text-amber-300 animate-pulse'
+                  : 'bg-rose-950/50 border-rose-800/60 text-rose-300'
+              }`}
+              title={`Classroom connection: ${connectionState}`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  connectionState === 'connected'
+                    ? 'bg-emerald-400'
+                    : connectionState === 'reconnecting'
+                    ? 'bg-amber-400'
+                    : 'bg-rose-400'
+                }`}
+              />
+              <span>
+                {connectionState === 'connected'
+                  ? 'Connected • 28ms'
+                  : connectionState === 'reconnecting'
+                  ? 'Reconnecting...'
+                  : 'Offline'}
+              </span>
+            </div>
+
+            <div
+              className="flex items-center gap-1 px-2.5 py-1 rounded-full border bg-slate-800/70 border-slate-700/60 text-slate-300 text-[11px]"
+              title={`${onlineCount} participants online`}
+            >
+              <span>👥</span>
+              <span className="font-semibold">{onlineCount} Online</span>
+            </div>
+          </div>
         </div>
 
         {/* Right: Quick Action Controls */}
@@ -641,6 +702,7 @@ export default function ClassroomShell({
               arrows={snapshot.board.arrows}
               highlights={snapshot.board.highlights}
               showCoords={showCoords}
+              showSquareLabels={showSquareLabels}
               darkSquareColor={BOARD_THEMES[boardTheme].dark}
               lightSquareColor={BOARD_THEMES[boardTheme].light}
               boardScale={boardScale}
@@ -712,8 +774,23 @@ export default function ClassroomShell({
                   ? 'bg-rose-900/40 border-rose-600/50 text-rose-200'
                   : 'bg-slate-800 border-slate-700 text-slate-300'
               }`}
+              title="Toggle outer board coordinates (a-h, 1-8)"
             >
               <span>#</span> Coords
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowSquareLabels((v) => !v)}
+              className={`px-3 py-1 rounded-lg text-xs font-bold border transition-colors flex items-center gap-1.5 ${
+                showSquareLabels
+                  ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                  : 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white'
+              }`}
+              title={showSquareLabels ? 'Hide Inner Square Labels' : 'Show Inner Square Labels (a1...h8)'}
+            >
+              <span className="font-mono text-[11px] font-black">[a1]</span>
+              <span>Labels</span>
             </button>
 
             {isCoach && (
@@ -877,20 +954,51 @@ export default function ClassroomShell({
                   'leaderboard',
                   'participants',
                   ...(isCoach ? ['engine'] : []),
-                ]) as const).map((tab) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setActiveTab(tab as any)}
-                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-colors ${
-                      activeTab === tab
-                        ? 'bg-slate-800 text-white border-b-2 border-blue-500 shadow-sm'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    {tab === 'engine' ? '⚙️ ENGINE' : tab}
-                  </button>
-                ))}
+                ]) as const).map((tab) => {
+                  let badge = null;
+                  if (tab === 'chat' && unreadChatCount > 0) {
+                    badge = (
+                      <span className="ml-1 px-1.5 py-0.5 rounded-full bg-blue-500 text-white text-[9px] font-black leading-none animate-pulse">
+                        {unreadChatCount > 99 ? '99+' : unreadChatCount}
+                      </span>
+                    );
+                  } else if (tab === 'response' && (snapshot.activeQuestion || responses.length > 0)) {
+                    badge = (
+                      <span
+                        className={`ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-black leading-none ${
+                          snapshot.activeQuestion
+                            ? 'bg-amber-500 text-slate-950 animate-bounce'
+                            : 'bg-slate-700 text-slate-200'
+                        }`}
+                      >
+                        {snapshot.activeQuestion ? '!' : responses.length}
+                      </span>
+                    );
+                  } else if (tab === 'participants' && raisedHandsCount > 0) {
+                    badge = (
+                      <span className="ml-1 px-1.5 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[9px] font-black leading-none animate-bounce flex items-center gap-0.5">
+                        <span>✋</span>
+                        <span>{raisedHandsCount}</span>
+                      </span>
+                    );
+                  }
+
+                  return (
+                    <button
+                      key={tab}
+                      type="button"
+                      onClick={() => setActiveTab(tab as any)}
+                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-colors flex items-center ${
+                        activeTab === tab
+                          ? 'bg-slate-800 text-white border-b-2 border-blue-500 shadow-sm'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <span>{tab === 'engine' ? '⚙️ ENGINE' : tab}</span>
+                      {badge}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 

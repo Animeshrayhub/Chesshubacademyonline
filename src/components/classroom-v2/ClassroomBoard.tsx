@@ -15,6 +15,7 @@ interface ClassroomBoardProps {
   arrows?: BoardArrow[];
   highlights?: BoardHighlight[];
   showCoords?: boolean;
+  showSquareLabels?: boolean;
   darkSquareColor?: string;
   lightSquareColor?: string;
   onMove: (from: string, to: string, promotion?: string) => Promise<boolean>;
@@ -32,6 +33,7 @@ export default function ClassroomBoard({
   arrows = [],
   highlights = [],
   showCoords = true,
+  showSquareLabels = false,
   darkSquareColor = '#779952',
   lightSquareColor = '#edeed1',
   onMove,
@@ -64,7 +66,8 @@ export default function ClassroomBoard({
     const styles: Record<string, React.CSSProperties> = {};
     for (const h of highlights) {
       styles[h.square] = {
-        backgroundColor: h.color || 'rgba(234, 179, 8, 0.5)',
+        backgroundColor: h.color || 'rgba(234, 179, 8, 0.45)',
+        boxShadow: `inset 0 0 14px 2px ${h.color || 'rgba(234, 179, 8, 0.4)'}`,
       };
     }
 
@@ -237,8 +240,8 @@ export default function ClassroomBoard({
           }}
         />
 
-        {/* 64-Square Coordinate Overlay (ON/OFF) */}
-        {showCoords && (
+        {/* 64-Square Coordinate Overlay (Controlled by showSquareLabels toggle) */}
+        {showSquareLabels && (
           <div className="absolute inset-0 grid grid-cols-8 grid-rows-8 pointer-events-none select-none z-10">
             {(orientation === 'white'
               ? [8, 7, 6, 5, 4, 3, 2, 1]
