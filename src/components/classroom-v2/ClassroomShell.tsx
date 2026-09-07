@@ -459,10 +459,23 @@ export default function ClassroomShell({
       : Object.keys(attendanceRecords).map((id) => ({ userId: id }))
     ).map((student: any) => ({
       studentProfileId: student.userId,
-      status: attendanceRecords[student.userId]?.status || 'PRESENT',
+      status: attendanceRecords[student.userId]?.status || (student.isOnline ? 'PRESENT' : 'ABSENT'),
       feedback: studentFeedbackMap[student.userId] || attendanceRecords[student.userId]?.notes || '',
     }));
     await onEndClass(records, learnedTopics);
+    setIsEndingSession(false);
+  };
+
+  // 1-Click Quick End: Auto-mark attendance from live presence and conclude immediately
+  const handleQuickEndClass = async () => {
+    setIsEndingSession(true);
+    const studentParticipants = participants.filter((p) => p.role === 'student');
+    const records = studentParticipants.map((student) => ({
+      studentProfileId: student.userId,
+      status: student.isOnline ? 'PRESENT' : 'ABSENT',
+      feedback: 'Attended live classroom session.',
+    }));
+    await onEndClass(records, learnedTopics || 'Live session completed.');
     setIsEndingSession(false);
   };
 
@@ -1202,22 +1215,35 @@ export default function ClassroomShell({
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800">
               <button
                 type="button"
-                onClick={() => setShowEndModal(false)}
-                className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmEndClass}
+                onClick={handleQuickEndClass}
                 disabled={isEndingSession}
-                className="px-5 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-lg flex items-center gap-1.5"
+                className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 transition-colors flex items-center gap-1.5 shadow-sm"
+                title="1-Click: auto-mark online students as Present and finish class immediately"
               >
-                {isEndingSession ? 'Ending Class…' : 'Save Review & Conclude Class'}
+                <span>⚡</span>
+                <span>Quick End (Auto)</span>
               </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEndModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmEndClass}
+                  disabled={isEndingSession}
+                  className="px-5 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-lg flex items-center gap-1.5"
+                >
+                  {isEndingSession ? 'Ending Class…' : 'Save Review & Conclude Class'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
