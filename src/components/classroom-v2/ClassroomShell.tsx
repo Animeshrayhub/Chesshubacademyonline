@@ -794,18 +794,39 @@ export default function ClassroomShell({
             </button>
 
             {isCoach && (
-              <button
-                type="button"
-                onClick={() => onToggleBoardLock(!isBoardLocked)}
-                className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all flex items-center gap-1 ${
-                  isBoardLocked
-                    ? 'bg-rose-600 text-white border-rose-500 shadow-md'
-                    : 'bg-slate-800 border-slate-700 text-slate-300'
-                }`}
-              >
-                <span>{isBoardLocked ? '🔒' : '🔓'}</span>
-                <span>{isBoardLocked ? 'Locked' : 'Lock Board'}</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => onToggleBoardLock(!isBoardLocked)}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all flex items-center gap-1 ${
+                    isBoardLocked
+                      ? 'bg-rose-600 text-white border-rose-500 shadow-md'
+                      : 'bg-slate-800 border-slate-700 text-slate-300'
+                  }`}
+                  title={isBoardLocked ? 'Unlock board for moves' : 'Lock board moves'}
+                >
+                  <span>{isBoardLocked ? '🔒' : '🔓'}</span>
+                  <span>{isBoardLocked ? 'Locked' : 'Lock Board'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onToggleFreeMove(!snapshot.board.allowIllegalMoves)}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all flex items-center gap-1 ${
+                    snapshot.board.allowIllegalMoves
+                      ? 'bg-amber-600 text-white border-amber-500 shadow-md'
+                      : 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white'
+                  }`}
+                  title={
+                    snapshot.board.allowIllegalMoves
+                      ? 'Disable Free Move (Enforce FIDE Rules)'
+                      : 'Enable Free Move / Sandbox Mode (Allow custom piece movements for demo)'
+                  }
+                >
+                  <span>{snapshot.board.allowIllegalMoves ? '⚡' : '♟️'}</span>
+                  <span>{snapshot.board.allowIllegalMoves ? 'Free Move ON' : 'Strict Rules'}</span>
+                </button>
+              </>
             )}
 
             {/* Theme Picker Button + Popup */}
