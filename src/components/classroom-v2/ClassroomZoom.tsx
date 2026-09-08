@@ -10,6 +10,7 @@ interface ClassroomZoomProps {
   userName: string;
   role: 'admin' | 'coach' | 'student';
   isCoach: boolean;
+  onMuteAllRef?: React.MutableRefObject<(() => Promise<boolean>) | null>;
   className?: string;
 }
 
@@ -20,6 +21,7 @@ export default function ClassroomZoom({
   userName,
   role,
   isCoach,
+  onMuteAllRef,
   className = '',
 }: ClassroomZoomProps) {
   const zoomRef = useRef<ZoomClassroomVideoHandle>(null);
@@ -31,6 +33,10 @@ export default function ClassroomZoom({
   const [camAllowed, setCamAllowed] = useState(false);
   const [micAllowed, setMicAllowed] = useState(false);
   const [isMirrored, setIsMirrored] = useState(false);
+  const [networkQuality, setNetworkQuality] = useState<'good' | 'poor'>('good');
+  const [isDegradedAudioOnly, setIsDegradedAudioOnly] = useState(false);
+  const [isMutingAll, setIsMutingAll] = useState(false);
+  const [muteAllSuccess, setMuteAllSuccess] = useState(false);
 
   const [layoutMode, setLayoutMode] = useState<'gallery' | 'speaker'>(() => {
     if (typeof window !== 'undefined') {
@@ -39,6 +45,24 @@ export default function ClassroomZoom({
     }
     return 'gallery';
   });
+
+  // Wire coach Mute All ref for ClassroomShell and ClassroomParticipants
+  useEffect(() => {
+    if (onMuteAllRef) {
+      onMuteAllRef.current = async () => {
+        if (!zoomRef.current) return false;
+        const res = await zoomRef.current.muteAll();
+        if (res) {
+          setMuteAllSuccess(true);
+          setTimeout(() => setMuteAllSuccess(false), 2500);
+        }
+        return res;
+      };
+    }
+    return () => {
+      if (onMuteAllRef) onMuteAllRef.current = null;
+    };
+  }, [onMuteAllRef]);
 
   // Request browser media permissions cleanly and non-blockingly on mount
   useEffect(() => {
@@ -90,8 +114,25 @@ export default function ClassroomZoom({
     if (zoomRef.current) {
       const nowOn = await zoomRef.current.toggleVideo();
       setIsVideoOn(nowOn);
+      if (nowOn && isDegradedAudioOnly) {
+        setIsDegradedAudioOnly(false);
+      }
     } else {
       setIsVideoOn((prev) => !prev);
+    }
+  };
+
+  const handleMuteAll = async () => {
+    if (!isCoach || !zoomRef.current) return;
+    setIsMutingAll(true);
+    try {
+      const success = await zoomRef.current.muteAll();
+      if (success) {
+        setMuteAllSuccess(true);
+        setTimeout(() => setMuteAllSuccess(false), 2500);
+      }
+    } finally {
+      setIsMutingAll(false);
     }
   };
 
@@ -158,11 +199,11 @@ export default function ClassroomZoom({
               href={`https://zoom.us/j/${zoomMeetingId.replace(/[^0-9]/g, '')}?pwd=${zoomPasscode}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-600 hover:bg-blue-500 text-white transition-colors flex items-center gap-1 shadow-sm"
-              title="Open in Native Zoom App or Browser"
+              className="px-2.5 py-0.5 rounded text-[10px] font-extrabold bg-blue-600 hover:bg-blue-500 text-white transition-colors flex items-center gap-1 shadow-sm"
+              title="Open directly in Native Zoom App or Browser"
             >
               <span>↗️</span>
-              <span className="hidden sm:inline">Zoom App</span>
+              <span>Zoom App</span>
             </a>
           )}
 
@@ -213,9 +254,31 @@ export default function ClassroomZoom({
             userName={userName}
             role={isCoach ? 1 : 0}
             onMediaStatusChange={handleMediaStatusChange}
+            onNetworkQualityChange={setNetworkQuality}
             className="w-full h-full"
           />
         </div>
+
+        {/* Low-bandwidth alert banner with instant Audio-Only fallback button (Requirement A4) */}
+        {networkQuality === 'poor' && (
+          <div className="absolute top-2 left-2 right-2 z-30 text-[10px] text-amber-200 bg-amber-950/95 border border-amber-500/50 rounded-xl px-2.5 py-1.5 flex items-center justify-between shadow-2xl backdrop-blur-md">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+              <span className="truncate font-semibold">Slow Network Detected • Board & Audio Prioritized</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (isVideoOn) handleToggleVideo();
+                setIsDegradedAudioOnly(true);
+              }}
+              className="px-2 py-0.5 rounded bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-[10px] transition-all shrink-0 ml-2 shadow-sm"
+              title="Prioritize Audio and Board moves by turning off camera video"
+            >
+              Audio Only
+            </button>
+          </div>
+        )}
 
         {/* Floating Quick Media Controls Bar — Always unmirrored & prominent */}
         <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-3 py-1.5 bg-slate-900/95 border border-slate-700/90 rounded-full shadow-2xl backdrop-blur-md select-none pointer-events-auto">
@@ -324,11 +387,28 @@ export default function ClassroomZoom({
               <span>{isVideoOn ? '📹' : '🚫'}</span>
               <span className="text-[10px]">{isVideoOn ? 'Camera' : 'Start Video'}</span>
             </button>
+
+            {/* Coach Moderation: Mute All Button (Requirement A5) */}
+            <button
+              type="button"
+              onClick={handleMuteAll}
+              disabled={isMutingAll}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shadow-sm ${
+                muteAllSuccess
+                  ? 'bg-emerald-600 text-white shadow-emerald-900/40'
+                  : 'bg-rose-950/60 border border-rose-700/50 hover:bg-rose-900/80 text-rose-300'
+              }`}
+              title="Mute all students in Zoom meeting"
+            >
+              <span>{muteAllSuccess ? '✓' : '🔇'}</span>
+              <span className="text-[10px]">{muteAllSuccess ? 'All Muted' : 'Mute All'}</span>
+            </button>
           </div>
         )}
 
-        <div className="flex items-center gap-1 text-[10px] text-slate-400 font-semibold">
-          <span className="text-emerald-400">●</span> HD
+        <div className="flex items-center gap-1 text-[10px] font-semibold">
+          <span className={networkQuality === 'good' ? 'text-emerald-400' : 'text-amber-400'}>●</span>
+          <span className="text-slate-400">{networkQuality === 'good' ? 'HD' : 'Auto-Degraded'}</span>
         </div>
       </div>
     </div>

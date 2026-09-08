@@ -9,6 +9,7 @@ export interface ZoomClassroomVideoHandle {
   isMuted: () => boolean;
   isVideoOn: () => boolean;
   changeViewType: (viewType: 'gallery' | 'speaker') => Promise<void>;
+  muteAll: () => Promise<boolean>;
 }
 
 interface ZoomClassroomVideoProps {
@@ -22,6 +23,7 @@ interface ZoomClassroomVideoProps {
   onMeetingJoin?: () => void;
   onConnectionChange?: (state: 'connected' | 'reconnecting' | 'disconnected') => void;
   onMediaStatusChange?: (status: { isVideoOn: boolean; isMuted: boolean }) => void;
+  onNetworkQualityChange?: (quality: 'good' | 'poor') => void;
   className?: string;
   isMiniView?: boolean;
 }
@@ -45,6 +47,7 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
       onMeetingJoin,
       onConnectionChange,
       onMediaStatusChange,
+      onNetworkQualityChange,
       className = '',
       isMiniView = false,
     },
@@ -73,6 +76,7 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
       onMeetingEnd,
       onConnectionChange,
       onMediaStatusChange,
+      onNetworkQualityChange,
     });
     useEffect(() => {
       propsRef.current = {
@@ -85,6 +89,7 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
         onMeetingEnd,
         onConnectionChange,
         onMediaStatusChange,
+        onNetworkQualityChange,
       };
     });
 
@@ -197,6 +202,18 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
           console.warn('[Zoom changeViewType]', err);
         }
       },
+      muteAll: async () => {
+        if (!clientRef.current || !isJoinedRef.current) return false;
+        try {
+          if (typeof clientRef.current.muteAll === 'function') {
+            await clientRef.current.muteAll(true);
+            return true;
+          }
+        } catch (err) {
+          console.warn('[Zoom muteAll error]', err);
+        }
+        return false;
+      },
     }));
 
     /**
@@ -245,6 +262,7 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
           zoomAppRoot: containerRef.current,
           language: 'en-US',
           patchJsMedia: true,
+          maximumVideosInGalleryView: 25,
           customize: {
             video: {
               isResizable: true,
@@ -289,14 +307,94 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
         propsRef.current.onMeetingJoin?.();
         propsRef.current.onConnectionChange?.('connected');
 
-        // Start computer audio after joining Zoom meeting
+        // Start computer audio & unmute immediately after joining (Requirement A1)
         try {
           if (typeof (zoomClient as any)?.startAudio === 'function') {
             await (zoomClient as any).startAudio();
           }
+          if (typeof (zoomClient as any)?.mute === 'function') {
+            const curUser = (zoomClient as any).getCurrentUser?.();
+            await (zoomClient as any).mute(false, curUser?.userId);
+          }
         } catch (audioErr) {
           console.warn('[Zoom startAudio Notice]', audioErr);
         }
+
+        // Automated Camera and Mic Activation Function (Requirement A1)
+        const autoEnableMedia = () => {
+          if (!containerRef.current || !clientRef.current) return;
+          try {
+            // 1. Programmatic unmute
+            if (typeof clientRef.current.mute === 'function') {
+              const curUser = clientRef.current.getCurrentUser?.();
+              clientRef.current.mute(false, curUser?.userId).catch(() => {});
+            }
+
+            // 2. Programmatic video start
+            if (typeof clientRef.current.startVideo === 'function') {
+              clientRef.current.startVideo().catch(() => {});
+            }
+
+            // 3. Trigger native Zoom DOM toolbar buttons for start video and audio
+            const buttons = Array.from(
+              containerRef.current.querySelectorAll('button, [role="button"]')
+            ) as HTMLElement[];
+
+            // Trigger Start Video button if not already active
+            const videoBtn = buttons.find((btn) => {
+              const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+              const title = (btn.getAttribute('title') || '').toLowerCase();
+              const text = (btn.textContent || '').toLowerCase();
+              return (
+                (aria.includes('start video') ||
+                  aria.includes('start my video') ||
+                  aria.includes('turn on camera') ||
+                  title.includes('start video') ||
+                  text.includes('start video')) &&
+                !aria.includes('stop') &&
+                !text.includes('stop') &&
+                !title.includes('stop')
+              );
+            });
+            if (videoBtn) {
+              videoBtn.click();
+            }
+
+            // Trigger Join Audio / Unmute button if needed
+            const audioBtn = buttons.find((btn) => {
+              const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+              const title = (btn.getAttribute('title') || '').toLowerCase();
+              const text = (btn.textContent || '').toLowerCase();
+              return (
+                (aria.includes('join audio') ||
+                  aria.includes('unmute') ||
+                  title.includes('unmute') ||
+                  text.includes('unmute')) &&
+                !aria.includes('mute all') &&
+                !text.includes('mute all')
+              );
+            });
+            if (audioBtn) {
+              audioBtn.click();
+            }
+
+            updateMediaStateFromClient();
+          } catch (mErr) {
+            console.warn('[Zoom autoEnableMedia error]', mErr);
+          }
+        };
+
+        // Fire auto-enable immediately and at staggered intervals to accommodate DOM rendering
+        setTimeout(autoEnableMedia, 200);
+        setTimeout(autoEnableMedia, 700);
+        setTimeout(autoEnableMedia, 1800);
+
+        // Subscribe to QoS network statistics for Auto-degrade detection (Requirement A4)
+        try {
+          if (typeof (zoomClient as any).subscribeStatisticData === 'function') {
+            (zoomClient as any).subscribeStatisticData({ audio: true, video: true, share: false });
+          }
+        } catch {}
 
         try {
           zoomClient.on('user-updated', () => {
@@ -315,6 +413,20 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
             if (status?.state === 'Connected' || status?.state === 'Joined') {
               setIsLoading(false);
               propsRef.current.onConnectionChange?.('connected');
+              setTimeout(autoEnableMedia, 300);
+            }
+          });
+          zoomClient.on('network-quality-change', (payload: any) => {
+            const level = Number(payload?.level ?? 3);
+            const isPoor = level <= 1;
+            propsRef.current.onNetworkQualityChange?.(isPoor ? 'poor' : 'good');
+          });
+          zoomClient.on('video-statistic-data-change', (payload: any) => {
+            const avgLoss = Number(payload?.data?.avg_loss || 0);
+            const rtt = Number(payload?.data?.rtt || 0);
+            // Auto-degrade condition: packet loss > 15% or round trip time > 600ms
+            if (avgLoss > 15 || rtt > 600) {
+              propsRef.current.onNetworkQualityChange?.('poor');
             }
           });
         } catch {}
@@ -393,13 +505,26 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
             </div>
             <p className="text-xs font-bold text-slate-200 mb-1">Live Video Standby</p>
             <p className="text-[11px] text-slate-400 max-w-xs mb-3 leading-relaxed">{errorMsg}</p>
-            <button
-              type="button"
-              onClick={handleRetry}
-              className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow"
-            >
-              Retry Connection
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleRetry}
+                className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow"
+              >
+                Retry Connection
+              </button>
+              {propMeetingNumber && (
+                <a
+                  href={`https://zoom.us/j/${String(propMeetingNumber).replace(/[^0-9]/g, '')}?pwd=${passCode}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all shadow border border-slate-700 flex items-center gap-1"
+                >
+                  <span>↗</span>
+                  <span>Zoom App</span>
+                </a>
+              )}
+            </div>
           </div>
         )}
 

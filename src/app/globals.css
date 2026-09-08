@@ -268,35 +268,15 @@ img, iframe, canvas, video, .protect-media {
 }
 
 /* Prevent participant face/video cropping, maintain camera aspect ratio without stretching */
+.zoom-sdk-container canvas,
+.zoom-sdk-container video,
 #meetingSDKElement canvas,
 #meetingSDKElement video {
   max-width: 100% !important;
   max-height: 100% !important;
   object-fit: contain !important;
+  object-position: center !important;
   margin: auto !important;
-}
-
-/* ─── Zoom Embedded SDK Canvas Fill Fix ─────────────────────────────────────
-   Forces the SDK-injected canvas/video elements to fill their parent container.
-   This resolves the sizing issue where Zoom uses clientWidth/Height at init time
-   before flex layout has settled, resulting in a tiny/clipped video canvas.
-   ──────────────────────────────────────────────────────────────────────────── */
-.zoom-sdk-container {
-  position: relative;
-  overflow: hidden;
-}
-
-/* Force all canvas and video elements injected by the Zoom SDK to fill the container */
-.zoom-sdk-container canvas,
-.zoom-sdk-container video,
-#meetingSDKElement canvas,
-#meetingSDKElement video {
-  width: 100% !important;
-  height: 100% !important;
-  max-width: 100% !important;
-  max-height: 100% !important;
-  object-fit: contain;
-  object-position: center;
 }
 
 /* Zoom client inner wrapper sizing */

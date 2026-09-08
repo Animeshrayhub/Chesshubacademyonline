@@ -226,6 +226,7 @@ export default function ClassroomShell({
   const isDraggingZoom = useRef(false);
   const dragStartY = useRef(0);
   const dragStartHeight = useRef(DEFAULT_ZOOM_HEIGHT);
+  const zoomMuteAllRef = useRef<(() => Promise<boolean>) | null>(null);
 
   const handleZoomDragStart = useCallback((e: React.MouseEvent) => {
     isDraggingZoom.current = true;
@@ -967,6 +968,7 @@ export default function ClassroomShell({
               userName={userName}
               role={role}
               isCoach={isCoach}
+              onMuteAllRef={zoomMuteAllRef}
             />
           </div>
 
@@ -1100,6 +1102,11 @@ export default function ClassroomShell({
                 participants={participants}
                 isCoach={isCoach}
                 onToggleControl={onToggleStudentPermission}
+                onMuteAll={async () => {
+                  if (zoomMuteAllRef.current) {
+                    await zoomMuteAllRef.current();
+                  }
+                }}
                 className="w-full h-full border-none rounded-none"
               />
             )}

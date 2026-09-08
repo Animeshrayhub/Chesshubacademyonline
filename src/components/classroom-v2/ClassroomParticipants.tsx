@@ -7,6 +7,7 @@ interface ClassroomParticipantsProps {
   participants: ParticipantInfo[];
   isCoach: boolean;
   onToggleControl?: (studentId: string, enable: boolean) => void;
+  onMuteAll?: () => Promise<boolean | void>;
   className?: string;
 }
 
@@ -14,8 +15,24 @@ export default function ClassroomParticipants({
   participants = [],
   isCoach,
   onToggleControl,
+  onMuteAll,
   className = '',
 }: ClassroomParticipantsProps) {
+  const [isMuting, setIsMuting] = React.useState(false);
+  const [mutedSuccess, setMutedSuccess] = React.useState(false);
+
+  const handleMuteAllClick = async () => {
+    if (!onMuteAll) return;
+    setIsMuting(true);
+    try {
+      await onMuteAll();
+      setMutedSuccess(true);
+      setTimeout(() => setMutedSuccess(false), 2500);
+    } finally {
+      setIsMuting(false);
+    }
+  };
+
   return (
     <div className={`flex flex-col h-full bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden ${className}`}>
       {/* Header */}
@@ -23,6 +40,22 @@ export default function ClassroomParticipants({
         <span className="font-extrabold text-xs text-slate-300 tracking-wide uppercase">
           Participants ({participants.length})
         </span>
+        {isCoach && onMuteAll && (
+          <button
+            type="button"
+            onClick={handleMuteAllClick}
+            disabled={isMuting}
+            className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all flex items-center gap-1 shadow-sm ${
+              mutedSuccess
+                ? 'bg-emerald-600 text-white'
+                : 'bg-rose-950/70 border border-rose-700/50 hover:bg-rose-900 text-rose-300'
+            }`}
+            title="Mute all students in Zoom video meeting"
+          >
+            <span>{mutedSuccess ? '✓' : '🔇'}</span>
+            <span>{mutedSuccess ? 'All Muted' : isMuting ? 'Muting…' : 'Mute All'}</span>
+          </button>
+        )}
       </div>
 
       {/* Roster List */}
