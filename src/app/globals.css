@@ -263,73 +263,17 @@ img, iframe, canvas, video, .protect-media {
   position: relative !important;
   width: 100% !important;
   height: 100% !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
   overflow: hidden !important;
   background-color: #020617 !important;
-}
-
-/* Ensure Zoom's main container and video views fill the container without covering up video */
-#meetingSDKElement > div {
-  width: 100% !important;
-  height: 100% !important;
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  justify-content: center !important;
-  position: relative !important;
-}
-
-/* Gallery and Speaker Views inside Zoom */
-#meetingSDKElement [class*="gallery-view"],
-#meetingSDKElement [class*="gallery-video-container"],
-#meetingSDKElement [class*="speaker-view"],
-#meetingSDKElement [class*="main-panel-view"],
-#meetingSDKElement [class*="single-video-container"],
-#meetingSDKElement .single-video-container {
-  width: 100% !important;
-  height: 100% !important;
-  max-width: 100% !important;
-  max-height: 100% !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  position: relative !important;
-  flex: 1 1 0% !important;
-}
-
-/* Suspension window: keep inside container without taking over the full screen when video is active */
-#meetingSDKElement [class*="suspension-window"],
-#meetingSDKElement [class*="suspension-view"] {
-  max-width: 100% !important;
-  max-height: 100% !important;
-  border-radius: 12px !important;
 }
 
 /* Prevent participant face/video cropping, maintain camera aspect ratio without stretching */
 #meetingSDKElement canvas,
 #meetingSDKElement video {
-  width: 100% !important;
-  height: 100% !important;
   max-width: 100% !important;
   max-height: 100% !important;
   object-fit: contain !important;
   margin: auto !important;
-  display: block !important;
-}
-
-/* Gallery View Grid Support */
-#meetingSDKElement.zoom-layout-gallery .gallery-video-container,
-#meetingSDKElement.zoom-layout-gallery .gallery-view,
-#meetingSDKElement [class*="gallery-view"] {
-  display: flex !important;
-  flex-wrap: wrap !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 4px !important;
-  width: 100% !important;
-  height: 100% !important;
 }
 
 /* ─── Zoom Embedded SDK Canvas Fill Fix ─────────────────────────────────────

@@ -63,6 +63,31 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
     // Track whether Zoom has been initialized to prevent remounting
     const isInitializedRef = useRef(false);
 
+    const propsRef = useRef({
+      classId,
+      propMeetingNumber,
+      passCode,
+      userName,
+      userEmail,
+      onMeetingJoin,
+      onMeetingEnd,
+      onConnectionChange,
+      onMediaStatusChange,
+    });
+    useEffect(() => {
+      propsRef.current = {
+        classId,
+        propMeetingNumber,
+        passCode,
+        userName,
+        userEmail,
+        onMeetingJoin,
+        onMeetingEnd,
+        onConnectionChange,
+        onMediaStatusChange,
+      };
+    });
+
     const updateMediaStateFromClient = useCallback(() => {
       try {
         if (!clientRef.current) return;
@@ -70,12 +95,12 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
         if (curUser) {
           const isVideo = Boolean(curUser.bVideoOn);
           const isMute = Boolean(curUser.muted);
-          setVideoActive(isVideo);
-          setAudioMuted(isMute);
-          onMediaStatusChange?.({ isVideoOn: isVideo, isMuted: isMute });
+          setVideoActive((prev) => (prev !== isVideo ? isVideo : prev));
+          setAudioMuted((prev) => (prev !== isMute ? isMute : prev));
+          propsRef.current.onMediaStatusChange?.({ isVideoOn: isVideo, isMuted: isMute });
         }
       } catch {}
-    }, [onMediaStatusChange]);
+    }, []);
 
     useImperativeHandle(ref, () => ({
       toggleMute: async () => {
@@ -116,7 +141,7 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
           }
 
           setAudioMuted(nextMute);
-          onMediaStatusChange?.({ isVideoOn: videoActive, isMuted: nextMute });
+          propsRef.current.onMediaStatusChange?.({ isVideoOn: videoActive, isMuted: nextMute });
           return nextMute;
         } catch (err) {
           console.warn('[Zoom toggleMute error]', err);
@@ -152,7 +177,7 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
           }
 
           setVideoActive(nextVideo);
-          onMediaStatusChange?.({ isVideoOn: nextVideo, isMuted: audioMuted });
+          propsRef.current.onMediaStatusChange?.({ isVideoOn: nextVideo, isMuted: audioMuted });
           return nextVideo;
         } catch (err) {
           console.warn('[Zoom toggleVideo error]', err);
@@ -197,15 +222,16 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
       setStatusText('Connecting to video cloud…');
 
       try {
-        const sigRes = await getZoomSignatureAction(classId);
+        const { classId: cId, propMeetingNumber: pMn, passCode: pCode, userName: uName, userEmail: uEmail } = propsRef.current;
+        const sigRes = await getZoomSignatureAction(cId);
         if (!sigRes.success || !sigRes.data) {
           throw new Error(sigRes.error?.message || 'Failed to authenticate video session.');
         }
 
-        const { signature, sdkKey, zak, meetingNumber: apiMn, role: apiRole } = sigRes.data;
-        const finalMeetingNumber = propMeetingNumber || apiMn;
+        const { signature, sdkKey, zak, meetingNumber: apiMn } = sigRes.data;
+        const finalMeetingNumber = pMn || apiMn;
 
-        // Read actual layout dimensions after DOM has settled (requestAnimationFrame)
+        // Read actual layout dimensions after DOM has settled
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         const { width, height } = getContainerDimensions();
 
@@ -225,8 +251,8 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
               defaultViewType: 'gallery' as any,
               viewSizes: {
                 default: {
-                  width: Math.max(640, width),
-                  height: Math.max(360, height),
+                  width: Math.max(500, width),
+                  height: Math.max(280, height),
                 },
                 ribbon: {
                   width: 320,
@@ -248,9 +274,9 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
             sdkKey,
             signature,
             meetingNumber: String(finalMeetingNumber).trim(),
-            password: passCode,
-            userName,
-            userEmail: userEmail || `${userName.toLowerCase().replace(/\s+/g, '')}@chesshub.academy`,
+            password: pCode,
+            userName: uName,
+            userEmail: uEmail || `${uName.toLowerCase().replace(/\s+/g, '')}@chesshub.academy`,
             zak: zak || undefined,
           });
         } finally {
@@ -260,17 +286,8 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
 
         isJoinedRef.current = true;
         setIsJoined(true);
-        onMeetingJoin?.();
-        onConnectionChange?.('connected');
-
-        // Immediately switch Zoom component view to gallery so participants render in grid
-        try {
-          if (typeof (zoomClient as any)?.setViewType === 'function') {
-            await (zoomClient as any).setViewType('gallery');
-          }
-        } catch (viewErr) {
-          console.warn('[Zoom setViewType notice]', viewErr);
-        }
+        propsRef.current.onMeetingJoin?.();
+        propsRef.current.onConnectionChange?.('connected');
 
         // Start computer audio after joining Zoom meeting
         try {
@@ -285,9 +302,19 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
           zoomClient.on('user-updated', () => {
             updateMediaStateFromClient();
           });
+          zoomClient.on('user-added', () => {
+            updateMediaStateFromClient();
+          });
+          zoomClient.on('user-removed', () => {
+            updateMediaStateFromClient();
+          });
+          zoomClient.on('active-speaker', () => {
+            updateMediaStateFromClient();
+          });
           zoomClient.on('connection-change', (status: any) => {
             if (status?.state === 'Connected' || status?.state === 'Joined') {
               setIsLoading(false);
+              propsRef.current.onConnectionChange?.('connected');
             }
           });
         } catch {}
@@ -304,7 +331,7 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
           setErrorMsg('Live video standby. Click below to connect.');
         }
       }
-    }, [classId, propMeetingNumber, passCode, userName, userEmail, onMeetingJoin, onConnectionChange, updateMediaStateFromClient, getContainerDimensions]);
+    }, [getContainerDimensions, updateMediaStateFromClient]);
 
     const handleRetry = useCallback(() => {
       isInitializedRef.current = false;
@@ -312,7 +339,7 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
       initZoomMeeting();
     }, [initZoomMeeting]);
 
-    // Observe container resize (e.g. mini-view <-> gallery <-> full screen)
+    // Observe container resize
     useEffect(() => {
       if (!containerRef.current || typeof ResizeObserver === 'undefined') return;
       const observer = new ResizeObserver((entries) => {
@@ -331,72 +358,23 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
       return () => observer.disconnect();
     }, [isMiniView]);
 
-    // Synchronize media status by observing Zoom's internal client & DOM state
-    useEffect(() => {
-      if (!containerRef.current || typeof MutationObserver === 'undefined') return;
-      const observer = new MutationObserver(() => {
-        if (!containerRef.current) return;
-        // Check Zoom client's official user object first
-        if (clientRef.current) {
-          try {
-            const curUser = clientRef.current.getCurrentUser?.();
-            if (curUser) {
-              setVideoActive(Boolean(curUser.bVideoOn));
-              setAudioMuted(Boolean(curUser.muted));
-              return;
-            }
-          } catch {}
-        }
-
-        // Check Zoom's specific video button aria-labels
-        const videoBtn = containerRef.current.querySelector<HTMLElement>(
-          'button[aria-label*="video" i], button[aria-label*="camera" i], [class*="video-btn"]'
-        );
-        if (videoBtn) {
-          const label = (videoBtn.getAttribute('aria-label') || '').toLowerCase();
-          const text = (videoBtn.textContent || '').toLowerCase();
-          if (label.includes('stop video') || text.includes('stop video')) {
-            setVideoActive(true);
-          } else if (label.includes('start video') || text.includes('start video')) {
-            setVideoActive(false);
-          }
-        }
-
-        const audioBtn = containerRef.current.querySelector<HTMLElement>(
-          'button[aria-label*="mute" i], button[aria-label*="audio" i], [class*="audio-btn"]'
-        );
-        if (audioBtn) {
-          const label = (audioBtn.getAttribute('aria-label') || '').toLowerCase();
-          const text = (audioBtn.textContent || '').toLowerCase();
-          if (label.includes('unmute') || text.includes('unmute')) {
-            setAudioMuted(true);
-          } else if (label.includes('mute') || text.includes('mute')) {
-            setAudioMuted(false);
-          }
-        }
-      });
-      observer.observe(containerRef.current, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-label', 'class'] });
-      return () => observer.disconnect();
-    }, []);
-
+    // Mount-only initialization effect: runs ONCE on mount, leaves on true unmount
     useEffect(() => {
       let mounted = true;
-      if (mounted) {
-        // Small delay to ensure container is fully laid out in the DOM
-        const timer = setTimeout(() => {
-          if (mounted) initZoomMeeting();
-        }, 150);
-        return () => {
-          mounted = false;
-          clearTimeout(timer);
-          if (clientRef.current && isJoinedRef.current) {
-            try {
-              clientRef.current.leave();
-            } catch {}
-          }
-        };
-      }
-    }, [initZoomMeeting]);
+      const timer = setTimeout(() => {
+        if (mounted) initZoomMeeting();
+      }, 150);
+      return () => {
+        mounted = false;
+        clearTimeout(timer);
+        if (clientRef.current && isJoinedRef.current) {
+          try {
+            clientRef.current.leave();
+          } catch {}
+        }
+      };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     return (
       <div className={`relative w-full h-full bg-slate-950 flex flex-col items-center justify-center overflow-hidden rounded-2xl ${className}`}>
