@@ -480,7 +480,7 @@ export default function ClassroomShell({
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#0B0F19] text-white overflow-hidden font-sans select-none relative">
+    <div className="flex flex-col min-h-screen lg:h-screen w-screen bg-[#0B0F19] text-white overflow-x-hidden overflow-y-auto lg:overflow-hidden font-sans select-none relative">
       {/* ── Coach Reconnecting Grace Period Banner ──────────────────────────── */}
       {isCoachReconnecting && (
         <div className="bg-amber-500/20 border-b border-amber-500/40 px-4 py-2 text-center text-xs text-amber-300 font-semibold flex items-center justify-center gap-2 animate-pulse z-50">
@@ -534,25 +534,23 @@ export default function ClassroomShell({
       </div>
 
       {/* ── Top Header Navigation Bar ─────────────────────────────────────── */}
-      <header className="h-14 border-b border-slate-800 bg-slate-900/95 px-4 flex items-center justify-between shrink-0 shadow-md">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">♟️</span>
-            <div>
-              <h1 className="text-sm font-bold tracking-tight leading-none text-white">{snapshot.className}</h1>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                {coachName} • <span className="text-emerald-400 font-semibold">● LIVE CLASSROOM</span>
-              </p>
-            </div>
+      <header className="h-14 border-b border-slate-800 bg-slate-900/95 px-2.5 sm:px-4 flex items-center justify-between shrink-0 shadow-md gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-lg sm:text-xl shrink-0">♟️</span>
+          <div className="min-w-0">
+            <h1 className="text-xs sm:text-sm font-bold tracking-tight leading-none text-white truncate max-w-[130px] sm:max-w-none">{snapshot.className}</h1>
+            <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">
+              {coachName} • <span className="text-emerald-400 font-semibold">● LIVE</span>
+            </p>
           </div>
         </div>
 
         {/* Center: Live Realtime Server-Time Timer & Telemetry */}
-        <div className="flex items-center gap-2.5">
-          <div className="flex items-center gap-2 bg-slate-950/70 border border-slate-800 px-3.5 py-1.5 rounded-full shadow-inner">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Live Time:</span>
-            <span className="text-sm font-black font-mono text-emerald-400">{formatTimer(elapsedSeconds)}</span>
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 bg-slate-950/70 border border-slate-800 px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-full shadow-inner">
+            <span className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="hidden sm:inline text-xs font-bold text-slate-300 uppercase tracking-wider">Live Time:</span>
+            <span className="text-xs sm:text-sm font-black font-mono text-emerald-400">{formatTimer(elapsedSeconds)}</span>
           </div>
 
           <div className="hidden md:flex items-center gap-2">
@@ -631,23 +629,29 @@ export default function ClassroomShell({
               <button
                 type="button"
                 onClick={openPuzzleModal}
-                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-600/90 hover:bg-indigo-500 text-white shadow-md transition-all flex items-center gap-1"
+                className="px-2 sm:px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-600/90 hover:bg-indigo-500 text-white shadow-md transition-all flex items-center gap-1"
+                title="Chess Tactics & Puzzles"
               >
-                <span>🧩</span> Puzzles
+                <span>🧩</span>
+                <span className="hidden sm:inline">Puzzles</span>
               </button>
               <button
                 type="button"
                 onClick={openCurriculumModal}
-                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-teal-600/90 hover:bg-teal-500 text-white shadow-md transition-all flex items-center gap-1"
+                className="px-2 sm:px-3 py-1.5 rounded-xl text-xs font-bold bg-teal-600/90 hover:bg-teal-500 text-white shadow-md transition-all flex items-center gap-1"
+                title="Curriculum Lessons"
               >
-                <span>📚</span> Curriculum
+                <span>📚</span>
+                <span className="hidden sm:inline">Curriculum</span>
               </button>
               <button
                 type="button"
                 onClick={() => setShowEndModal(true)}
-                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-md transition-all flex items-center gap-1"
+                className="px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-md transition-all flex items-center gap-1"
+                title="End Classroom Session"
               >
-                <span>⏹</span> End Class
+                <span>⏹</span>
+                <span>End<span className="hidden sm:inline"> Class</span></span>
               </button>
             </>
           )}
@@ -693,18 +697,20 @@ export default function ClassroomShell({
         </div>
       )}
 
-      {/* ── Main Classroom Viewport ──────────────────────────────────────── */}
+      {/* ── Main Classroom Viewport (Stacked on Mobile, 2-Column Grid on Desktop) ── */}
       <div
-        className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_380px] p-3 gap-3 overflow-hidden min-h-0"
-        style={{
-          gridTemplateColumns:
-            typeof window !== 'undefined' && window.innerWidth >= 1024
-              ? `1fr ${sidebarWidth}px`
-              : undefined,
-        }}
+        className="flex-1 flex flex-col lg:grid p-2 sm:p-3 gap-3 overflow-y-auto lg:overflow-hidden min-h-0"
+        style={
+          {
+            '--sidebar-w': `${sidebarWidth}px`,
+            '--zoom-h': `${zoomPanelHeight}px`,
+            gridTemplateColumns: 'minmax(0, 1fr) var(--sidebar-w)',
+            gridTemplateRows: 'var(--zoom-h) minmax(0, 1fr)',
+          } as React.CSSProperties
+        }
       >
-        {/* Left Area: Chessboard & Controls */}
-        <div className="flex flex-col items-center justify-between h-full bg-slate-950/40 border border-slate-850 rounded-2xl p-3 overflow-hidden">
+        {/* Left Area / Center on Mobile: Chessboard & Controls (order-2 on phone) */}
+        <div className="order-2 lg:order-none lg:col-start-1 lg:row-start-1 lg:row-span-2 flex flex-col items-center justify-between w-full h-auto lg:h-full bg-slate-950/40 border border-slate-850 rounded-2xl p-2 sm:p-3 overflow-hidden">
           <div ref={boardContainerRef} className="flex-1 w-full flex items-center justify-center p-2 overflow-hidden relative">
             <ClassroomBoard
               fen={displayedFen}
@@ -937,27 +943,23 @@ export default function ClassroomShell({
           </div>
         </div>
 
-        {/* Right Area: Zoom Conference & Tabbed Panels (Column 2) */}
+        {/* Zoom Video Area (order-1 on mobile, top-right on desktop) — Never remounted */}
         <div
-          className="relative flex flex-col h-full gap-2 overflow-hidden min-h-0"
+          className="order-1 lg:order-none lg:col-start-2 lg:row-start-1 relative w-full flex flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 shadow-xl shrink-0"
           style={{
-            width: typeof window !== 'undefined' && window.innerWidth >= 1024 ? `${sidebarWidth}px` : undefined,
+            height: typeof window !== 'undefined' && window.innerWidth < 1024 ? '230px' : undefined,
           }}
         >
-          {/* Horizontal Resize Drag Handle on left edge of Right Sidebar */}
+          {/* Horizontal Resize Drag Handle on left edge of Zoom area (desktop only) */}
           <div
             onMouseDown={handleSidebarMouseDown}
-            className="hidden lg:block absolute -left-2 top-0 bottom-0 w-3 cursor-col-resize z-30 group select-none"
+            className="hidden lg:block absolute -left-1.5 top-0 bottom-0 w-3 cursor-col-resize z-30 group select-none"
             title="Drag horizontally to resize sidebar"
           >
             <div className="w-1 h-full mx-auto bg-transparent group-hover:bg-indigo-500/70 transition-colors" />
           </div>
 
-          {/* Zoom Video Area — CSS resize only, never remounted */}
-          <div
-            className="shrink-0 w-full overflow-hidden"
-            style={{ height: zoomPanelHeight }}
-          >
+          <div className="flex-1 w-full min-h-0 overflow-hidden relative">
             <ClassroomZoom
               classId={classId}
               zoomMeetingId={zoomMeetingId}
@@ -968,137 +970,146 @@ export default function ClassroomShell({
             />
           </div>
 
-          {/* Drag Handle between Zoom and Tab Panel */}
+          {/* Drag Handle between Zoom and Tab Panel (Desktop only) */}
           <div
             onMouseDown={handleZoomDragStart}
-            className="shrink-0 w-full h-2 cursor-ns-resize flex items-center justify-center group"
-            title="Drag to resize video panel"
+            className="hidden lg:flex shrink-0 w-full h-2.5 cursor-ns-resize items-center justify-center group select-none bg-slate-950/80 hover:bg-slate-900 border-t border-slate-800/80 transition-colors"
+            title="Drag vertically to resize video panel"
           >
-            <div className="w-12 h-0.5 rounded-full bg-slate-700 group-hover:bg-blue-500/60 transition-colors" />
+            <div className="w-12 h-1 rounded-full bg-slate-700 group-hover:bg-blue-500/80 transition-colors" />
+          </div>
+        </div>
+
+        {/* Tab Navigation & Panels (order-3 on mobile, bottom-right on desktop) */}
+        <div className="order-3 lg:order-none lg:col-start-2 lg:row-start-2 relative flex flex-col w-full h-[460px] sm:h-[500px] lg:h-full bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl min-h-0">
+          {/* Horizontal Resize Drag Handle on left edge of Tab area (desktop only) */}
+          <div
+            onMouseDown={handleSidebarMouseDown}
+            className="hidden lg:block absolute -left-1.5 top-0 bottom-0 w-3 cursor-col-resize z-30 group select-none"
+            title="Drag horizontally to resize sidebar"
+          >
+            <div className="w-1 h-full mx-auto bg-transparent group-hover:bg-indigo-500/70 transition-colors" />
           </div>
 
-          {/* Tab Navigation */}
-          <div className="flex-1 min-h-0 flex flex-col bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-            <div className="h-9 bg-slate-950 border-b border-slate-800 px-1 flex items-center justify-between text-xs font-bold shrink-0">
-              <div className="flex items-center gap-0.5">
-                {(([
-                  'moves',
-                  'chat',
-                  'response',
-                  'leaderboard',
-                  'participants',
-                  ...(isCoach ? ['engine'] : []),
-                ]) as const).map((tab) => {
-                  let badge = null;
-                  if (tab === 'chat' && unreadChatCount > 0) {
-                    badge = (
-                      <span className="ml-1 px-1.5 py-0.5 rounded-full bg-blue-500 text-white text-[9px] font-black leading-none animate-pulse">
-                        {unreadChatCount > 99 ? '99+' : unreadChatCount}
-                      </span>
-                    );
-                  } else if (tab === 'response' && (snapshot.activeQuestion || responses.length > 0)) {
-                    badge = (
-                      <span
-                        className={`ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-black leading-none ${
-                          snapshot.activeQuestion
-                            ? 'bg-amber-500 text-slate-950 animate-bounce'
-                            : 'bg-slate-700 text-slate-200'
-                        }`}
-                      >
-                        {snapshot.activeQuestion ? '!' : responses.length}
-                      </span>
-                    );
-                  } else if (tab === 'participants' && raisedHandsCount > 0) {
-                    badge = (
-                      <span className="ml-1 px-1.5 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[9px] font-black leading-none animate-bounce flex items-center gap-0.5">
-                        <span>✋</span>
-                        <span>{raisedHandsCount}</span>
-                      </span>
-                    );
-                  }
-
-                  return (
-                    <button
-                      key={tab}
-                      type="button"
-                      onClick={() => setActiveTab(tab as any)}
-                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-colors flex items-center ${
-                        activeTab === tab
-                          ? 'bg-slate-800 text-white border-b-2 border-blue-500 shadow-sm'
-                          : 'text-slate-400 hover:text-slate-200'
+          <div className="h-9 bg-slate-950 border-b border-slate-800 px-1 flex items-center justify-between text-xs font-bold shrink-0">
+            <div className="flex items-center gap-0.5 overflow-x-auto scrollbar-none">
+              {(([
+                'moves',
+                'chat',
+                'response',
+                'leaderboard',
+                'participants',
+                ...(isCoach ? ['engine'] : []),
+              ]) as const).map((tab) => {
+                let badge = null;
+                if (tab === 'chat' && unreadChatCount > 0) {
+                  badge = (
+                    <span className="ml-1 px-1.5 py-0.5 rounded-full bg-blue-500 text-white text-[9px] font-black leading-none animate-pulse">
+                      {unreadChatCount > 99 ? '99+' : unreadChatCount}
+                    </span>
+                  );
+                } else if (tab === 'response' && (snapshot.activeQuestion || responses.length > 0)) {
+                  badge = (
+                    <span
+                      className={`ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-black leading-none ${
+                        snapshot.activeQuestion
+                          ? 'bg-amber-500 text-slate-950 animate-bounce'
+                          : 'bg-slate-700 text-slate-200'
                       }`}
                     >
-                      <span>{tab === 'engine' ? '⚙️ ENGINE' : tab}</span>
-                      {badge}
-                    </button>
+                      {snapshot.activeQuestion ? '!' : responses.length}
+                    </span>
                   );
-                })}
-              </div>
+                } else if (tab === 'participants' && raisedHandsCount > 0) {
+                  badge = (
+                    <span className="ml-1 px-1.5 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[9px] font-black leading-none animate-bounce flex items-center gap-0.5">
+                      <span>✋</span>
+                      <span>{raisedHandsCount}</span>
+                    </span>
+                  );
+                }
+
+                return (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setActiveTab(tab as any)}
+                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-colors flex items-center shrink-0 ${
+                      activeTab === tab
+                        ? 'bg-slate-800 text-white border-b-2 border-blue-500 shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <span>{tab === 'engine' ? '⚙️ ENGINE' : tab}</span>
+                    {badge}
+                  </button>
+                );
+              })}
             </div>
+          </div>
 
-            {/* Tab Viewport */}
-            <div className="flex-1 min-h-0 relative overflow-hidden bg-slate-900">
-              {activeTab === 'moves' && (
-                <ClassroomNotation
-                  moves={snapshot.board.moves}
-                  currentMoveIndex={snapshot.board.currentMoveIndex}
-                  onNavigateMove={isCoach ? onNavigateMove : undefined}
-                  isCoach={isCoach}
-                  className="w-full h-full border-none rounded-none"
-                />
-              )}
+          {/* Tab Viewport */}
+          <div className="flex-1 min-h-0 relative overflow-hidden bg-slate-900">
+            {activeTab === 'moves' && (
+              <ClassroomNotation
+                moves={snapshot.board.moves}
+                currentMoveIndex={snapshot.board.currentMoveIndex}
+                onNavigateMove={isCoach ? onNavigateMove : undefined}
+                isCoach={isCoach}
+                className="w-full h-full border-none rounded-none"
+              />
+            )}
 
-              {activeTab === 'chat' && (
-                <ClassroomChat
-                  messages={messages}
-                  onSendMessage={onSendMessage}
-                  currentUserId={userId}
-                  currentUserRole={role}
-                  participants={participants}
-                  className="w-full h-full border-none rounded-none"
-                />
-              )}
+            {activeTab === 'chat' && (
+              <ClassroomChat
+                messages={messages}
+                onSendMessage={onSendMessage}
+                currentUserId={userId}
+                currentUserRole={role}
+                participants={participants}
+                className="w-full h-full border-none rounded-none"
+              />
+            )}
 
-              {activeTab === 'response' && (
-                <ClassroomResponses
-                  responses={responses}
-                  isCoach={isCoach}
-                  currentUserId={userId}
-                  onSubmitResponse={onSubmitResponse}
-                  onAskQuestion={onAskQuestion}
-                  activeQuestion={snapshot.activeQuestion}
-                  className="w-full h-full border-none rounded-none"
-                />
-              )}
+            {activeTab === 'response' && (
+              <ClassroomResponses
+                responses={responses}
+                isCoach={isCoach}
+                currentUserId={userId}
+                onSubmitResponse={onSubmitResponse}
+                onAskQuestion={onAskQuestion}
+                activeQuestion={snapshot.activeQuestion}
+                className="w-full h-full border-none rounded-none"
+              />
+            )}
 
-              {activeTab === 'leaderboard' && (
-                <ClassroomQuiz
-                  quiz={snapshot.quiz}
-                  isCoach={isCoach}
-                  onStartQuiz={onStartQuiz}
-                  onCloseQuiz={onCloseQuiz}
-                  onRevealQuiz={onRevealQuiz}
-                  onSubmitAnswer={onSubmitQuizAnswer}
-                  className="w-full h-full border-none rounded-none"
-                />
-              )}
+            {activeTab === 'leaderboard' && (
+              <ClassroomQuiz
+                quiz={snapshot.quiz}
+                isCoach={isCoach}
+                onStartQuiz={onStartQuiz}
+                onCloseQuiz={onCloseQuiz}
+                onRevealQuiz={onRevealQuiz}
+                onSubmitAnswer={onSubmitQuizAnswer}
+                className="w-full h-full border-none rounded-none"
+              />
+            )}
 
-              {activeTab === 'participants' && (
-                <ClassroomParticipants
-                  participants={participants}
-                  isCoach={isCoach}
-                  onToggleControl={onToggleStudentPermission}
-                  className="w-full h-full border-none rounded-none"
-                />
-              )}
+            {activeTab === 'participants' && (
+              <ClassroomParticipants
+                participants={participants}
+                isCoach={isCoach}
+                onToggleControl={onToggleStudentPermission}
+                className="w-full h-full border-none rounded-none"
+              />
+            )}
 
-              {activeTab === 'engine' && isCoach && (
-                <ClassroomEnginePanel
-                  fen={displayedFen}
-                  isEnabled={activeTab === 'engine'}
-                />
-              )}
-            </div>
+            {activeTab === 'engine' && isCoach && (
+              <ClassroomEnginePanel
+                fen={displayedFen}
+                isEnabled={activeTab === 'engine'}
+              />
+            )}
           </div>
         </div>
       </div>

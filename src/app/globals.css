@@ -259,8 +259,10 @@ img, iframe, canvas, video, .protect-media {
 }
 
 /* ─── Zoom Video Rendering & Aspect Ratio Fixes ───────────────────────────── */
-/* Prevent participant face/video cropping, maintain camera aspect ratio without stretching */
 #meetingSDKElement {
+  position: relative !important;
+  width: 100% !important;
+  height: 100% !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -268,21 +270,37 @@ img, iframe, canvas, video, .protect-media {
   background-color: #020617 !important;
 }
 
+/* Expand Zoom's internal suspension/speaker/gallery views to fill the full container */
+#meetingSDKElement > div,
+#meetingSDKElement [class*="suspension-window"],
+#meetingSDKElement [class*="suspension-view"],
+#meetingSDKElement [class*="speaker-view"],
+#meetingSDKElement [class*="gallery-view"],
+#meetingSDKElement [class*="main-panel-view"],
+#meetingSDKElement [class*="single-video-container"],
+#meetingSDKElement .single-video-container {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  position: absolute !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  transform: none !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+}
+
+/* Prevent participant face/video cropping, maintain camera aspect ratio without stretching */
 #meetingSDKElement canvas,
 #meetingSDKElement video {
   object-fit: contain !important;
   max-width: 100% !important;
   max-height: 100% !important;
   margin: auto !important;
-}
-
-#meetingSDKElement .single-video-container,
-#meetingSDKElement .speaker-view {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  width: 100% !important;
-  height: 100% !important;
 }
 
 /* Gallery View Grid Support */

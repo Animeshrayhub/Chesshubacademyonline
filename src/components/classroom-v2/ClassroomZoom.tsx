@@ -191,48 +191,58 @@ export default function ClassroomZoom({
 
       {/* Main Video Element — Hidden via CSS when minimized, NEVER remounted */}
       <div
-        className={`flex-1 relative w-full h-full ${isMinimized ? 'hidden' : 'min-h-[140px]'} bg-slate-950 flex items-center justify-center overflow-hidden transition-transform duration-200 ${
+        className={`flex-1 relative w-full h-full ${isMinimized ? 'hidden' : 'min-h-[140px]'} bg-slate-950 flex items-center justify-center overflow-hidden ${
           layoutMode === 'gallery' ? 'zoom-layout-gallery' : 'zoom-layout-speaker'
         }`}
         style={{
           display: isMinimized ? 'none' : undefined,
-          transform: isMirrored ? 'scaleX(-1)' : 'scaleX(1)',
         }}
       >
-        <ZoomClassroomVideo
-          ref={zoomRef}
-          classId={classId}
-          meetingNumber={zoomMeetingId}
-          passCode={zoomPasscode}
-          userName={userName}
-          role={isCoach ? 1 : 0}
-          onMediaStatusChange={handleMediaStatusChange}
-          className="w-full h-full"
-        />
+        <div
+          className="w-full h-full transition-transform duration-200"
+          style={{
+            transform: isMirrored ? 'scaleX(-1)' : 'scaleX(1)',
+          }}
+        >
+          <ZoomClassroomVideo
+            ref={zoomRef}
+            classId={classId}
+            meetingNumber={zoomMeetingId}
+            passCode={zoomPasscode}
+            userName={userName}
+            role={isCoach ? 1 : 0}
+            onMediaStatusChange={handleMediaStatusChange}
+            className="w-full h-full"
+          />
+        </div>
 
-        {/* Floating Quick Media Controls Bar */}
-        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 px-2.5 py-1 bg-slate-900/90 border border-slate-700/80 rounded-full shadow-2xl backdrop-blur-md select-none pointer-events-auto">
+        {/* Floating Quick Media Controls Bar — Always unmirrored & prominent */}
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-3 py-1.5 bg-slate-900/95 border border-slate-700/90 rounded-full shadow-2xl backdrop-blur-md select-none pointer-events-auto">
           <button
             type="button"
             onClick={handleToggleMute}
-            className={`px-2.5 py-1 rounded-full transition-all text-xs font-bold flex items-center gap-1 shadow-sm ${
-              isMuted ? 'bg-rose-600 hover:bg-rose-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+            className={`px-3 py-1 rounded-full transition-all text-xs font-bold flex items-center gap-1.5 shadow-md ${
+              isMuted
+                ? 'bg-rose-600 hover:bg-rose-500 text-white animate-pulse'
+                : 'bg-emerald-600 hover:bg-emerald-500 text-white'
             }`}
-            title={isMuted ? 'Unmute Microphone' : 'Mute Microphone'}
+            title={isMuted ? 'Click to Unmute Microphone' : 'Click to Mute Microphone'}
           >
             <span>{isMuted ? '🔇' : '🎙️'}</span>
-            <span className="text-[10px] font-mono">{isMuted ? 'Unmute' : 'Mute'}</span>
+            <span className="text-[11px] font-mono font-bold">{isMuted ? 'Unmute' : 'Mute'}</span>
           </button>
           <button
             type="button"
             onClick={handleToggleVideo}
-            className={`px-2.5 py-1 rounded-full transition-all text-xs font-bold flex items-center gap-1 shadow-sm ${
-              !isVideoOn ? 'bg-rose-600 hover:bg-rose-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+            className={`px-3 py-1 rounded-full transition-all text-xs font-bold flex items-center gap-1.5 shadow-md ${
+              !isVideoOn
+                ? 'bg-rose-600 hover:bg-rose-500 text-white'
+                : 'bg-emerald-600 hover:bg-emerald-500 text-white'
             }`}
-            title={isVideoOn ? 'Stop Camera' : 'Start Camera'}
+            title={isVideoOn ? 'Click to Stop Camera' : 'Click to Start Camera'}
           >
             <span>{isVideoOn ? '📹' : '🚫'}</span>
-            <span className="text-[10px] font-mono">{isVideoOn ? 'Stop' : 'Start'}</span>
+            <span className="text-[11px] font-mono font-bold">{isVideoOn ? 'Stop Video' : 'Start Video'}</span>
           </button>
         </div>
 

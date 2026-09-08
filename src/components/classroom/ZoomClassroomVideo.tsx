@@ -81,39 +81,80 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
         if (!clientRef.current || !isJoinedRef.current) return false;
         try {
           const nextMute = !audioMuted;
-          if (typeof clientRef.current.muteAudio === 'function') {
-            await clientRef.current.muteAudio(nextMute);
-          } else if (typeof clientRef.current.mute === 'function') {
-            await clientRef.current.mute(nextMute);
+
+          // 1. Try Zoom Embedded SDK programmatic mute API
+          try {
+            const curUser = clientRef.current.getCurrentUser?.();
+            if (typeof clientRef.current.mute === 'function') {
+              await clientRef.current.mute(nextMute, curUser?.userId);
+            }
+          } catch (apiErr) {
+            console.warn('[Zoom client.mute]', apiErr);
           }
+
+          // 2. Also trigger click on Zoom's native internal Unmute/Mute button in the DOM
+          if (containerRef.current) {
+            const buttons = Array.from(containerRef.current.querySelectorAll('button, [role="button"]'));
+            const targetBtn = buttons.find((btn) => {
+              const text = (btn.textContent || '').toLowerCase();
+              const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+              const title = (btn.getAttribute('title') || '').toLowerCase();
+              return (
+                aria.includes('mute') ||
+                aria.includes('audio') ||
+                text.includes('mute') ||
+                text.includes('unmute') ||
+                title.includes('mute') ||
+                btn.className.includes('audio') ||
+                btn.className.includes('mute')
+              );
+            }) as HTMLElement | undefined;
+            if (targetBtn) {
+              targetBtn.click();
+            }
+          }
+
           setAudioMuted(nextMute);
           onMediaStatusChange?.({ isVideoOn: videoActive, isMuted: nextMute });
           return nextMute;
         } catch (err) {
-          console.warn('[Zoom toggleMute]', err);
+          console.warn('[Zoom toggleMute error]', err);
           return audioMuted;
         }
       },
       toggleVideo: async () => {
         if (!clientRef.current || !isJoinedRef.current) return false;
         try {
-          if (videoActive) {
-            if (typeof clientRef.current.stopVideo === 'function') {
-              await clientRef.current.stopVideo();
+          const nextVideo = !videoActive;
+
+          // In Zoom Embedded SDK, camera toggle is triggered directly via Zoom's internal button
+          if (containerRef.current) {
+            const buttons = Array.from(containerRef.current.querySelectorAll('button, [role="button"]'));
+            const targetBtn = buttons.find((btn) => {
+              const text = (btn.textContent || '').toLowerCase();
+              const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+              const title = (btn.getAttribute('title') || '').toLowerCase();
+              return (
+                aria.includes('video') ||
+                aria.includes('camera') ||
+                text.includes('start') ||
+                text.includes('stop') ||
+                text.includes('video') ||
+                title.includes('video') ||
+                btn.className.includes('video') ||
+                btn.className.includes('camera')
+              );
+            }) as HTMLElement | undefined;
+            if (targetBtn) {
+              targetBtn.click();
             }
-            setVideoActive(false);
-            onMediaStatusChange?.({ isVideoOn: false, isMuted: audioMuted });
-            return false;
-          } else {
-            if (typeof clientRef.current.startVideo === 'function') {
-              await clientRef.current.startVideo();
-            }
-            setVideoActive(true);
-            onMediaStatusChange?.({ isVideoOn: true, isMuted: audioMuted });
-            return true;
           }
+
+          setVideoActive(nextVideo);
+          onMediaStatusChange?.({ isVideoOn: nextVideo, isMuted: audioMuted });
+          return nextVideo;
         } catch (err) {
-          console.warn('[Zoom toggleVideo]', err);
+          console.warn('[Zoom toggleVideo error]', err);
           updateMediaStateFromClient();
           return videoActive;
         }
@@ -128,11 +169,11 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
      * when the container is still in flex/grid computation.
      */
     const getContainerDimensions = useCallback((): { width: number; height: number } => {
-      if (!containerRef.current) return { width: 320, height: 240 };
+      if (!containerRef.current) return { width: 360, height: 240 };
       const rect = containerRef.current.getBoundingClientRect();
       return {
-        width: rect.width > 10 ? Math.floor(rect.width) : 320,
-        height: rect.height > 10 ? Math.floor(rect.height) : 240,
+        width: rect.width > 20 ? Math.floor(rect.width) : 360,
+        height: rect.height > 20 ? Math.floor(rect.height) : 240,
       };
     }, []);
 
@@ -169,13 +210,22 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
           customize: {
             video: {
               isResizable: false,
+              defaultViewType: 'gallery' as any,
+              popper: {
+                disableDraggable: true,
+              } as any,
               viewSizes: {
                 default: {
-                  width,
-                  height,
+                  width: Math.max(320, width),
+                  height: Math.max(180, height),
+                },
+                ribbon: {
+                  width: Math.max(320, width),
+                  height: Math.max(180, height),
                 },
               },
             },
+            meetingInfo: ['topic', 'host', 'mn', 'pwd'],
           },
         });
 
@@ -260,6 +310,27 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
         }
       });
       observer.observe(containerRef.current);
+      return () => observer.disconnect();
+    }, [isMiniView]);
+
+    // Synchronize media status by observing Zoom's internal DOM state
+    useEffect(() => {
+      if (!containerRef.current || typeof MutationObserver === 'undefined') return;
+      const observer = new MutationObserver(() => {
+        if (!containerRef.current) return;
+        const text = (containerRef.current.textContent || '').toLowerCase();
+        if (text.includes('stop video') || text.includes('stop')) {
+          setVideoActive(true);
+        } else if (text.includes('start video') || text.includes('start')) {
+          setVideoActive(false);
+        }
+        if (text.includes('unmute')) {
+          setAudioMuted(true);
+        } else if (text.includes('mute') && !text.includes('unmute')) {
+          setAudioMuted(false);
+        }
+      });
+      observer.observe(containerRef.current, { childList: true, subtree: true, characterData: true });
       return () => observer.disconnect();
     }, []);
 
