@@ -8,6 +8,7 @@ export interface ZoomClassroomVideoHandle {
   toggleVideo: () => Promise<boolean>;
   isMuted: () => boolean;
   isVideoOn: () => boolean;
+  changeViewType: (viewType: 'gallery' | 'speaker') => Promise<void>;
 }
 
 interface ZoomClassroomVideoProps {
@@ -161,6 +162,16 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
       },
       isMuted: () => audioMuted,
       isVideoOn: () => videoActive,
+      changeViewType: async (viewType: 'gallery' | 'speaker') => {
+        if (!clientRef.current || !isJoinedRef.current) return;
+        try {
+          if (typeof clientRef.current.setViewType === 'function') {
+            await clientRef.current.setViewType(viewType);
+          }
+        } catch (err) {
+          console.warn('[Zoom changeViewType]', err);
+        }
+      },
     }));
 
     /**
@@ -207,21 +218,19 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
         await zoomClient.init({
           zoomAppRoot: containerRef.current,
           language: 'en-US',
+          patchJsMedia: true,
           customize: {
             video: {
-              isResizable: false,
+              isResizable: true,
               defaultViewType: 'gallery' as any,
-              popper: {
-                disableDraggable: true,
-              } as any,
               viewSizes: {
                 default: {
-                  width: Math.max(320, width),
-                  height: Math.max(180, height),
+                  width: Math.max(640, width),
+                  height: Math.max(360, height),
                 },
                 ribbon: {
-                  width: Math.max(320, width),
-                  height: Math.max(180, height),
+                  width: 320,
+                  height: 480,
                 },
               },
             },
@@ -253,6 +262,15 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
         setIsJoined(true);
         onMeetingJoin?.();
         onConnectionChange?.('connected');
+
+        // Immediately switch Zoom component view to gallery so participants render in grid
+        try {
+          if (typeof (zoomClient as any)?.setViewType === 'function') {
+            await (zoomClient as any).setViewType('gallery');
+          }
+        } catch (viewErr) {
+          console.warn('[Zoom setViewType notice]', viewErr);
+        }
 
         // Start computer audio after joining Zoom meeting
         try {
@@ -313,24 +331,51 @@ const ZoomClassroomVideo = forwardRef<ZoomClassroomVideoHandle, ZoomClassroomVid
       return () => observer.disconnect();
     }, [isMiniView]);
 
-    // Synchronize media status by observing Zoom's internal DOM state
+    // Synchronize media status by observing Zoom's internal client & DOM state
     useEffect(() => {
       if (!containerRef.current || typeof MutationObserver === 'undefined') return;
       const observer = new MutationObserver(() => {
         if (!containerRef.current) return;
-        const text = (containerRef.current.textContent || '').toLowerCase();
-        if (text.includes('stop video') || text.includes('stop')) {
-          setVideoActive(true);
-        } else if (text.includes('start video') || text.includes('start')) {
-          setVideoActive(false);
+        // Check Zoom client's official user object first
+        if (clientRef.current) {
+          try {
+            const curUser = clientRef.current.getCurrentUser?.();
+            if (curUser) {
+              setVideoActive(Boolean(curUser.bVideoOn));
+              setAudioMuted(Boolean(curUser.muted));
+              return;
+            }
+          } catch {}
         }
-        if (text.includes('unmute')) {
-          setAudioMuted(true);
-        } else if (text.includes('mute') && !text.includes('unmute')) {
-          setAudioMuted(false);
+
+        // Check Zoom's specific video button aria-labels
+        const videoBtn = containerRef.current.querySelector<HTMLElement>(
+          'button[aria-label*="video" i], button[aria-label*="camera" i], [class*="video-btn"]'
+        );
+        if (videoBtn) {
+          const label = (videoBtn.getAttribute('aria-label') || '').toLowerCase();
+          const text = (videoBtn.textContent || '').toLowerCase();
+          if (label.includes('stop video') || text.includes('stop video')) {
+            setVideoActive(true);
+          } else if (label.includes('start video') || text.includes('start video')) {
+            setVideoActive(false);
+          }
+        }
+
+        const audioBtn = containerRef.current.querySelector<HTMLElement>(
+          'button[aria-label*="mute" i], button[aria-label*="audio" i], [class*="audio-btn"]'
+        );
+        if (audioBtn) {
+          const label = (audioBtn.getAttribute('aria-label') || '').toLowerCase();
+          const text = (audioBtn.textContent || '').toLowerCase();
+          if (label.includes('unmute') || text.includes('unmute')) {
+            setAudioMuted(true);
+          } else if (label.includes('mute') || text.includes('mute')) {
+            setAudioMuted(false);
+          }
         }
       });
-      observer.observe(containerRef.current, { childList: true, subtree: true, characterData: true });
+      observer.observe(containerRef.current, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-label', 'class'] });
       return () => observer.disconnect();
     }, []);
 

@@ -69,10 +69,11 @@ export default function ClassroomZoom({
     setMicAllowed(!status.isMuted);
   }, []);
 
-  const handleSelectLayout = (mode: 'gallery' | 'speaker') => {
+  const handleSelectLayout = async (mode: 'gallery' | 'speaker') => {
     setLayoutMode(mode);
     try {
       localStorage.setItem('classroom_zoom_layout', mode);
+      await zoomRef.current?.changeViewType(mode);
     } catch {}
   };
 
