@@ -487,7 +487,59 @@ ${formattedMoves || '1. e4'} ${game.result}`;
   // Post-Game Analysis Modal
   const [showAnalysisModal, setShowAnalysisModal] = useState(false);
   const [analysisData, setAnalysisData] = useState<any>(null);
-  const [showEngineDetails, setShowEngineDetails] = useState(false);
+  // Interactive Post-Game Move Tree & Mistake Stepper State
+  const [replayMoveIndex, setReplayMoveIndex] = useState<number>(0);
+  const [replayAutoPlay, setReplayAutoPlay] = useState<boolean>(false);
+  const [showAlternativeBranch, setShowAlternativeBranch] = useState<boolean>(false);
+
+  // Compute the replay FEN at replayMoveIndex
+  const currentReplayFen = useMemo(() => {
+    try {
+      const g = new Chess();
+      for (let i = 0; i < replayMoveIndex && i < moveHistory.length; i++) {
+        g.move(moveHistory[i]);
+      }
+      return g.fen();
+    } catch {
+      return 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    }
+  }, [moveHistory, replayMoveIndex]);
+
+  // Compute paired moves for interactive notation tree
+  const replayMovePairs = useMemo(() => {
+    const pairs: Array<{
+      moveNum: number;
+      whiteIndex: number;
+      whiteMove: string;
+      blackIndex?: number;
+      blackMove?: string;
+    }> = [];
+    for (let i = 0; i < moveHistory.length; i += 2) {
+      pairs.push({
+        moveNum: Math.floor(i / 2) + 1,
+        whiteIndex: i + 1,
+        whiteMove: moveHistory[i],
+        blackIndex: i + 1 < moveHistory.length ? i + 2 : undefined,
+        blackMove: i + 1 < moveHistory.length ? moveHistory[i + 1] : undefined,
+      });
+    }
+    return pairs;
+  }, [moveHistory]);
+
+  // Auto-play timer effect
+  useEffect(() => {
+    if (!replayAutoPlay || !showAnalysisModal) return;
+    const interval = setInterval(() => {
+      setReplayMoveIndex((curr) => {
+        if (curr >= moveHistory.length) {
+          setReplayAutoPlay(false);
+          return curr;
+        }
+        return curr + 1;
+      });
+    }, 1200);
+    return () => clearInterval(interval);
+  }, [replayAutoPlay, showAnalysisModal, moveHistory.length]);
 
   // Interactive Mistake Practice Board State
   const [practiceMistakeIndex, setPracticeMistakeIndex] = useState<number | null>(null);
@@ -3479,121 +3531,389 @@ ${formattedMoves || '1. e4'} ${game.result}`;
         </div>
       )}
 
-      {/* ANALYSIS MODAL */}
-      {showAnalysisModal && analysisData && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl">
-            <div className="text-center space-y-2">
-              <div className="text-4xl">{analysisData.result === 'win' ? '🏆' : '❌'}</div>
-              <h2 className="text-xl font-extrabold text-white">
-                {analysisData.result === 'win' ? 'YOU WON!' : 'GAME COMPLETED'}
-              </h2>
-              <div className="text-sm font-bold text-amber-400">
-                Rating: {analysisData.ratingBefore ?? 400} → {analysisData.ratingAfter ?? 400} ({(analysisData.ratingChange ?? 0) >= 0 ? `+${analysisData.ratingChange ?? 0}` : analysisData.ratingChange})
+      {/* ANALYSIS & INTERACTIVE REPLAY MODAL */}
+      {showAnalysisModal && analysisData && practiceMistakeIndex === null && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-800/80 bg-slate-950/60 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-2xl">
+                  {analysisData.result === 'win' ? '🏆' : analysisData.result === 'draw' ? '🤝' : '⚔️'}
+                </div>
+                <div>
+                  <h2 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
+                    <span>{analysisData.result === 'win' ? 'VICTORY ACHIEVED!' : analysisData.result === 'draw' ? 'GAME DRAWN!' : 'MATCH ANALYSIS'}</span>
+                    <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                      Rating: {analysisData.ratingBefore ?? 400} → {analysisData.ratingAfter ?? 400} ({(analysisData.ratingChange ?? 0) >= 0 ? `+${analysisData.ratingChange ?? 0}` : analysisData.ratingChange})
+                    </span>
+                  </h2>
+                  <div className="text-xs text-slate-400 flex items-center gap-3 mt-0.5">
+                    <span>Accuracy: <strong className="text-emerald-400">{analysisData.analysisSummary?.accuracy ?? 85}%</strong></span>
+                    <span>•</span>
+                    <span>Blunders: <strong className="text-rose-400">{analysisData.analysisSummary?.blunders ?? 0}</strong></span>
+                    <span>•</span>
+                    <span>Total Moves: <strong className="text-slate-200">{moveHistory.length}</strong></span>
+                  </div>
+                </div>
               </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAnalysisModal(false);
+                  setPracticeMistakeIndex(null);
+                  setReplayAutoPlay(false);
+                  setInGame(false);
+                }}
+                className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center text-sm font-bold transition-colors"
+                title="Close"
+              >
+                ✕
+              </button>
             </div>
 
-            {/* Child-Friendly Advice Summary */}
-            <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-300">
-                <span>Accuracy: {analysisData.analysisSummary?.accuracy ?? 85}%</span>
-                <span>Blunders: {analysisData.analysisSummary?.blunders ?? 0}</span>
+            {/* Modal Body - 2 Columns (Replay Board + Move Notation Tree) */}
+            <div className="p-4 sm:p-5 overflow-y-auto flex-1 grid grid-cols-1 lg:grid-cols-12 gap-5">
+              {/* Left Column: Interactive Replay Board & Stepper Controls (lg:col-span-6) */}
+              <div className="lg:col-span-6 flex flex-col items-center gap-3">
+                <div className="w-full flex items-center justify-between text-xs font-bold px-1 text-slate-400">
+                  <span className="flex items-center gap-1.5 text-amber-400">
+                    <span>♟️</span>
+                    <span>Replay Board Stepper</span>
+                  </span>
+                  <span className="text-[11px] font-mono bg-slate-800/80 px-2 py-0.5 rounded text-slate-300">
+                    Step {replayMoveIndex} / {moveHistory.length}
+                  </span>
+                </div>
+
+                {/* Mini Replay Chessboard */}
+                <div className="w-full max-w-[320px] aspect-square rounded-xl overflow-hidden border border-slate-800 shadow-2xl bg-slate-950">
+                  <ChessboardComponent
+                    position={currentReplayFen}
+                    arePiecesDraggable={false}
+                    boardOrientation={playerColor}
+                    customBoardStyle={{ borderRadius: '10px' }}
+                    customDarkSquareStyle={{ backgroundColor: '#b58863' }}
+                    customLightSquareStyle={{ backgroundColor: '#f0d9b5' }}
+                    customPieces={customChessPieces}
+                  />
+                </div>
+
+                {/* Stepper Control Buttons */}
+                <div className="w-full max-w-[320px] bg-slate-950 border border-slate-800 rounded-xl p-2 flex items-center justify-between gap-1 shadow-inner">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReplayMoveIndex(0);
+                      setReplayAutoPlay(false);
+                    }}
+                    title="Jump to Start"
+                    className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-bold transition-all"
+                  >
+                    ⏮️
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReplayMoveIndex((prev) => Math.max(0, prev - 1));
+                      setReplayAutoPlay(false);
+                    }}
+                    title="Previous Move"
+                    className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-bold transition-all"
+                  >
+                    ◀️ Prev
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReplayAutoPlay((prev) => !prev)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all flex items-center gap-1 ${
+                      replayAutoPlay
+                        ? 'bg-amber-500 text-slate-950 animate-pulse'
+                        : 'bg-slate-800 hover:bg-slate-700 text-amber-300'
+                    }`}
+                  >
+                    {replayAutoPlay ? '⏸️ Pause' : '▶️ Auto'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReplayMoveIndex((prev) => Math.min(moveHistory.length, prev + 1));
+                      setReplayAutoPlay(false);
+                    }}
+                    title="Next Move"
+                    className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-bold transition-all"
+                  >
+                    Next ▶️
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReplayMoveIndex(moveHistory.length);
+                      setReplayAutoPlay(false);
+                    }}
+                    title="Jump to Final Position"
+                    className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-bold transition-all"
+                  >
+                    ⏭️
+                  </button>
+                </div>
+
+                {/* Key Moment Banner if Current Move Matches */}
+                {(() => {
+                  const currentTurn = Math.ceil(replayMoveIndex / 2);
+                  const activeMoment = (analysisData.analysisSummary?.keyMoments || []).find(
+                    (km: any) => km.move_number === currentTurn
+                  );
+                  const activeMomentIdx = (analysisData.analysisSummary?.keyMoments || []).findIndex(
+                    (km: any) => km.move_number === currentTurn
+                  );
+
+                  if (!activeMoment || replayMoveIndex === 0) return null;
+
+                  return (
+                    <div className="w-full max-w-[320px] bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-xs space-y-2 animate-in fade-in">
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-amber-400 flex items-center gap-1 text-[11px] uppercase tracking-wider">
+                          <span>⚠️</span>
+                          <span>Move {activeMoment.move_number} Mistake</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => speakCoachAdvice(`${activeMoment.explanation}. Recommended idea: ${activeMoment.better_idea}`, { force: true })}
+                          className="text-amber-400 hover:text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 flex items-center gap-1"
+                        >
+                          <span>🗣️</span>
+                          <span>Hear Advice</span>
+                        </button>
+                      </div>
+                      <div className="text-slate-300 text-[11px] leading-snug font-medium">
+                        {activeMoment.explanation}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleStartPracticeMistakes(activeMomentIdx >= 0 ? activeMomentIdx : 0)}
+                        className="w-full py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-[11px] rounded-lg shadow uppercase tracking-wide transition-all"
+                      >
+                        🎯 Practice This Mistake Now →
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
 
-              {Array.isArray(analysisData.analysisSummary?.keyMoments) && analysisData.analysisSummary.keyMoments.length > 0 && (
-                <div className="space-y-2">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase">Key Moment Advice:</div>
-                  {analysisData.analysisSummary.keyMoments.slice(0, 2).map((km: any, idx: number) => {
-                    const expl = typeof km?.explanation === 'string' ? km.explanation : typeof km?.explanation === 'object' ? JSON.stringify(km.explanation) : String(km?.explanation || 'Tactical moment detected');
-                    const idea = typeof km?.better_idea === 'string' ? km.better_idea : typeof km?.better_idea === 'object' ? JSON.stringify(km.better_idea) : String(km?.better_idea || 'Consider alternative defensive moves');
+              {/* Right Column: Interactive Move Notation Tree & Tactical Analysis (lg:col-span-6) */}
+              <div className="lg:col-span-6 flex flex-col gap-4">
+                {/* Move Tree Header */}
+                <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+                  <span className="flex items-center gap-1.5">
+                    <span>🌳</span>
+                    <span>Game Move Tree (Click to Jump)</span>
+                  </span>
+                  <span className="text-[10px] text-slate-500">
+                    Click any move to position board
+                  </span>
+                </div>
 
-                    return (
-                      <div key={idx} className="bg-slate-900 border border-slate-800 rounded-lg p-3 text-xs space-y-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="font-bold text-amber-300">💡 {expl}</div>
+                {/* Move Tree Scrollable Container */}
+                <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 max-h-[190px] overflow-y-auto space-y-1 font-mono text-xs shadow-inner">
+                  {replayMovePairs.length === 0 ? (
+                    <div className="text-center py-6 text-slate-500 text-xs font-sans">
+                      No moves recorded in this game.
+                    </div>
+                  ) : (
+                    replayMovePairs.map((pair) => {
+                      const isWhiteActive = replayMoveIndex === pair.whiteIndex;
+                      const isBlackActive = replayMoveIndex === pair.blackIndex;
+                      const isKeyMoment = (analysisData.analysisSummary?.keyMoments || []).some(
+                        (km: any) => km.move_number === pair.moveNum
+                      );
+
+                      return (
+                        <div
+                          key={pair.moveNum}
+                          className={`flex items-center gap-2 px-2 py-1 rounded-lg transition-colors ${
+                            isWhiteActive || isBlackActive ? 'bg-slate-900/90' : 'hover:bg-slate-900/50'
+                          }`}
+                        >
+                          <span className="w-8 text-[11px] text-slate-500 shrink-0 font-bold">
+                            {pair.moveNum}.
+                          </span>
+
+                          {/* White Move Chip */}
                           <button
                             type="button"
-                            onClick={() => speakCoachAdvice(`${expl}. Recommendation: ${idea}`, { force: true })}
-                            className="text-amber-400 hover:text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 flex items-center gap-1 shrink-0"
-                            title="Listen to Coach Voice Analysis"
+                            onClick={() => {
+                              setReplayMoveIndex(pair.whiteIndex);
+                              setReplayAutoPlay(false);
+                            }}
+                            className={`flex-1 text-left px-2 py-0.5 rounded text-[11px] font-bold transition-all flex items-center justify-between ${
+                              isWhiteActive
+                                ? 'bg-amber-500/25 text-amber-300 ring-1 ring-amber-400'
+                                : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                            }`}
                           >
-                            <span>🗣️</span>
-                            <span>Listen</span>
+                            <span>{pair.whiteMove}</span>
+                            {isKeyMoment && playerColor === 'white' && (
+                              <span className="text-[9px] px-1 rounded bg-rose-500/20 text-rose-300" title="Key Moment / Mistake">
+                                ⚠️
+                              </span>
+                            )}
                           </button>
-                        </div>
-                        <div className="text-slate-400 text-[11px]">{idea}</div>
-                      </div>
-                    );
-                  })}
 
+                          {/* Black Move Chip */}
+                          {pair.blackMove ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (pair.blackIndex) {
+                                  setReplayMoveIndex(pair.blackIndex);
+                                  setReplayAutoPlay(false);
+                                }
+                              }}
+                              className={`flex-1 text-left px-2 py-0.5 rounded text-[11px] font-bold transition-all flex items-center justify-between ${
+                                isBlackActive
+                                  ? 'bg-amber-500/25 text-amber-300 ring-1 ring-amber-400'
+                                  : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                              }`}
+                            >
+                              <span>{pair.blackMove}</span>
+                              {isKeyMoment && playerColor === 'black' && (
+                                <span className="text-[9px] px-1 rounded bg-rose-500/20 text-rose-300" title="Key Moment / Mistake">
+                                  ⚠️
+                                </span>
+                              )}
+                            </button>
+                          ) : (
+                            <span className="flex-1 text-slate-700 text-[11px] px-2">-</span>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Key Moments Coach Summary */}
+                {Array.isArray(analysisData.analysisSummary?.keyMoments) && analysisData.analysisSummary.keyMoments.length > 0 && (
+                  <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-extrabold text-amber-400 uppercase tracking-wider">
+                        💡 Key Moments ({analysisData.analysisSummary.keyMoments.length})
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleStartPracticeMistakes(0)}
+                        className="text-[11px] font-bold text-amber-400 hover:text-amber-300 underline"
+                      >
+                        Practice All →
+                      </button>
+                    </div>
+
+                    <div className="space-y-1.5 max-h-[110px] overflow-y-auto">
+                      {analysisData.analysisSummary.keyMoments.slice(0, 3).map((km: any, idx: number) => {
+                        const expl = typeof km?.explanation === 'string' ? km.explanation : 'Tactical moment detected';
+                        const idea = typeof km?.better_idea === 'string' ? km.better_idea : 'Consider alternative moves';
+
+                        return (
+                          <div
+                            key={idx}
+                            onClick={() => {
+                              // Jump replay to that move turn
+                              const moveIdx = km.move_number ? (playerColor === 'white' ? (km.move_number * 2 - 1) : (km.move_number * 2)) : 0;
+                              setReplayMoveIndex(Math.min(moveHistory.length, Math.max(0, moveIdx)));
+                              setReplayAutoPlay(false);
+                            }}
+                            className="bg-slate-900 border border-slate-800/80 hover:border-amber-500/40 rounded-lg p-2 text-xs cursor-pointer transition-colors space-y-1"
+                          >
+                            <div className="flex items-center justify-between gap-1 text-[11px]">
+                              <span className="font-bold text-amber-300">
+                                Move {km.move_number}: {expl}
+                              </span>
+                              <span className="text-[10px] text-slate-400 shrink-0 font-mono">
+                                {km.played_move ? `(${km.played_move})` : ''}
+                              </span>
+                            </div>
+                            <div className="text-slate-400 text-[10px] line-clamp-1">
+                              🎯 Idea: {idea}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Match Replay & Export Options */}
+                <div className="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2 flex-wrap">
+                  <span className="text-xs font-bold text-slate-400 flex items-center gap-1">
+                    <span>📜</span>
+                    <span>Export Game:</span>
+                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const pgnText = generatePgn({
+                          whiteName: playerColor === 'white' ? 'Student' : `Level ${selectedLevel} Bot`,
+                          blackName: playerColor === 'black' ? 'Student' : `Level ${selectedLevel} Bot`,
+                          result: analysisData.result === 'win' ? (playerColor === 'white' ? '1-0' : '0-1') : (playerColor === 'white' ? '0-1' : '1-0'),
+                          moves: moveHistory,
+                        });
+                        downloadPgnFile(`chesshub_match_${Date.now()}.pgn`, pgnText);
+                      }}
+                      className="px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[10px] font-bold text-slate-200 transition-all flex items-center gap-1"
+                    >
+                      📥 PGN
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const pgnText = generatePgn({
+                          whiteName: playerColor === 'white' ? 'Student' : `Level ${selectedLevel} Bot`,
+                          blackName: playerColor === 'black' ? 'Student' : `Level ${selectedLevel} Bot`,
+                          result: analysisData.result === 'win' ? (playerColor === 'white' ? '1-0' : '0-1') : (playerColor === 'white' ? '0-1' : '1-0'),
+                          moves: moveHistory,
+                        });
+                        copyPgnToClipboard(pgnText);
+                      }}
+                      className="px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[10px] font-bold text-amber-400 transition-all flex items-center gap-1"
+                    >
+                      {pgnCopiedToast ? '✅ Copied!' : '📋 Copy'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => copyShareLink(activeGameId || undefined)}
+                      className="px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[10px] font-bold text-sky-400 transition-all flex items-center gap-1"
+                    >
+                      {shareLinkCopiedToast ? '✅ Link Copied!' : '🔗 Share'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Primary Action Buttons */}
+                <div className="flex items-center gap-2 pt-1">
+                  {Array.isArray(analysisData.analysisSummary?.keyMoments) && analysisData.analysisSummary.keyMoments.length > 0 && (
+                    <Button
+                      onClick={() => handleStartPracticeMistakes(0)}
+                      className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-extrabold text-xs uppercase tracking-wider shadow-lg flex items-center justify-center gap-1.5"
+                    >
+                      <span>🎯 Practice Mistakes ({analysisData.analysisSummary.keyMoments.length})</span>
+                    </Button>
+                  )}
                   <Button
-                    onClick={() => handleStartPracticeMistakes(0)}
-                    className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-extrabold text-xs uppercase tracking-wider shadow-lg flex items-center justify-center gap-2 mt-2"
+                    onClick={() => {
+                      setShowAnalysisModal(false);
+                      setPracticeMistakeIndex(null);
+                      setReplayAutoPlay(false);
+                      setInGame(false);
+                    }}
+                    className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs"
                   >
-                    <span>🎯 Practice My Mistakes ({analysisData.analysisSummary.keyMoments.length}) →</span>
+                    Back to Overview
                   </Button>
                 </div>
-              )}
-            </div>
-
-            {/* Match Export & Share Replay Bar */}
-            <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col sm:flex-row items-center justify-between gap-2.5">
-              <div className="text-xs font-bold text-slate-300 flex items-center gap-1.5 self-start sm:self-auto">
-                <span>📜</span>
-                <span>Match Replay:</span>
-              </div>
-              <div className="flex items-center gap-1.5 flex-wrap w-full sm:w-auto justify-end">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const pgnText = generatePgn({
-                      whiteName: playerColor === 'white' ? 'Student' : `Level ${selectedLevel} Bot`,
-                      blackName: playerColor === 'black' ? 'Student' : `Level ${selectedLevel} Bot`,
-                      result: analysisData.result === 'win' ? (playerColor === 'white' ? '1-0' : '0-1') : (playerColor === 'white' ? '0-1' : '1-0'),
-                      moves: moveHistory,
-                    });
-                    downloadPgnFile(`chesshub_match_${Date.now()}.pgn`, pgnText);
-                  }}
-                  className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] font-bold text-slate-200 transition-all flex items-center gap-1"
-                >
-                  📥 Download PGN
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const pgnText = generatePgn({
-                      whiteName: playerColor === 'white' ? 'Student' : `Level ${selectedLevel} Bot`,
-                      blackName: playerColor === 'black' ? 'Student' : `Level ${selectedLevel} Bot`,
-                      result: analysisData.result === 'win' ? (playerColor === 'white' ? '1-0' : '0-1') : (playerColor === 'white' ? '0-1' : '1-0'),
-                      moves: moveHistory,
-                    });
-                    copyPgnToClipboard(pgnText);
-                  }}
-                  className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] font-bold text-amber-400 transition-all flex items-center gap-1"
-                >
-                  {pgnCopiedToast ? '✅ Copied!' : '📋 Copy PGN'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => copyShareLink(activeGameId || undefined)}
-                  className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] font-bold text-sky-400 transition-all flex items-center gap-1"
-                  title="Share Match Link"
-                >
-                  {shareLinkCopiedToast ? '✅ Link Copied!' : '🔗 Share'}
-                </button>
               </div>
             </div>
-
-            <Button
-              onClick={() => {
-                setShowAnalysisModal(false);
-                setPracticeMistakeIndex(null);
-                setInGame(false);
-              }}
-              className="w-full py-3 bg-primary hover:bg-primary/90 text-white font-bold text-xs"
-            >
-              Back to Training Overview
-            </Button>
           </div>
         </div>
       )}
