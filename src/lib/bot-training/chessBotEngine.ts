@@ -316,7 +316,7 @@ export function identifyOpeningFromMoves(uciMoves: string[]): { name: string; co
 }
 
 // ── MINIMAX POSITION EVALUATOR ────────────────────────────────────────────────
-function evaluatePosition(game: Chess): number {
+export function evaluatePosition(game: Chess): number {
   if (game.isCheckmate()) {
     return game.turn() === 'w' ? -999999 : 999999;
   }

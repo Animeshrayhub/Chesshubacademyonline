@@ -16,7 +16,7 @@ import {
   submitPuzzleAttemptAction,
 } from '@/actions/botTraining';
 import { playChessSound, setChessSoundEnabled, speakCoachAdvice, stopCoachVoice, setCoachVoiceEnabled } from '@/utils/chessAudio';
-import { computeBotMove, identifyOpeningFromMoves, safeExecuteMove } from '@/lib/bot-training/chessBotEngine';
+import { computeBotMove, identifyOpeningFromMoves, safeExecuteMove, evaluatePosition } from '@/lib/bot-training/chessBotEngine';
 import { TACTICAL_QUIZ_QUESTIONS } from '@/lib/bot-training/tacticalQuizData';
 import { ALL_OPENING_ADVENTURES, FRIED_LIVER_ADVENTURE } from '@/lib/bot-training/openingTreeData';
 import {
@@ -254,6 +254,65 @@ export default function StudentBotTrainingView() {
   const [combatFlash, setCombatFlash] = useState<'student' | 'bot' | null>(null);
   const [pgnCopiedToast, setPgnCopiedToast] = useState<boolean>(false);
   const [shareLinkCopiedToast, setShareLinkCopiedToast] = useState<boolean>(false);
+
+  // Live Engine Advantage Evaluation Bar & Move Accuracy State
+  const [showEvalBar, setShowEvalBar] = useState<boolean>(true);
+  const [evalScore, setEvalScore] = useState<number>(0);
+  const [prevEvalScore, setPrevEvalScore] = useState<number>(0);
+  const [lastMoveQuality, setLastMoveQuality] = useState<{
+    label: string;
+    badgeClass: string;
+    icon: string;
+    evalDelta: number;
+  } | null>(null);
+
+  // Live Position Advantage and Move Accuracy Analysis Helpers
+  const updateMoveEvaluation = (game: Chess) => {
+    try {
+      const nextScore = evaluatePosition(game);
+      const evalDelta = playerColor === 'white'
+        ? (nextScore - prevEvalScore)
+        : (prevEvalScore - nextScore);
+
+      let quality: { label: string; badgeClass: string; icon: string; evalDelta: number };
+      if (game.isCheckmate()) {
+        quality = { label: 'Checkmate', badgeClass: 'bg-emerald-500 text-white shadow-emerald-500/50', icon: '🏆', evalDelta };
+      } else if (evalDelta >= 180) {
+        quality = { label: 'Brilliant', badgeClass: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50 ring-1 ring-cyan-400', icon: '💎', evalDelta };
+      } else if (evalDelta >= 40) {
+        quality = { label: 'Great Move', badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50', icon: '🟢', evalDelta };
+      } else if (evalDelta >= -50) {
+        quality = { label: 'Good Move', badgeClass: 'bg-sky-500/20 text-sky-300 border-sky-500/50', icon: '🔵', evalDelta };
+      } else if (evalDelta >= -150) {
+        quality = { label: 'Inaccuracy', badgeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/50', icon: '🟡', evalDelta };
+      } else if (evalDelta >= -300) {
+        quality = { label: 'Mistake', badgeClass: 'bg-orange-500/20 text-orange-300 border-orange-500/50', icon: '🟠', evalDelta };
+      } else {
+        quality = { label: 'Blunder', badgeClass: 'bg-rose-500/20 text-rose-300 border-rose-500/50 animate-pulse', icon: '🔴', evalDelta };
+      }
+
+      setLastMoveQuality(quality);
+      setPrevEvalScore(nextScore);
+      setEvalScore(nextScore);
+    } catch (err) {
+      console.warn('[updateMoveEvaluation] Evaluation error:', err);
+    }
+  };
+
+  const getAdvantagePercent = (scoreCp: number, color: 'white' | 'black') => {
+    if (scoreCp >= 90000) return color === 'white' ? 100 : 0;
+    if (scoreCp <= -90000) return color === 'white' ? 0 : 100;
+    const whiteWinPct = 100 / (1 + Math.exp(-0.0035 * scoreCp));
+    return color === 'white' ? whiteWinPct : (100 - whiteWinPct);
+  };
+
+  const getEvalLabel = (scoreCp: number, color: 'white' | 'black') => {
+    if (scoreCp >= 90000) return color === 'white' ? '+M' : '-M';
+    if (scoreCp <= -90000) return color === 'white' ? '-M' : '+M';
+    const net = color === 'white' ? scoreCp : -scoreCp;
+    const sign = net > 0 ? '+' : '';
+    return `${sign}${(net / 100).toFixed(1)}`;
+  };
 
   // Post-Victory Confetti & Fanfare Celebration State
   const [showConfetti, setShowConfetti] = useState<boolean>(false);
@@ -571,6 +630,9 @@ ${formattedMoves || '1. e4'} ${game.result}`;
     setLastCombatEvent(null);
     setShowLootChest(false);
     setLootClaimed(false);
+    setEvalScore(0);
+    setPrevEvalScore(0);
+    setLastMoveQuality(null);
 
     // Setup Clocks
     if (gData.timeControl === 'unlimited') {
@@ -659,6 +721,12 @@ ${formattedMoves || '1. e4'} ${game.result}`;
             setCoachTipDialogue(checkMsg);
             if (voiceNarrationOn) speakCoachAdvice(checkMsg, { pitch: currentPersonality.pitch, rate: currentPersonality.rate });
           }
+
+          try {
+            const nextScore = evaluatePosition(game);
+            setEvalScore(nextScore);
+            setPrevEvalScore(nextScore);
+          } catch {}
 
           try {
             playChessSound(moveRes.captured ? 'capture' : 'move');
@@ -766,6 +834,8 @@ ${formattedMoves || '1. e4'} ${game.result}`;
           try {
             playChessSound(move.captured ? 'capture' : 'move');
           } catch {}
+
+          updateMoveEvaluation(gameRef.current);
 
           if (move.captured) {
             const banter = getRandomPersonalityQuote(selectedPersonalityId, 'studentCapture');
@@ -879,6 +949,8 @@ ${formattedMoves || '1. e4'} ${game.result}`;
           playChessSound(move.captured ? 'capture' : 'move');
         }
       } catch {}
+
+      updateMoveEvaluation(gameRef.current);
 
       if (move.captured) {
         const studentBanter = getRandomPersonalityQuote(selectedPersonalityId, 'studentCapture');
@@ -1694,13 +1766,42 @@ ${formattedMoves || '1. e4'} ${game.result}`;
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Chessboard */}
                 <div className="lg:col-span-2 flex flex-col items-center justify-center space-y-2">
-                  <div className="w-full max-w-[480px] sm:max-w-[520px] flex items-center justify-between text-xs px-1">
-                    <div className="flex items-center gap-1 text-[11px] font-bold text-slate-400">
-                      <span>🎨 Theme:</span>
-                      <strong className="text-amber-400">{currentTheme.name}</strong>
+                  {/* Chessboard Header Toolbar: Themes, Eval Bar Toggle & Move Quality Badge */}
+                  <div className="w-full max-w-[530px] sm:max-w-[560px] flex items-center justify-between text-xs px-1 gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Move Quality Badge */}
+                      {lastMoveQuality ? (
+                        <div className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-xs font-black shadow-md border animate-in fade-in zoom-in-95 ${lastMoveQuality.badgeClass}`}>
+                          <span>{lastMoveQuality.icon}</span>
+                          <span>{lastMoveQuality.label}</span>
+                          <span className="font-mono text-[10px] opacity-90">
+                            ({lastMoveQuality.evalDelta > 0 ? `+${(lastMoveQuality.evalDelta / 100).toFixed(1)}` : `${(lastMoveQuality.evalDelta / 100).toFixed(1)}`})
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1 text-[11px] font-bold text-slate-400">
+                          <span>🎨 Theme:</span>
+                          <strong className="text-amber-400">{currentTheme.name}</strong>
+                        </div>
+                      )}
                     </div>
 
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5">
+                      {/* Eval Bar Toggle Button */}
+                      <button
+                        type="button"
+                        onClick={() => setShowEvalBar((b) => !b)}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold border transition-all flex items-center gap-1 ${
+                          showEvalBar
+                            ? 'bg-sky-500/20 border-sky-500/50 text-sky-300 ring-1 ring-sky-500/30'
+                            : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-300'
+                        }`}
+                        title="Toggle Live Advantage Evaluation Bar"
+                      >
+                        <span>📊</span>
+                        <span>Eval {showEvalBar ? 'ON' : 'OFF'}</span>
+                      </button>
+
                       {BOARD_THEMES.map((th) => (
                         <button
                           key={th.id}
@@ -1719,37 +1820,79 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                     </div>
                   </div>
 
-                  <div className={`w-full max-w-[480px] sm:max-w-[520px] aspect-square rounded-xl overflow-hidden shadow-2xl border border-slate-800 mx-auto relative transition-all duration-300 ${
-                    combatFlash === 'student'
-                      ? 'ring-4 ring-emerald-500 shadow-emerald-500/50 scale-[1.01]'
-                      : combatFlash === 'bot'
-                      ? 'ring-4 ring-rose-500 shadow-rose-500/50 scale-[0.99]'
-                      : ''
-                  }`}>
-                    {/* Combat Explosion VFX Overlay */}
-                    {combatFlash && (
-                      <div className="absolute inset-0 z-30 pointer-events-none flex items-center justify-center animate-out fade-out duration-700">
-                        <div className={`px-5 py-2.5 rounded-2xl text-base sm:text-lg font-black tracking-wider uppercase shadow-2xl backdrop-blur-md border animate-bounce ${
-                          combatFlash === 'student'
-                            ? 'bg-emerald-950/95 border-emerald-500 text-emerald-300 shadow-emerald-500/60'
-                            : 'bg-rose-950/95 border-rose-500 text-rose-300 shadow-rose-500/60'
-                        }`}>
-                          {combatFlash === 'student' ? '⚔️ CRITICAL STRIKE! 💥' : '⚠️ DAMAGE TAKEN! 🩸'}
+                  {/* Board + Live Advantage Evaluation Gauge Container */}
+                  <div className="flex items-center gap-2 sm:gap-3 justify-center w-full max-w-[530px] sm:max-w-[560px] mx-auto">
+                    {/* Vertical Live Advantage Gauge */}
+                    {showEvalBar && (
+                      <div
+                        className="w-5 sm:w-6 h-[440px] sm:h-[480px] rounded-xl overflow-hidden border border-slate-700/80 bg-slate-950 flex flex-col justify-between shadow-2xl relative shrink-0"
+                        title={`Live Position Advantage: ${getEvalLabel(evalScore, playerColor)}`}
+                      >
+                        {/* Top Side (Opponent/Black) */}
+                        <div
+                          className="w-full bg-slate-900 transition-all duration-500 ease-out relative flex items-start justify-center pt-1 overflow-hidden"
+                          style={{
+                            height: `${playerColor === 'white' ? (100 - getAdvantagePercent(evalScore, 'white')) : getAdvantagePercent(evalScore, 'black')}%`,
+                          }}
+                        >
+                          {(playerColor === 'white' ? evalScore < -20 : evalScore > 20) && (
+                            <span className="text-[9px] font-mono font-black text-rose-300 transform -rotate-90 origin-center whitespace-nowrap mt-2">
+                              {getEvalLabel(evalScore, playerColor)}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Center Balance 50/50 Marker */}
+                        <div className="absolute top-1/2 left-0 right-0 h-[2px] bg-amber-500/70 z-10 pointer-events-none shadow-sm shadow-amber-500/50" />
+
+                        {/* Bottom Side (Player/White) */}
+                        <div
+                          className="w-full bg-gradient-to-t from-slate-100 via-amber-50 to-white transition-all duration-500 ease-out relative flex items-end justify-center pb-1 overflow-hidden"
+                          style={{
+                            height: `${playerColor === 'white' ? getAdvantagePercent(evalScore, 'white') : (100 - getAdvantagePercent(evalScore, 'black'))}%`,
+                          }}
+                        >
+                          {(playerColor === 'white' ? evalScore >= -20 : evalScore <= 20) && (
+                            <span className="text-[9px] font-mono font-black text-slate-950 transform -rotate-90 origin-center whitespace-nowrap mb-2">
+                              {getEvalLabel(evalScore, playerColor)}
+                            </span>
+                          )}
                         </div>
                       </div>
                     )}
-                    <ChessboardComponent
-                      position={fen}
-                      onPieceDrop={handlePieceDrop}
-                      onSquareClick={handleSquareClick}
-                      arePiecesDraggable={true}
-                      boardOrientation={playerColor}
-                      customSquareStyles={optionSquares}
-                      customBoardStyle={{ borderRadius: '12px' }}
-                      customDarkSquareStyle={{ backgroundColor: currentTheme.darkSquare }}
-                      customLightSquareStyle={{ backgroundColor: currentTheme.lightSquare }}
-                      customPieces={customChessPieces}
-                    />
+
+                    <div className={`flex-1 aspect-square rounded-xl overflow-hidden shadow-2xl border border-slate-800 relative transition-all duration-300 ${
+                      combatFlash === 'student'
+                        ? 'ring-4 ring-emerald-500 shadow-emerald-500/50 scale-[1.01]'
+                        : combatFlash === 'bot'
+                        ? 'ring-4 ring-rose-500 shadow-rose-500/50 scale-[0.99]'
+                        : ''
+                    }`}>
+                      {/* Combat Explosion VFX Overlay */}
+                      {combatFlash && (
+                        <div className="absolute inset-0 z-30 pointer-events-none flex items-center justify-center animate-out fade-out duration-700">
+                          <div className={`px-5 py-2.5 rounded-2xl text-base sm:text-lg font-black tracking-wider uppercase shadow-2xl backdrop-blur-md border animate-bounce ${
+                            combatFlash === 'student'
+                              ? 'bg-emerald-950/95 border-emerald-500 text-emerald-300 shadow-emerald-500/60'
+                              : 'bg-rose-950/95 border-rose-500 text-rose-300 shadow-rose-500/60'
+                          }`}>
+                            {combatFlash === 'student' ? '⚔️ CRITICAL STRIKE! 💥' : '⚠️ DAMAGE TAKEN! 🩸'}
+                          </div>
+                        </div>
+                      )}
+                      <ChessboardComponent
+                        position={fen}
+                        onPieceDrop={handlePieceDrop}
+                        onSquareClick={handleSquareClick}
+                        arePiecesDraggable={true}
+                        boardOrientation={playerColor}
+                        customSquareStyles={optionSquares}
+                        customBoardStyle={{ borderRadius: '12px' }}
+                        customDarkSquareStyle={{ backgroundColor: currentTheme.darkSquare }}
+                        customLightSquareStyle={{ backgroundColor: currentTheme.lightSquare }}
+                        customPieces={customChessPieces}
+                      />
+                    </div>
                   </div>
                 </div>
 
