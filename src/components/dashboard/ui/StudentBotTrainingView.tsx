@@ -25,6 +25,11 @@ import {
   type BotPersonalityId,
   getRandomPersonalityQuote,
 } from '@/lib/bot-training/botPersonalities';
+import {
+  getOpeningBookContinuations,
+  type BookPositionSummary,
+  type BookMoveContinuation,
+} from '@/lib/bot-training/openingBookExplorer';
 import type {
   StudentColor,
   TimeControlOption,
@@ -265,6 +270,22 @@ export default function StudentBotTrainingView() {
     icon: string;
     evalDelta: number;
   } | null>(null);
+
+  // Interactive Opening Book Explorer State
+  const [showBookExplorer, setShowBookExplorer] = useState<boolean>(false);
+
+  // Compute live opening book continuations from current move history
+  const currentBookSummary: BookPositionSummary = useMemo(() => {
+    try {
+      const verboseMoves = gameRef.current ? gameRef.current.history({ verbose: true }) : [];
+      const uciList: string[] = verboseMoves.map(
+        (m) => `${m.from}${m.to}${m.promotion || ''}`
+      );
+      return getOpeningBookContinuations(uciList);
+    } catch {
+      return getOpeningBookContinuations([]);
+    }
+  }, [moveHistory, fen]);
 
   // Live Position Advantage and Move Accuracy Analysis Helpers
   const updateMoveEvaluation = (game: Chess) => {
@@ -1006,6 +1027,37 @@ ${formattedMoves || '1. e4'} ${game.result}`;
       return true;
     } catch (e) {
       return false;
+    }
+  };
+
+  // Play opening candidate directly from Interactive Book Explorer
+  const playCandidateFromBook = (candidate: BookMoveContinuation) => {
+    if (!inGame || gameStatus !== 'active' || isBotThinking) return;
+    const activeTurnColor = gameRef.current.turn() === 'w' ? 'white' : 'black';
+    if (activeTurnColor !== playerColor) return;
+
+    const from = candidate.uci.slice(0, 2);
+    const to = candidate.uci.slice(2, 4);
+    const promotion = candidate.uci.length > 4 ? candidate.uci.slice(4) : undefined;
+
+    try {
+      const move = safeExecuteMove(gameRef.current, from, to, promotion);
+      if (move) {
+        const nextFen = gameRef.current.fen();
+        setFen(nextFen);
+        setMoveHistory(gameRef.current.history());
+        setSelectedSquare(null);
+        setOptionSquares({});
+        try { playChessSound(move.captured ? 'capture' : 'move'); } catch {}
+        updateMoveEvaluation(gameRef.current);
+        if (candidate.name) setCurrentOpening(candidate.name);
+        if (isTimed && clockIncrementSec > 0) {
+          setStudentTimeSec((prev) => prev + clockIncrementSec);
+        }
+        checkGameEndState();
+      }
+    } catch (err) {
+      console.warn('[playCandidateFromBook] Move execution error:', err);
     }
   };
 
@@ -1786,7 +1838,25 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                       )}
                     </div>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                      {/* Interactive Opening Book Explorer Toggle */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowBookExplorer((b) => !b);
+                          try { playChessSound('move'); } catch {}
+                        }}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold border transition-all flex items-center gap-1 ${
+                          showBookExplorer
+                            ? 'bg-amber-500/25 border-amber-500 text-amber-300 ring-1 ring-amber-400/50 shadow-sm'
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-amber-400'
+                        }`}
+                        title="Open Interactive Master Book Explorer"
+                      >
+                        <span>📖</span>
+                        <span>Book {showBookExplorer ? 'Hide' : 'Explorer'}</span>
+                      </button>
+
                       {/* Eval Bar Toggle Button */}
                       <button
                         type="button"
@@ -1894,6 +1964,99 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                       />
                     </div>
                   </div>
+
+                  {/* Interactive Opening Book Explorer Drawer Panel */}
+                  {showBookExplorer && (
+                    <div className="w-full max-w-[530px] sm:max-w-[560px] mx-auto bg-slate-950/95 border border-amber-500/40 rounded-2xl p-3.5 shadow-2xl backdrop-blur-md space-y-3 animate-in fade-in zoom-in-95 duration-200">
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">📖</span>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-black text-amber-300">{currentBookSummary.name}</span>
+                              <span className="text-[9px] font-mono font-black bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/30">
+                                {currentBookSummary.eco}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-400">
+                              {currentBookSummary.isBook ? `Book Theory Depth: Move ${Math.floor(currentBookSummary.depth / 2) + 1}` : 'Independent Calculation Phase'}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowBookExplorer(false)}
+                          className="text-slate-500 hover:text-white text-xs px-2 py-1 rounded-lg bg-slate-900 border border-slate-800"
+                        >
+                          ✕ Close
+                        </button>
+                      </div>
+
+                      {/* Overview Card */}
+                      <div className="bg-slate-900/80 border border-slate-800/80 rounded-xl p-2.5 text-[11px] text-slate-300 leading-relaxed">
+                        {currentBookSummary.overview}
+                      </div>
+
+                      {/* Continuation Moves Table */}
+                      {currentBookSummary.continuations.length > 0 ? (
+                        <div className="space-y-1.5">
+                          <div className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between px-1">
+                            <span>Master Continuations</span>
+                            <span>Win % (White / Draw / Black)</span>
+                          </div>
+
+                          <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                            {currentBookSummary.continuations.map((c) => {
+                              const isStudentTurn = inGame && gameStatus === 'active' && !isBotThinking && (gameRef.current.turn() === 'w' ? 'white' : 'black') === playerColor;
+                              return (
+                                <div
+                                  key={c.uci}
+                                  className="bg-slate-900 border border-slate-800/90 rounded-xl p-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:border-amber-500/40 transition-all"
+                                >
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="text-xs font-black font-mono text-amber-400 bg-slate-950 border border-slate-800 px-2 py-0.5 rounded-md shadow-inner">
+                                        {c.san}
+                                      </span>
+                                      <span className="text-xs font-bold text-white">{c.name}</span>
+                                      <span className="text-[10px] font-mono text-slate-500">
+                                        {c.gamesCount.toLocaleString()} games
+                                      </span>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 leading-snug">{c.comment}</p>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 shrink-0 justify-between sm:justify-end">
+                                    {/* Win rate micro bar */}
+                                    <div className="w-24 bg-slate-950 rounded-full h-2 overflow-hidden flex border border-slate-800" title={`White: ${c.whiteWinPct}% | Draw: ${c.drawPct}% | Black: ${c.blackWinPct}%`}>
+                                      <div className="h-full bg-slate-100" style={{ width: `${c.whiteWinPct}%` }} />
+                                      <div className="h-full bg-slate-600" style={{ width: `${c.drawPct}%` }} />
+                                      <div className="h-full bg-amber-500" style={{ width: `${c.blackWinPct}%` }} />
+                                    </div>
+
+                                    {/* Play Move Button */}
+                                    {isStudentTurn && (
+                                      <button
+                                        type="button"
+                                        onClick={() => playCandidateFromBook(c)}
+                                        className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500 hover:text-white transition-all shadow-sm"
+                                      >
+                                        Play ♟️
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center py-4 bg-slate-900/50 border border-slate-800/80 rounded-xl text-xs text-slate-400">
+                          💡 Position is beyond master book memory. Rely on tactical calculation and king defense!
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
               {/* Sidebar Info & Controls */}
