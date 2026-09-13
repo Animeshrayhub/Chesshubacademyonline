@@ -249,6 +249,14 @@ export default function StudentBotTrainingView() {
   // Daily Quests & Streak System State
   const [dailyBonusClaimed, setDailyBonusClaimed] = useState<boolean>(false);
   const [streakCount, setStreakCount] = useState<number>(3);
+  const [showMissionsModal, setShowMissionsModal] = useState<boolean>(false);
+  const [showDevDiagnostics, setShowDevDiagnostics] = useState<boolean>(false);
+
+  const hasWonToday = useMemo(() => recentGames.some((g) => g.result === 'win'), [recentGames]);
+  const questsSolved = useMemo(() => Math.min(2, quizScore), [quizScore]);
+  const exploredOpening = useMemo(() => adventureHistory.length > 1, [adventureHistory]);
+  const allCompleted = useMemo(() => hasWonToday && questsSolved >= 2 && exploredOpening, [hasWonToday, questsSolved, exploredOpening]);
+  const completedMissionsCount = useMemo(() => (hasWonToday ? 1 : 0) + (questsSolved >= 2 ? 1 : 0) + (exploredOpening ? 1 : 0), [hasWonToday, questsSolved, exploredOpening]);
 
   const calculatePieceDamage = (pieceType?: string): number => {
     switch (pieceType?.toLowerCase()) {
@@ -1097,38 +1105,30 @@ export default function StudentBotTrainingView() {
   }, [profile?.unlocked_levels, profile?.coach_unlocked_levels, quizScore, recentGames]);
 
   return (
-    <div className="space-y-6">
-      {/* Top Header Card */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6">
-        <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center text-3xl shadow-lg shadow-amber-500/20">
-            ♟️
+    <div className="space-y-4 pb-20">
+      {/* Ultra-Compact Gaming HUD Header */}
+      <div className="bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-2xl px-4 py-3 shadow-xl flex flex-col md:flex-row items-center justify-between gap-3">
+        {/* Left: Compact Brand & Rank */}
+        <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center text-xl shadow-md shadow-amber-500/20">
+              ♟️
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-base font-black text-white tracking-tight">Bot Training</h1>
+                <span className="text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                  Level {profile?.current_level || 1}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 hidden sm:block">
+                Battle 10 bots, conquer tactical quests & master openings
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-extrabold text-white">Bot Training & Improvement</h1>
-            <p className="text-xs text-slate-400 mt-1">
-              Train against 10 difficulty bots, analyze game mistakes, and solve personalized weakness puzzles.
-            </p>
-          </div>
-        </div>
 
-        <div className="flex items-center gap-4 bg-slate-950/80 border border-slate-800 rounded-xl px-5 py-3 text-center">
-          <div>
-            <div className="text-2xl font-black text-amber-400">{profile?.rating || 400}</div>
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ChessHub Rating</div>
-          </div>
-          <div className="h-8 w-px bg-slate-800" />
-          <div>
-            <div className="text-2xl font-black text-emerald-400">Level {profile?.current_level || 1}</div>
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Bot Rank</div>
-          </div>
-          <div className="h-8 w-px bg-slate-800" />
-          <div>
-            <div className="text-2xl font-black text-sky-400">{profile?.puzzles_solved || 0}</div>
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Puzzles Solved</div>
-          </div>
-          <div className="h-8 w-px bg-slate-800" />
-          <div>
+          {/* Quick Audio & Dev Toggle on mobile */}
+          <div className="flex items-center gap-1.5 md:hidden">
             <button
               type="button"
               onClick={() => {
@@ -1136,158 +1136,143 @@ export default function StudentBotTrainingView() {
                 setSoundOn(next);
                 setChessSoundEnabled(next);
               }}
-              className={`px-3 py-2 rounded-xl border text-xs font-black transition-all flex items-center gap-1.5 ${
-                soundOn
-                  ? 'bg-slate-900 border-slate-800 text-amber-400 hover:border-amber-500/50'
-                  : 'bg-rose-950/40 border-rose-500/40 text-rose-400'
-              }`}
+              title={soundOn ? 'Sound On' : 'Muted'}
+              className="p-2 rounded-xl bg-slate-850 border border-slate-700 text-sm"
             >
-              <span className="text-sm">{soundOn ? '🔊' : '🔇'}</span>
-              <span className="text-[11px] uppercase tracking-wider">{soundOn ? 'Sound ON' : 'Muted'}</span>
+              {soundOn ? '🔊' : '🔇'}
             </button>
           </div>
         </div>
+
+        {/* Right: Micro Grid Stat Pills */}
+        <div className="flex items-center flex-wrap gap-2 w-full md:w-auto justify-end">
+          {/* Rating Stat Pill */}
+          <div className="flex items-center gap-1.5 bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-1.5 shadow-inner">
+            <span className="text-xs">⚡</span>
+            <span className="text-xs font-black text-amber-400">{profile?.rating || 400}</span>
+            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Rating</span>
+          </div>
+
+          {/* Puzzles Solved Pill */}
+          <div className="flex items-center gap-1.5 bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-1.5 shadow-inner">
+            <span className="text-xs">🧩</span>
+            <span className="text-xs font-black text-sky-400">{profile?.puzzles_solved || 0}</span>
+            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Puzzles</span>
+          </div>
+
+          {/* Daily Streak & Missions Button */}
+          <button
+            type="button"
+            onClick={() => setShowMissionsModal(true)}
+            className={`flex items-center gap-2 rounded-xl px-3 py-1.5 border transition-all ${
+              allCompleted && !dailyBonusClaimed
+                ? 'bg-amber-500/20 border-amber-500 text-amber-300 animate-pulse ring-1 ring-amber-500'
+                : 'bg-slate-950/80 border-slate-800 hover:border-amber-500/50 text-slate-300'
+            }`}
+            title="View Daily Training Missions"
+          >
+            <span className="text-xs">🔥</span>
+            <span className="text-xs font-extrabold text-white">{streakCount}d Streak</span>
+            <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
+              allCompleted
+                ? 'bg-emerald-500/20 text-emerald-300 font-black'
+                : 'bg-slate-800 text-amber-400 font-bold'
+            }`}>
+              {completedMissionsCount}/3
+            </span>
+            {allCompleted && !dailyBonusClaimed && (
+              <span className="text-[9px] font-black text-amber-400 bg-amber-500/30 px-1.5 py-0.5 rounded animate-bounce">
+                Claim!
+              </span>
+            )}
+          </button>
+
+          {/* Sound Toggle (Desktop) */}
+          <button
+            type="button"
+            onClick={() => {
+              const next = !soundOn;
+              setSoundOn(next);
+              setChessSoundEnabled(next);
+            }}
+            title={soundOn ? 'Sound is ON' : 'Muted'}
+            className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${
+              soundOn
+                ? 'bg-slate-950/80 border-slate-800 text-slate-300 hover:border-amber-500/50'
+                : 'bg-rose-950/30 border-rose-500/30 text-rose-400'
+            }`}
+          >
+            <span>{soundOn ? '🔊' : '🔇'}</span>
+            <span className="text-[10px] uppercase font-mono">{soundOn ? 'SFX' : 'Muted'}</span>
+          </button>
+
+          {/* Dev Diagnostics Toggle Button */}
+          {process.env.NODE_ENV === 'development' && (
+            <button
+              type="button"
+              onClick={() => setShowDevDiagnostics((d) => !d)}
+              className={`p-1.5 rounded-xl border text-xs transition-all ${
+                showDevDiagnostics
+                  ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+                  : 'bg-slate-950/80 border-slate-800 text-slate-500 hover:text-amber-400'
+              }`}
+              title="Toggle Dev Diagnostics"
+            >
+              🔧
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* DAILY MISSIONS & STREAK BANNER */}
-      {(() => {
-        const hasWonToday = recentGames.some((g) => g.result === 'win');
-        const questsSolved = Math.min(2, quizScore);
-        const exploredOpening = adventureHistory.length > 1;
-        const allCompleted = hasWonToday && questsSolved >= 2 && exploredOpening;
-
-        return (
-          <div className="bg-gradient-to-r from-slate-900 via-slate-900 to-amber-950/30 border border-amber-500/30 rounded-2xl p-5 shadow-xl space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <span className="text-2xl animate-pulse">🔥</span>
-                <div>
-                  <div className="text-sm font-black text-white flex items-center gap-2">
-                    <span>{streakCount}-Day Training Streak</span>
-                    <span className="text-[10px] bg-amber-500/20 text-amber-300 font-extrabold px-2 py-0.5 rounded-full border border-amber-500/30">
-                      +100 XP Streak Reward
-                    </span>
-                  </div>
-                  <div className="text-xs text-slate-400">Complete all 3 daily missions to bank today's streak reward!</div>
-                </div>
-              </div>
-
-              {allCompleted && !dailyBonusClaimed ? (
-                <Button
-                  onClick={() => {
-                    setDailyBonusClaimed(true);
-                    setStreakCount((s) => s + 1);
-                    try { playChessSound('victory'); } catch {}
-                  }}
-                  className="py-2.5 px-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-amber-500/25 animate-bounce"
-                >
-                  Claim +100 XP Bonus 🔥
-                </Button>
-              ) : dailyBonusClaimed ? (
-                <span className="text-xs font-black text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
-                  ✅ Streak Bonus Banked (+100 XP)
-                </span>
-              ) : (
-                <span className="text-xs font-bold text-slate-400 bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-xl">
-                  {Number(hasWonToday) + Number(questsSolved >= 2) + Number(exploredOpening)} / 3 Missions Done
-                </span>
-              )}
-            </div>
-
-            {/* 3 Mission Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* Mission 1 */}
-              <div className={`p-3 rounded-xl border flex items-center justify-between text-xs font-bold ${
-                hasWonToday ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-200' : 'bg-slate-950 border-slate-800 text-slate-300'
-              }`}>
-                <div className="flex items-center gap-2">
-                  <span className="text-base">⚔️</span>
-                  <span>Conquer 1 Bot Match</span>
-                </div>
-                <span className={`text-[11px] font-mono ${hasWonToday ? 'text-emerald-400 font-extrabold' : 'text-slate-400'}`}>
-                  {hasWonToday ? '1/1 ✅' : '0/1'}
-                </span>
-              </div>
-
-              {/* Mission 2 */}
-              <div className={`p-3 rounded-xl border flex items-center justify-between text-xs font-bold ${
-                questsSolved >= 2 ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-200' : 'bg-slate-950 border-slate-800 text-slate-300'
-              }`}>
-                <div className="flex items-center gap-2">
-                  <span className="text-base">🎯</span>
-                  <span>Solve 2 Tactical Quests</span>
-                </div>
-                <span className={`text-[11px] font-mono ${questsSolved >= 2 ? 'text-emerald-400 font-extrabold' : 'text-slate-400'}`}>
-                  {questsSolved}/2 {questsSolved >= 2 && '✅'}
-                </span>
-              </div>
-
-              {/* Mission 3 */}
-              <div className={`p-3 rounded-xl border flex items-center justify-between text-xs font-bold ${
-                exploredOpening ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-200' : 'bg-slate-950 border-slate-800 text-slate-300'
-              }`}>
-                <div className="flex items-center gap-2">
-                  <span className="text-base">🌳</span>
-                  <span>Explore 1 Opening Tree Branch</span>
-                </div>
-                <span className={`text-[11px] font-mono ${exploredOpening ? 'text-emerald-400 font-extrabold' : 'text-slate-400'}`}>
-                  {exploredOpening ? '1/1 ✅' : '0/1'}
-                </span>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="bg-slate-950 border border-amber-500/30 rounded-xl p-4 text-[10px] font-mono text-slate-400 space-y-1.5">
-          <div className="font-bold text-amber-400 uppercase text-xs mb-2">🔧 Development Diagnostics (hidden in production)</div>
+      {/* Dev Diagnostics (Only when toggled in development) */}
+      {process.env.NODE_ENV === 'development' && showDevDiagnostics && (
+        <div className="bg-slate-950 border border-amber-500/30 rounded-xl p-3 text-[10px] font-mono text-slate-400 space-y-1 animate-in fade-in">
+          <div className="font-bold text-amber-400 uppercase text-[11px] mb-1">🔧 Development Diagnostics</div>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-            <div><span className="text-slate-500">Profile ID:</span> <span className="text-slate-200 break-all">{profile?.id?.slice(0, 8) || 'none'}…</span></div>
-            <div><span className="text-slate-500">Student ID:</span> <span className="text-slate-200 break-all">{profile?.student_id?.slice(0, 8) || 'none'}…</span></div>
+            <div><span className="text-slate-500">Profile ID:</span> <span className="text-slate-200">{profile?.id?.slice(0, 8) || 'none'}…</span></div>
+            <div><span className="text-slate-500">Student ID:</span> <span className="text-slate-200">{profile?.student_id?.slice(0, 8) || 'none'}…</span></div>
             <div><span className="text-slate-500">Rating:</span> <span className="text-emerald-400 font-bold">{profile?.rating ?? '?'}</span></div>
             <div><span className="text-slate-500">Level:</span> <span className="text-emerald-400 font-bold">{profile?.current_level ?? '?'}</span></div>
             <div><span className="text-slate-500">Active Game:</span> <span className="text-sky-400">{activeGameId?.slice(0, 8) || 'none'}…</span></div>
             <div><span className="text-slate-500">Recent Games:</span> <span className="text-white font-bold">{recentGames.length}</span></div>
-            <div><span className="text-slate-500">Rating History:</span> <span className="text-white font-bold">{ratingHistory.length}</span></div>
-            <div><span className="text-slate-500">Weaknesses:</span> <span className="text-white font-bold">{weaknesses.length}</span></div>
-            <div><span className="text-slate-500">Puzzles:</span> <span className="text-white font-bold">{puzzles.length}</span></div>
-            <div><span className="text-slate-500">Badges:</span> <span className="text-white font-bold">{badges.length}</span></div>
             <div><span className="text-slate-500">Unlocked Levels:</span> <span className="text-amber-400">{(profile?.unlocked_levels || [1, 2, 3]).join(', ')}</span></div>
-            <div><span className="text-slate-500">Games Played (DB):</span> <span className="text-white font-bold">{profile?.games_played ?? 0}</span></div>
+            <div><span className="text-slate-500">Games Played:</span> <span className="text-white font-bold">{profile?.games_played ?? 0}</span></div>
           </div>
         </div>
       )}
 
-      {/* Navigation Tabs */}
-      <div className="flex flex-wrap gap-2 border-b border-slate-800 pb-2">
-        {[
-          { id: 'play', label: 'Play Bot Match', icon: 'play' },
-          { id: 'quests', label: 'Tactical Quests (10)', icon: 'sparkles' },
-          { id: 'openings', label: 'Opening Tree (Fried Liver)', icon: 'bookOpen' },
-          { id: 'leaderboard', label: 'Academy Leaderboard', icon: 'trophy' },
-          { id: 'rating', label: 'Rating Progression', icon: 'chartBar' },
-          { id: 'weaknesses', label: 'Weakness Profile', icon: 'target' },
-          { id: 'plan', label: 'Personalized Puzzles', icon: 'sparkles' },
-          { id: 'badges', label: 'Trophy Badges', icon: 'trophy' },
-          { id: 'history', label: 'Match History', icon: 'calendarDays' },
-        ].map((tab) => {
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs transition-all ${
-                isActive
-                  ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20'
-                  : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-white border border-slate-800'
-              }`}
-            >
-              <DashboardIcon iconKey={tab.icon as any} className="w-4 h-4" />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
+      {/* Sleek Segmented Tab Navigation Bar */}
+      <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-1.5 shadow-lg overflow-x-auto no-scrollbar">
+        <div className="flex items-center gap-1.5 min-w-max">
+          {[
+            { id: 'play', label: 'Play Bot', icon: 'play' },
+            { id: 'quests', label: 'Quests (10)', icon: 'sparkles' },
+            { id: 'openings', label: 'Fried Liver Tree', icon: 'bookOpen' },
+            { id: 'leaderboard', label: 'Leaderboard', icon: 'trophy' },
+            { id: 'history', label: 'Match History', icon: 'calendarDays' },
+            { id: 'rating', label: 'Rating Graph', icon: 'chartBar' },
+            { id: 'weaknesses', label: 'Weaknesses', icon: 'target' },
+            { id: 'plan', label: 'Puzzles', icon: 'sparkles' },
+            { id: 'badges', label: 'Badges', icon: 'trophy' },
+          ].map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl font-extrabold text-xs transition-all whitespace-nowrap ${
+                  isActive
+                    ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-md shadow-amber-500/25 ring-1 ring-amber-400/50'
+                    : 'bg-slate-950/60 text-slate-400 hover:bg-slate-800/80 hover:text-white border border-transparent hover:border-slate-700/60'
+                }`}
+              >
+                <DashboardIcon iconKey={tab.icon as any} className="w-3.5 h-3.5" />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* TAB 1: PLAY BOT */}
@@ -1296,13 +1281,18 @@ export default function StudentBotTrainingView() {
           {!inGame ? (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Level Selector */}
-              <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-                <h2 className="text-base font-bold text-white flex items-center gap-2">
-                  <DashboardIcon iconKey="trophy" className="w-5 h-5 text-amber-400" />
-                  Select Bot Difficulty (10 Levels)
-                </h2>
+              <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-black text-white flex items-center gap-2">
+                    <DashboardIcon iconKey="trophy" className="w-4 h-4 text-amber-400" />
+                    Select Bot Difficulty (10 Levels)
+                  </h2>
+                  <span className="text-[11px] font-bold text-slate-400">
+                    Selected: <strong className="text-amber-400">Level {selectedLevel}</strong>
+                  </span>
+                </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
                   {BOT_LEVELS.map((b) => {
                     const isUnlocked = unlockedSet.has(b.level);
                     const isCoachUnlocked = profile?.coach_unlocked_levels?.includes(b.level);
@@ -1312,41 +1302,36 @@ export default function StudentBotTrainingView() {
                       <div
                         key={b.level}
                         onClick={() => isUnlocked ? setSelectedLevel(b.level) : setGatekeeperLockedLevel(b.level)}
-                        className={`relative rounded-xl border p-3.5 cursor-pointer transition-all flex flex-col justify-between ${
+                        className={`relative rounded-xl border p-2.5 sm:p-3 cursor-pointer transition-all flex flex-col justify-between ${
                           isSelected
-                            ? 'border-amber-500 bg-amber-500/10 shadow-lg shadow-amber-500/10 ring-1 ring-amber-500'
+                            ? 'border-amber-500 bg-amber-500/10 shadow-lg shadow-amber-500/15 ring-2 ring-amber-500'
                             : isUnlocked
-                            ? 'border-slate-800 bg-slate-950 hover:border-slate-700'
-                            : 'border-slate-900 bg-slate-950/40 hover:border-amber-500/40 opacity-75'
+                            ? 'border-slate-800 bg-slate-950 hover:border-slate-700 hover:bg-slate-900/60'
+                            : 'border-slate-900 bg-slate-950/40 hover:border-amber-500/40 opacity-70'
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-2xl">{b.avatarIcon}</span>
+                          <span className="text-xl">{b.avatarIcon}</span>
                           {isUnlocked ? (
                             isCoachUnlocked ? (
-                              <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-bold px-1.5 py-0.5 rounded" title="Coach unlocked">
+                              <span className="text-[9px] bg-emerald-500/20 text-emerald-300 font-bold px-1.5 py-0.5 rounded">
                                 🔓 Coach
                               </span>
                             ) : (
-                              <span className="text-[10px] bg-amber-500/20 text-amber-300 font-bold px-1.5 py-0.5 rounded">
-                                Unlocked
+                              <span className="text-[9px] bg-amber-500/20 text-amber-300 font-bold px-1.5 py-0.5 rounded">
+                                Lvl {b.level}
                               </span>
                             )
                           ) : (
-                            <span className="text-[10px] bg-rose-500/20 text-rose-300 font-bold px-1.5 py-0.5 rounded border border-rose-500/30">
-                              🔒 Gatekeeper
+                            <span className="text-[9px] bg-rose-500/20 text-rose-300 font-bold px-1.5 py-0.5 rounded border border-rose-500/30">
+                              🔒 Locked
                             </span>
                           )}
                         </div>
 
-                        <div className="mt-2.5 space-y-1">
-                          <div className="font-bold text-xs text-white">{b.name}</div>
-                          <div className="text-[10px] text-slate-400 font-medium">Rating: {b.rating}</div>
-                          {b.speciality && (
-                            <div className="text-[9px] text-amber-400 font-semibold leading-tight line-clamp-2 pt-0.5">
-                              {b.speciality}
-                            </div>
-                          )}
+                        <div className="mt-2 space-y-0.5">
+                          <div className="font-extrabold text-xs text-white truncate">{b.name.replace(/Level \d+ — /, '')}</div>
+                          <div className="text-[10px] text-slate-400 font-mono">Rating: {b.rating}</div>
                         </div>
                       </div>
                     );
@@ -3236,6 +3221,146 @@ export default function StudentBotTrainingView() {
           </div>
         </div>
       )}
+
+      {/* DAILY MISSIONS MODAL */}
+      {showMissionsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5 text-left">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <span className="text-3xl animate-pulse">🔥</span>
+                <div>
+                  <h3 className="text-base font-black text-white">{streakCount}-Day Training Streak</h3>
+                  <p className="text-xs text-slate-400">Complete 3 daily challenges to earn +100 XP!</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMissionsModal(false)}
+                className="text-slate-400 hover:text-white text-lg p-1.5 rounded-xl hover:bg-slate-800"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* 3 Mission Cards */}
+            <div className="space-y-2.5">
+              <div className={`p-3.5 rounded-2xl border flex items-center justify-between text-xs font-bold ${
+                hasWonToday ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-200' : 'bg-slate-950 border-slate-800 text-slate-300'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">⚔️</span>
+                  <div>
+                    <div className="text-white font-black">Conquer 1 Bot Match</div>
+                    <div className="text-[10px] text-slate-400 font-normal">Win any full game against a bot</div>
+                  </div>
+                </div>
+                <span className={`text-xs font-mono font-black ${hasWonToday ? 'text-emerald-400' : 'text-slate-400'}`}>
+                  {hasWonToday ? '1/1 ✅' : '0/1'}
+                </span>
+              </div>
+
+              <div className={`p-3.5 rounded-2xl border flex items-center justify-between text-xs font-bold ${
+                questsSolved >= 2 ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-200' : 'bg-slate-950 border-slate-800 text-slate-300'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">🎯</span>
+                  <div>
+                    <div className="text-white font-black">Solve 2 Tactical Quests</div>
+                    <div className="text-[10px] text-slate-400 font-normal">Answer 2 questions in the Quests tab</div>
+                  </div>
+                </div>
+                <span className={`text-xs font-mono font-black ${questsSolved >= 2 ? 'text-emerald-400' : 'text-slate-400'}`}>
+                  {questsSolved}/2 {questsSolved >= 2 && '✅'}
+                </span>
+              </div>
+
+              <div className={`p-3.5 rounded-2xl border flex items-center justify-between text-xs font-bold ${
+                exploredOpening ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-200' : 'bg-slate-950 border-slate-800 text-slate-300'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">🌳</span>
+                  <div>
+                    <div className="text-white font-black">Explore 1 Opening Tree Branch</div>
+                    <div className="text-[10px] text-slate-400 font-normal">Play through lines in Fried Liver Adventure</div>
+                  </div>
+                </div>
+                <span className={`text-xs font-mono font-black ${exploredOpening ? 'text-emerald-400' : 'text-slate-400'}`}>
+                  {exploredOpening ? '1/1 ✅' : '0/1'}
+                </span>
+              </div>
+            </div>
+
+            {/* Claim Action */}
+            <div className="pt-2">
+              {allCompleted && !dailyBonusClaimed ? (
+                <Button
+                  onClick={() => {
+                    setDailyBonusClaimed(true);
+                    setStreakCount((s) => s + 1);
+                    try { playChessSound('victory'); } catch {}
+                  }}
+                  className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-amber-500/25 animate-bounce"
+                >
+                  Claim +100 XP Streak Reward! 🔥
+                </Button>
+              ) : dailyBonusClaimed ? (
+                <div className="w-full text-center py-2.5 text-xs font-black text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 rounded-xl">
+                  ✅ Streak Bonus Banked (+100 XP)
+                </div>
+              ) : (
+                <div className="w-full text-center py-2 text-xs font-bold text-slate-400 bg-slate-950 border border-slate-800 rounded-xl">
+                  {completedMissionsCount} / 3 Daily Missions Completed
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Gaming Quick Dock (Bottom Type Navigation) */}
+      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-slate-950/90 backdrop-blur-xl border border-slate-700/80 rounded-full px-3 py-1.5 shadow-2xl flex items-center gap-1 sm:gap-1.5 ring-1 ring-white/10">
+        {[
+          { id: 'play', icon: '♟️', label: 'Play' },
+          { id: 'quests', icon: '🎯', label: 'Quests' },
+          { id: 'openings', icon: '🌳', label: 'Openings' },
+          { id: 'leaderboard', icon: '🏆', label: 'Rank' },
+          { id: 'history', icon: '📜', label: 'History' },
+        ].map((item) => {
+          const isActive = activeTab === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id as any)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black transition-all ${
+                isActive
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-lg shadow-amber-500/30 ring-1 ring-amber-300'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
+              }`}
+            >
+              <span className="text-sm">{item.icon}</span>
+              <span className="hidden sm:inline">{item.label}</span>
+            </button>
+          );
+        })}
+
+        <div className="h-4 w-px bg-slate-800 mx-1" />
+
+        {/* Quick Missions trigger in bottom dock */}
+        <button
+          type="button"
+          onClick={() => setShowMissionsModal(true)}
+          className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-black transition-all ${
+            allCompleted && !dailyBonusClaimed
+              ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white animate-bounce'
+              : 'text-amber-400 hover:bg-slate-800/80'
+          }`}
+          title="Daily Missions & Streak"
+        >
+          <span>🔥</span>
+          <span className="text-[11px] font-mono">{completedMissionsCount}/3</span>
+        </button>
+      </div>
     </div>
   );
 }
