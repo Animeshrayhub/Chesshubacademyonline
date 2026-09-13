@@ -19,6 +19,12 @@ import { playChessSound, setChessSoundEnabled, speakCoachAdvice, stopCoachVoice,
 import { computeBotMove, identifyOpeningFromMoves, safeExecuteMove } from '@/lib/bot-training/chessBotEngine';
 import { TACTICAL_QUIZ_QUESTIONS } from '@/lib/bot-training/tacticalQuizData';
 import { ALL_OPENING_ADVENTURES, FRIED_LIVER_ADVENTURE } from '@/lib/bot-training/openingTreeData';
+import {
+  BOT_PERSONALITIES,
+  ALL_BOT_PERSONALITIES,
+  type BotPersonalityId,
+  getRandomPersonalityQuote,
+} from '@/lib/bot-training/botPersonalities';
 import type {
   StudentColor,
   TimeControlOption,
@@ -226,6 +232,13 @@ export default function StudentBotTrainingView() {
   // Audio SFX & AI Coach Voice Control State
   const [soundOn, setSoundOn] = useState<boolean>(true);
   const [voiceNarrationOn, setVoiceNarrationOn] = useState<boolean>(true);
+
+  // Bot Personality & Dialogue Soundboard State
+  const [selectedPersonalityId, setSelectedPersonalityId] = useState<BotPersonalityId>('friendly');
+  const currentPersonality = useMemo(
+    () => BOT_PERSONALITIES[selectedPersonalityId] || BOT_PERSONALITIES.friendly,
+    [selectedPersonalityId]
+  );
 
   // Opening Tree Adventure State
   const [selectedAdventureId, setSelectedAdventureId] = useState<string>('italian-fried-liver');
@@ -547,7 +560,11 @@ ${formattedMoves || '1. e4'} ${game.result}`;
     setGameStatus('active');
     setInGame(true);
     setCurrentOpening('Starting Position');
-    setBotDialogue(null);
+    const startGreeting = getRandomPersonalityQuote(selectedPersonalityId, 'greeting');
+    setBotDialogue(startGreeting);
+    if (voiceNarrationOn) {
+      speakCoachAdvice(startGreeting, { pitch: currentPersonality.pitch, rate: currentPersonality.rate });
+    }
     setIsBotThinking(false);
     setBotHp(100);
     setStudentHp(100);
@@ -630,19 +647,17 @@ ${formattedMoves || '1. e4'} ${game.result}`;
           if (openingName) setCurrentOpening(openingName);
           if (commentary) {
             setBotDialogue(commentary);
+            if (voiceNarrationOn) speakCoachAdvice(commentary, { pitch: currentPersonality.pitch, rate: currentPersonality.rate });
           } else if (moveRes.captured) {
-            const banterPool = selectedLevel <= 3
-              ? ["Got your piece! Keep your eyes on the board! 😊", "Captured! Don't worry, you can counter-attack!", "Nom nom! That piece looked tasty! 😋"]
-              : selectedLevel <= 7
-              ? ["Material captured! Look out for my positional pressure. ⚡", "A tactical capture. Watch your weaknesses!", "Gaining an advantage with every move!"]
-              : ["Surgical capture. Evaluating converted endgame.", "Material defect exploited.", "Calculating the win in 12 ply."];
-            setBotDialogue(banterPool[Math.floor(Math.random() * banterPool.length)]);
+            const banter = getRandomPersonalityQuote(selectedPersonalityId, 'botCapture');
+            setBotDialogue(banter);
+            if (voiceNarrationOn) speakCoachAdvice(banter, { pitch: currentPersonality.pitch, rate: currentPersonality.rate });
           }
 
           if (game.inCheck()) {
-            const checkMsg = "Warning: Your King is in CHECK! Remember your CPR options: Capture the attacker, Protect with a block, or Run your King!";
+            const checkMsg = getRandomPersonalityQuote(selectedPersonalityId, 'check');
             setCoachTipDialogue(checkMsg);
-            if (voiceNarrationOn) speakCoachAdvice(checkMsg);
+            if (voiceNarrationOn) speakCoachAdvice(checkMsg, { pitch: currentPersonality.pitch, rate: currentPersonality.rate });
           }
 
           try {
@@ -752,6 +767,12 @@ ${formattedMoves || '1. e4'} ${game.result}`;
             playChessSound(move.captured ? 'capture' : 'move');
           } catch {}
 
+          if (move.captured) {
+            const banter = getRandomPersonalityQuote(selectedPersonalityId, 'studentCapture');
+            setBotDialogue(banter);
+            if (voiceNarrationOn) speakCoachAdvice(banter, { pitch: currentPersonality.pitch, rate: currentPersonality.rate });
+          }
+
           if (bossBattleMode) {
             let dmg = 0;
             let label = '';
@@ -860,10 +881,9 @@ ${formattedMoves || '1. e4'} ${game.result}`;
       } catch {}
 
       if (move.captured) {
-        const studentBanter = selectedLevel <= 3
-          ? ["Whoa, you took my piece! Nice move! 😮", "Hey, I needed that piece! Good eye!", "Ouch! You're playing so well! 👏"]
-          : ["A sharp tactical strike! Let's see your defense. ⚔️", "Solid capture. Game on!", "Good tactical vision!"];
-        setBotDialogue(studentBanter[Math.floor(Math.random() * studentBanter.length)]);
+        const studentBanter = getRandomPersonalityQuote(selectedPersonalityId, 'studentCapture');
+        setBotDialogue(studentBanter);
+        if (voiceNarrationOn) speakCoachAdvice(studentBanter, { pitch: currentPersonality.pitch, rate: currentPersonality.rate });
       }
 
       if (gameRef.current.inCheck()) {
@@ -974,10 +994,17 @@ ${formattedMoves || '1. e4'} ${game.result}`;
         setChestQuizSelectedOption(null);
         setChestQuizAnswerSubmitted(false);
         const shuffled = [...TACTICAL_QUIZ_QUESTIONS].sort(() => 0.5 - Math.random()).slice(0, 3);
-        const botName = BOT_LEVELS.find((b) => b.level === selectedLevel)?.name || 'the Bot';
-        triggerVictoryCelebration(`Magnificent victory! You defeated ${botName}! Loot chest unlocked!`);
+        const winQuote = getRandomPersonalityQuote(selectedPersonalityId, 'studentWin');
+        triggerVictoryCelebration(winQuote);
       } else {
-        if (result === 'loss') setStudentHp(0);
+        if (result === 'loss') {
+          setStudentHp(0);
+          const botWinQuote = getRandomPersonalityQuote(selectedPersonalityId, 'botWin');
+          setBotDialogue(botWinQuote);
+          if (voiceNarrationOn) {
+            speakCoachAdvice(botWinQuote, { pitch: currentPersonality.pitch, rate: currentPersonality.rate });
+          }
+        }
         setShowAnalysisModal(true);
       }
 
@@ -1549,6 +1576,50 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                     </div>
                   </div>
 
+                  {/* AI Bot Personality & Dialogue Soundboard Selector */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                        <span>🎭</span> AI Bot Personality:
+                      </label>
+                      <span className="text-[10px] font-mono text-amber-400 font-extrabold bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/30">
+                        {currentPersonality.avatar} {currentPersonality.badge}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      {ALL_BOT_PERSONALITIES.map((p) => {
+                        const isSelected = selectedPersonalityId === p.id;
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedPersonalityId(p.id);
+                              try { playChessSound('move'); } catch {}
+                              const sample = getRandomPersonalityQuote(p.id, 'greeting');
+                              setBotDialogue(sample);
+                              if (voiceNarrationOn) {
+                                speakCoachAdvice(sample, { pitch: p.pitch, rate: p.rate, force: true });
+                              }
+                            }}
+                            className={`p-2 rounded-xl border text-left transition-all relative overflow-hidden ${
+                              isSelected
+                                ? 'border-amber-400 bg-amber-500/20 text-white ring-1 ring-amber-400/80 shadow-md shadow-amber-500/20'
+                                : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700 hover:text-white'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <span className="text-base">{p.avatar}</span>
+                              <span className="text-xs font-black truncate">{p.name}</span>
+                            </div>
+                            <p className="text-[9px] text-slate-400 leading-tight line-clamp-1">{p.tagline}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   {/* Boss Battle Mode Toggle */}
                   <div className="flex items-center justify-between bg-slate-950 p-3 rounded-xl border border-slate-800">
                     <div>
@@ -1801,14 +1872,28 @@ ${formattedMoves || '1. e4'} ${game.result}`;
 
                   {/* Live Bot Commentary / Opening Advice Bubble */}
                   {botDialogue && (
-                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-3.5 py-2.5 text-xs text-amber-200 flex items-start gap-2.5 shadow-sm">
-                      <span className="text-base leading-none mt-0.5">💬</span>
-                      <div className="leading-snug">
-                        <span className="font-extrabold text-amber-400 mr-1.5">
-                          {BOT_LEVELS.find((b) => b.level === selectedLevel)?.name}:
-                        </span>
-                        <span>{botDialogue}</span>
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-3.5 py-2.5 text-xs text-amber-200 flex items-start justify-between gap-2.5 shadow-sm">
+                      <div className="flex items-start gap-2 leading-snug">
+                        <span className="text-base leading-none mt-0.5">{currentPersonality.avatar}</span>
+                        <div>
+                          <span className="font-extrabold text-amber-400 mr-1.5">
+                            {BOT_LEVELS.find((b) => b.level === selectedLevel)?.name} ({currentPersonality.name}):
+                          </span>
+                          <span>{botDialogue}</span>
+                        </div>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (botDialogue) {
+                            speakCoachAdvice(botDialogue, { pitch: currentPersonality.pitch, rate: currentPersonality.rate, force: true });
+                          }
+                        }}
+                        className="text-xs p-1 rounded hover:bg-amber-500/20 text-amber-400 shrink-0"
+                        title="Replay Voice Dialogue"
+                      >
+                        🔊
+                      </button>
                     </div>
                   )}
 
