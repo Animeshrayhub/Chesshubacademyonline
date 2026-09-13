@@ -18,7 +18,7 @@ import {
 import { playChessSound, setChessSoundEnabled } from '@/utils/chessAudio';
 import { computeBotMove, identifyOpeningFromMoves, safeExecuteMove } from '@/lib/bot-training/chessBotEngine';
 import { TACTICAL_QUIZ_QUESTIONS } from '@/lib/bot-training/tacticalQuizData';
-import { FRIED_LIVER_ADVENTURE } from '@/lib/bot-training/openingTreeData';
+import { ALL_OPENING_ADVENTURES, FRIED_LIVER_ADVENTURE } from '@/lib/bot-training/openingTreeData';
 import type {
   StudentColor,
   TimeControlOption,
@@ -227,9 +227,82 @@ export default function StudentBotTrainingView() {
   const [soundOn, setSoundOn] = useState<boolean>(true);
 
   // Opening Tree Adventure State
-  const [adventureNodeId, setAdventureNodeId] = useState<string>(FRIED_LIVER_ADVENTURE.rootNodeId);
-  const [adventureHistory, setAdventureHistory] = useState<string[]>([FRIED_LIVER_ADVENTURE.rootNodeId]);
+  const [selectedAdventureId, setSelectedAdventureId] = useState<string>('italian-fried-liver');
+  const currentAdventure = useMemo(
+    () => ALL_OPENING_ADVENTURES.find((a) => a.id === selectedAdventureId) || ALL_OPENING_ADVENTURES[0],
+    [selectedAdventureId]
+  );
+  const [adventureNodeId, setAdventureNodeId] = useState<string>(currentAdventure.rootNodeId);
+  const [adventureHistory, setAdventureHistory] = useState<string[]>([currentAdventure.rootNodeId]);
   const [adventureCompleted, setAdventureCompleted] = useState<boolean>(false);
+
+  // Combat Visual Effects & Replay Export States
+  const [combatFlash, setCombatFlash] = useState<'student' | 'bot' | null>(null);
+  const [pgnCopiedToast, setPgnCopiedToast] = useState<boolean>(false);
+  const [shareLinkCopiedToast, setShareLinkCopiedToast] = useState<boolean>(false);
+
+  // PGN & Replay Export Utilities
+  const generatePgn = (game: {
+    whiteName: string;
+    blackName: string;
+    result: string;
+    date?: string;
+    moves?: string[] | string;
+  }): string => {
+    const dateStr = game.date || new Date().toISOString().slice(0, 10).replace(/-/g, '.');
+    let formattedMoves = '';
+    if (Array.isArray(game.moves)) {
+      formattedMoves = game.moves.map((m, idx) => {
+        if (idx % 2 === 0) {
+          return `${Math.floor(idx / 2) + 1}. ${m}`;
+        }
+        return `${m}`;
+      }).join(' ');
+    } else if (typeof game.moves === 'string') {
+      formattedMoves = game.moves;
+    }
+
+    return `[Event "ChessHub Academy Bot Match"]
+[Site "ChessHub Online"]
+[Date "${dateStr}"]
+[White "${game.whiteName}"]
+[Black "${game.blackName}"]
+[Result "${game.result}"]
+[Termination "Normal"]
+
+${formattedMoves || '1. e4'} ${game.result}`;
+  };
+
+  const downloadPgnFile = (filename: string, pgnContent: string) => {
+    const blob = new Blob([pgnContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const copyPgnToClipboard = async (pgnContent: string) => {
+    try {
+      await navigator.clipboard.writeText(pgnContent);
+      setPgnCopiedToast(true);
+      setTimeout(() => setPgnCopiedToast(false), 2500);
+    } catch {}
+  };
+
+  const copyShareLink = async (gameId?: string) => {
+    try {
+      const shareUrl = typeof window !== 'undefined'
+        ? `${window.location.origin}/dashboard/student?tab=bot-training&game=${gameId || 'active'}`
+        : 'https://chesshub.online';
+      await navigator.clipboard.writeText(shareUrl);
+      setShareLinkCopiedToast(true);
+      setTimeout(() => setShareLinkCopiedToast(false), 2500);
+    } catch {}
+  };
 
   // Level Gatekeeper Modal State
   const [gatekeeperLockedLevel, setGatekeeperLockedLevel] = useState<number | null>(null);
@@ -257,6 +330,20 @@ export default function StudentBotTrainingView() {
   const exploredOpening = useMemo(() => adventureHistory.length > 1, [adventureHistory]);
   const allCompleted = useMemo(() => hasWonToday && questsSolved >= 2 && exploredOpening, [hasWonToday, questsSolved, exploredOpening]);
   const completedMissionsCount = useMemo(() => (hasWonToday ? 1 : 0) + (questsSolved >= 2 ? 1 : 0) + (exploredOpening ? 1 : 0), [hasWonToday, questsSolved, exploredOpening]);
+
+  // Ranking & Next Level XP Progress Calculations
+  const xpCurrent = useMemo(() => {
+    const ratingBase = Math.max(0, (profile?.rating || 400) - 300) * 3;
+    const puzzlePoints = (profile?.puzzles_solved || 0) * 25;
+    const gamePoints = (recentGames.length) * 30;
+    return 120 + ratingBase + puzzlePoints + gamePoints;
+  }, [profile?.rating, profile?.puzzles_solved, recentGames.length]);
+
+  const currentLevelNum = profile?.current_level || 1;
+  const xpTarget = currentLevelNum * 400;
+  const xpInLevel = xpCurrent % xpTarget;
+  const xpPercent = Math.min(100, Math.max(14, Math.round((xpInLevel / xpTarget) * 100)));
+  const xpRemaining = xpTarget - xpInLevel;
 
   const calculatePieceDamage = (pieceType?: string): number => {
     switch (pieceType?.toLowerCase()) {
@@ -557,6 +644,11 @@ export default function StudentBotTrainingView() {
             if (dmg > 0) {
               setStudentHp((prev) => Math.max(0, prev - dmg));
               setLastCombatEvent(label);
+              setCombatFlash('bot');
+              setTimeout(() => setCombatFlash(null), 900);
+              try {
+                playChessSound(dmg >= 25 ? 'critical_hit' : 'capture');
+              } catch {}
             }
           }
 
@@ -655,6 +747,11 @@ export default function StudentBotTrainingView() {
             if (dmg > 0) {
               setBotHp((prev) => Math.max(0, prev - dmg));
               setLastCombatEvent(label);
+              setCombatFlash('student');
+              setTimeout(() => setCombatFlash(null), 900);
+              try {
+                playChessSound(dmg >= 25 ? 'critical_hit' : 'capture');
+              } catch {}
             }
           }
 
@@ -768,6 +865,11 @@ export default function StudentBotTrainingView() {
         if (dmg > 0) {
           setBotHp((prev) => Math.max(0, prev - dmg));
           setLastCombatEvent(label);
+          setCombatFlash('student');
+          setTimeout(() => setCombatFlash(null), 900);
+          try {
+            playChessSound(dmg >= 25 ? 'critical_hit' : 'capture');
+          } catch {}
         }
       }
 
@@ -1241,13 +1343,43 @@ export default function StudentBotTrainingView() {
         </div>
       )}
 
+      {/* Student Bot Ranking XP Progression Bar */}
+      <div className="bg-slate-900/90 backdrop-blur-sm border border-slate-800 rounded-2xl px-4 py-2.5 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 shrink-0">
+          <span className="text-base">⭐</span>
+          <div>
+            <div className="text-xs font-black text-white flex items-center gap-2">
+              <span>Level {currentLevelNum} ({BOT_LEVELS.find((b) => b.level === currentLevelNum)?.name.replace(/Level \d+ — /, '') || 'Pawn'})</span>
+              <span className="text-[10px] text-slate-500">➔</span>
+              <span className="text-amber-400 font-extrabold">Level {Math.min(10, currentLevelNum + 1)}</span>
+            </div>
+            <div className="text-[10px] text-slate-400">
+              {xpRemaining} XP needed to advance to next Bot Tier
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 max-w-md w-full space-y-1">
+          <div className="flex items-center justify-between text-[10px] font-mono">
+            <span className="text-slate-400 font-semibold">Tier Mastery Progress</span>
+            <span className="font-extrabold text-amber-400">{xpInLevel} / {xpTarget} XP ({xpPercent}%)</span>
+          </div>
+          <div className="w-full bg-slate-950 rounded-full h-2 border border-slate-800/80 overflow-hidden relative">
+            <div
+              className="h-full bg-gradient-to-r from-amber-500 via-emerald-400 to-sky-400 rounded-full transition-all duration-700 shadow-sm shadow-amber-500/50"
+              style={{ width: `${xpPercent}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
       {/* Sleek Segmented Tab Navigation Bar */}
       <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-1.5 shadow-lg overflow-x-auto no-scrollbar">
         <div className="flex items-center gap-1.5 min-w-max">
           {[
             { id: 'play', label: 'Play Bot', icon: 'play' },
             { id: 'quests', label: 'Quests (10)', icon: 'sparkles' },
-            { id: 'openings', label: 'Fried Liver Tree', icon: 'bookOpen' },
+            { id: 'openings', label: 'Opening Trees (3)', icon: 'bookOpen' },
             { id: 'leaderboard', label: 'Leaderboard', icon: 'trophy' },
             { id: 'history', label: 'Match History', icon: 'calendarDays' },
             { id: 'rating', label: 'Rating Graph', icon: 'chartBar' },
@@ -1496,7 +1628,25 @@ export default function StudentBotTrainingView() {
                     </div>
                   </div>
 
-                  <div className="w-full max-w-[480px] sm:max-w-[520px] aspect-square rounded-xl overflow-hidden shadow-2xl border border-slate-800 mx-auto">
+                  <div className={`w-full max-w-[480px] sm:max-w-[520px] aspect-square rounded-xl overflow-hidden shadow-2xl border border-slate-800 mx-auto relative transition-all duration-300 ${
+                    combatFlash === 'student'
+                      ? 'ring-4 ring-emerald-500 shadow-emerald-500/50 scale-[1.01]'
+                      : combatFlash === 'bot'
+                      ? 'ring-4 ring-rose-500 shadow-rose-500/50 scale-[0.99]'
+                      : ''
+                  }`}>
+                    {/* Combat Explosion VFX Overlay */}
+                    {combatFlash && (
+                      <div className="absolute inset-0 z-30 pointer-events-none flex items-center justify-center animate-out fade-out duration-700">
+                        <div className={`px-5 py-2.5 rounded-2xl text-base sm:text-lg font-black tracking-wider uppercase shadow-2xl backdrop-blur-md border animate-bounce ${
+                          combatFlash === 'student'
+                            ? 'bg-emerald-950/95 border-emerald-500 text-emerald-300 shadow-emerald-500/60'
+                            : 'bg-rose-950/95 border-rose-500 text-rose-300 shadow-rose-500/60'
+                        }`}>
+                          {combatFlash === 'student' ? '⚔️ CRITICAL STRIKE! 💥' : '⚠️ DAMAGE TAKEN! 🩸'}
+                        </div>
+                      </div>
+                    )}
                     <ChessboardComponent
                       position={fen}
                       onPieceDrop={handlePieceDrop}
@@ -1949,37 +2099,77 @@ export default function StudentBotTrainingView() {
 
       {/* TAB: OPENING TREE ADVENTURE */}
       {activeTab === 'openings' && (() => {
-        const currentNode = FRIED_LIVER_ADVENTURE.nodes[adventureNodeId] || FRIED_LIVER_ADVENTURE.nodes[FRIED_LIVER_ADVENTURE.rootNodeId];
+        const currentNode = currentAdventure.nodes[adventureNodeId] || currentAdventure.nodes[currentAdventure.rootNodeId];
         const hasBranches = currentNode.branches && currentNode.branches.length > 0;
         const isBlunder = currentNode.evaluationTag === 'blunder';
         const isSuccess = currentNode.evaluationTag === 'best' && !hasBranches;
 
         return (
           <div className="space-y-6">
+            {/* Opening Adventures Selector Bar */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {ALL_OPENING_ADVENTURES.map((adv) => {
+                const isSelected = adv.id === selectedAdventureId;
+                return (
+                  <button
+                    key={adv.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedAdventureId(adv.id);
+                      setAdventureNodeId(adv.rootNodeId);
+                      setAdventureHistory([adv.rootNodeId]);
+                      setAdventureCompleted(false);
+                      try { playChessSound('move'); } catch {}
+                    }}
+                    className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between space-y-2 ${
+                      isSelected
+                        ? 'border-amber-500 bg-amber-500/10 shadow-lg shadow-amber-500/15 ring-2 ring-amber-500'
+                        : 'border-slate-800 bg-slate-900/90 hover:border-slate-700 hover:bg-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-mono font-black text-amber-400">{adv.eco}</span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        adv.difficulty === 'Beginner' ? 'bg-emerald-500/20 text-emerald-300' :
+                        adv.difficulty === 'Intermediate' ? 'bg-amber-500/20 text-amber-300' :
+                        'bg-purple-500/20 text-purple-300'
+                      }`}>
+                        {adv.difficulty}
+                      </span>
+                    </div>
+                    <div>
+                      <div className="font-extrabold text-white text-xs line-clamp-1">{adv.title}</div>
+                      <div className="text-[10px] text-slate-400 line-clamp-1">{adv.badgeReward} • +{adv.xpReward} XP</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
             {/* Header Banner */}
             <div className="bg-gradient-to-r from-slate-900 via-amber-950/30 to-slate-900 border border-amber-500/30 rounded-2xl p-6 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
               <div className="space-y-1.5">
                 <div className="flex items-center gap-2">
                   <span className="text-2xl">🌳</span>
                   <span className="text-xs font-black uppercase tracking-wider text-amber-400">
-                    Opening Tree Adventure ({FRIED_LIVER_ADVENTURE.eco})
+                    Opening Tree Adventure ({currentAdventure.eco})
                   </span>
                   <span className="text-[10px] bg-slate-800 text-slate-300 font-bold px-2 py-0.5 rounded-full">
                     Black Defense
                   </span>
                 </div>
-                <h2 className="text-xl font-extrabold text-white">{FRIED_LIVER_ADVENTURE.title}</h2>
-                <p className="text-xs text-slate-300 max-w-xl">{FRIED_LIVER_ADVENTURE.description}</p>
+                <h2 className="text-xl font-extrabold text-white">{currentAdventure.title}</h2>
+                <p className="text-xs text-slate-300 max-w-xl">{currentAdventure.description}</p>
               </div>
 
               <div className="flex items-center gap-3 shrink-0">
                 <div className="bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-2 text-center">
                   <div className="text-[10px] text-slate-400 font-bold uppercase">Reward</div>
-                  <div className="text-sm font-black text-amber-400">+{FRIED_LIVER_ADVENTURE.xpReward} XP</div>
+                  <div className="text-sm font-black text-amber-400">+{currentAdventure.xpReward} XP</div>
                 </div>
                 <div className="bg-slate-950/80 border border-amber-500/40 rounded-xl px-4 py-2 text-center">
                   <div className="text-[10px] text-slate-400 font-bold uppercase">Badge</div>
-                  <div className="text-xs font-black text-purple-300">{FRIED_LIVER_ADVENTURE.badgeReward}</div>
+                  <div className="text-xs font-black text-purple-300">{currentAdventure.badgeReward}</div>
                 </div>
               </div>
             </div>
@@ -1988,7 +2178,7 @@ export default function StudentBotTrainingView() {
             <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-center gap-2 overflow-x-auto text-xs">
               <span className="text-slate-500 font-bold uppercase text-[10px] shrink-0">Move Trail:</span>
               {adventureHistory.map((nodeId, idx) => {
-                const stepNode = FRIED_LIVER_ADVENTURE.nodes[nodeId];
+                const stepNode = currentAdventure.nodes[nodeId];
                 if (!stepNode) return null;
                 const isCurrent = nodeId === adventureNodeId;
                 return (
@@ -2051,8 +2241,8 @@ export default function StudentBotTrainingView() {
                   <button
                     type="button"
                     onClick={() => {
-                      setAdventureNodeId(FRIED_LIVER_ADVENTURE.rootNodeId);
-                      setAdventureHistory([FRIED_LIVER_ADVENTURE.rootNodeId]);
+                      setAdventureNodeId(currentAdventure.rootNodeId);
+                      setAdventureHistory([currentAdventure.rootNodeId]);
                       setAdventureCompleted(false);
                     }}
                     className="px-3 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 text-xs font-bold transition-all"
@@ -2159,7 +2349,7 @@ export default function StudentBotTrainingView() {
                             MASTER LINE ACHIEVED!
                           </div>
                           <p className="text-xs text-slate-300">
-                            You successfully neutralized the Fried Liver Attack with 5... Na5! You earned +60 XP and the Fried Liver Defier Crest.
+                            You successfully completed the {currentAdventure.title}! You earned +{currentAdventure.xpReward} XP and the {currentAdventure.badgeReward}.
                           </p>
                         </div>
                       )}
@@ -2171,7 +2361,7 @@ export default function StudentBotTrainingView() {
                             TRAP TRIGGERED!
                           </div>
                           <p className="text-xs text-slate-300">
-                            This move walks straight into White's tactical ambush. Step back and try the master defense (5... Na5!).
+                            This move walks straight into tactical trouble. Step back and try the master defense line!
                           </p>
                         </div>
                       )}
@@ -2698,35 +2888,53 @@ export default function StudentBotTrainingView() {
                         )}
                       </td>
                       <td className="p-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAnalysisData({
-                              result: (g.result || 'completed').toLowerCase(),
-                              ratingBefore: (g.student_rating_after ?? 400) - (g.rating_change ?? 0),
-                              ratingAfter: g.student_rating_after ?? 400,
-                              ratingChange: g.rating_change ?? 0,
-                              analysisSummary: g.analysis_summary || {
-                                accuracy: 82,
-                                blunders: 1,
-                                keyMoments: [
-                                  {
-                                    fen_before: 'r1bqk2r/pppp1ppp/2n5/4p3/1b2P3/2N2N2/PPPP1PPP/R1BQK2R w KQkq - 2 5',
-                                    played_move: 'Nxd5',
-                                    best_move: 'O-O',
-                                    explanation: 'The knight on c3 is pinned to your King on e1. Moving it exposed the King to check.',
-                                    better_idea: 'Castle kingside to unpin the knight first!',
-                                  }
-                                ]
-                              },
-                            });
-                            setShowAnalysisModal(true);
-                            setPracticeMistakeIndex(null);
-                          }}
-                          className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-[11px] font-bold transition-all"
-                        >
-                          🔍 Retry Mistakes
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const pgnText = g.pgn || generatePgn({
+                                whiteName: g.student_color === 'white' ? 'Student' : `Level ${g.bot_level} Bot`,
+                                blackName: g.student_color === 'black' ? 'Student' : `Level ${g.bot_level} Bot`,
+                                result: g.result === 'win' ? (g.student_color === 'white' ? '1-0' : '0-1') : g.result === 'loss' ? (g.student_color === 'white' ? '0-1' : '1-0') : '1/2-1/2',
+                                date: g.created_at ? new Date(g.created_at).toISOString().slice(0, 10).replace(/-/g, '.') : undefined,
+                              });
+                              downloadPgnFile(`chesshub_game_${g.id?.slice(0, 8) || 'match'}.pgn`, pgnText);
+                            }}
+                            title="Download PGN Replay"
+                            className="px-2 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 text-[11px] font-bold transition-all"
+                          >
+                            📥 PGN
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAnalysisData({
+                                result: (g.result || 'completed').toLowerCase(),
+                                ratingBefore: (g.student_rating_after ?? 400) - (g.rating_change ?? 0),
+                                ratingAfter: g.student_rating_after ?? 400,
+                                ratingChange: g.rating_change ?? 0,
+                                analysisSummary: g.analysis_summary || {
+                                  accuracy: 82,
+                                  blunders: 1,
+                                  keyMoments: [
+                                    {
+                                      fen_before: 'r1bqk2r/pppp1ppp/2n5/4p3/1b2P3/2N2N2/PPPP1PPP/R1BQK2R w KQkq - 2 5',
+                                      played_move: 'Nxd5',
+                                      best_move: 'O-O',
+                                      explanation: 'The knight on c3 is pinned to your King on e1. Moving it exposed the King to check.',
+                                      better_idea: 'Castle kingside to unpin the knight first!',
+                                    }
+                                  ]
+                                },
+                              });
+                              setShowAnalysisModal(true);
+                              setPracticeMistakeIndex(null);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-[11px] font-bold transition-all"
+                          >
+                            🔍 Retry Mistakes
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -2740,7 +2948,7 @@ export default function StudentBotTrainingView() {
       {/* ANALYSIS MODAL */}
       {showAnalysisModal && analysisData && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-6 shadow-2xl">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl">
             <div className="text-center space-y-2">
               <div className="text-4xl">{analysisData.result === 'win' ? '🏆' : '❌'}</div>
               <h2 className="text-xl font-extrabold text-white">
@@ -2781,6 +2989,54 @@ export default function StudentBotTrainingView() {
                   </Button>
                 </div>
               )}
+            </div>
+
+            {/* Match Export & Share Replay Bar */}
+            <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col sm:flex-row items-center justify-between gap-2.5">
+              <div className="text-xs font-bold text-slate-300 flex items-center gap-1.5 self-start sm:self-auto">
+                <span>📜</span>
+                <span>Match Replay:</span>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const pgnText = generatePgn({
+                      whiteName: playerColor === 'white' ? 'Student' : `Level ${selectedLevel} Bot`,
+                      blackName: playerColor === 'black' ? 'Student' : `Level ${selectedLevel} Bot`,
+                      result: analysisData.result === 'win' ? (playerColor === 'white' ? '1-0' : '0-1') : (playerColor === 'white' ? '0-1' : '1-0'),
+                      moves: moveHistory,
+                    });
+                    downloadPgnFile(`chesshub_match_${Date.now()}.pgn`, pgnText);
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] font-bold text-slate-200 transition-all flex items-center gap-1"
+                >
+                  📥 Download PGN
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const pgnText = generatePgn({
+                      whiteName: playerColor === 'white' ? 'Student' : `Level ${selectedLevel} Bot`,
+                      blackName: playerColor === 'black' ? 'Student' : `Level ${selectedLevel} Bot`,
+                      result: analysisData.result === 'win' ? (playerColor === 'white' ? '1-0' : '0-1') : (playerColor === 'white' ? '0-1' : '1-0'),
+                      moves: moveHistory,
+                    });
+                    copyPgnToClipboard(pgnText);
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] font-bold text-amber-400 transition-all flex items-center gap-1"
+                >
+                  {pgnCopiedToast ? '✅ Copied!' : '📋 Copy PGN'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => copyShareLink(activeGameId || undefined)}
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] font-bold text-sky-400 transition-all flex items-center gap-1"
+                  title="Share Match Link"
+                >
+                  {shareLinkCopiedToast ? '✅ Link Copied!' : '🔗 Share'}
+                </button>
+              </div>
             </div>
 
             <Button
