@@ -2,7 +2,12 @@
 
 import React, { useCallback, useMemo, useState } from 'react';
 import { ChessboardAdapter } from '@/components/dashboard/ui/ChessboardWrapper';
-import { type BoardArrow, type BoardHighlight, type BoardOrientation } from '@/lib/classroom-v2/types';
+import {
+  type BoardArrow,
+  type BoardHighlight,
+  type BoardOrientation,
+  type StudentBoardColorPermission,
+} from '@/lib/classroom-v2/types';
 import { validateChessMove } from '@/lib/classroom-v2/validation';
 import { Chess } from 'chess.js';
 
@@ -11,6 +16,7 @@ interface ClassroomBoardProps {
   orientation: BoardOrientation;
   isLocked: boolean;
   canMove: boolean;
+  allowedColor?: StudentBoardColorPermission;
   allowIllegalMoves?: boolean;
   arrows?: BoardArrow[];
   highlights?: BoardHighlight[];
@@ -29,6 +35,7 @@ export default function ClassroomBoard({
   orientation = 'white',
   isLocked = false,
   canMove = true,
+  allowedColor = 'both',
   allowIllegalMoves = false,
   arrows = [],
   highlights = [],
@@ -145,8 +152,30 @@ export default function ClassroomBoard({
         piece = typeof arg2 === 'string' ? arg2 : (arg2?.pieceType || '');
       }
 
-      if (!canMove || isLocked || !sourceSquare || !targetSquare || sourceSquare === targetSquare) {
+      if (!canMove || isLocked || allowedColor === 'none' || !sourceSquare || !targetSquare || sourceSquare === targetSquare) {
         return false;
+      }
+
+      // Check allowed piece color for student (white only, black only, or both)
+      if (allowedColor && allowedColor !== 'both') {
+        let pieceColor: 'w' | 'b' | null = null;
+        if (piece && typeof piece === 'string') {
+          if (piece.startsWith('w') || piece.startsWith('W')) pieceColor = 'w';
+          else if (piece.startsWith('b') || piece.startsWith('B')) pieceColor = 'b';
+        }
+        if (!pieceColor && fen && sourceSquare) {
+          try {
+            const c = new Chess(fen);
+            const p = c.get(sourceSquare as any);
+            if (p) pieceColor = p.color;
+          } catch {}
+        }
+        if (allowedColor === 'white' && pieceColor !== 'w') {
+          return false;
+        }
+        if (allowedColor === 'black' && pieceColor !== 'b') {
+          return false;
+        }
       }
 
       // Check pawn promotion: Player MUST choose promotion piece (Queen, Rook, Bishop, Knight)
@@ -190,10 +219,30 @@ export default function ClassroomBoard({
       // The piece stays cleanly at targetSquare with zero snap-back or re-animation glitch.
       return true;
     },
-    [canMove, isLocked, onMove, fen, allowIllegalMoves]
+    [canMove, isLocked, allowedColor, onMove, fen, allowIllegalMoves]
   );
 
-  const isDraggable = Boolean(canMove && !isLocked);
+  const isDraggable = Boolean(canMove && !isLocked && allowedColor !== 'none');
+
+  const canDragPiece = useCallback(
+    (args: any) => {
+      if (!isDraggable) return false;
+      if (!allowedColor || allowedColor === 'both') return true;
+      const pt: string =
+        args?.piece?.pieceType ||
+        args?.pieceType ||
+        (typeof args?.piece === 'string' ? args.piece : '') ||
+        (typeof args === 'string' ? args : '');
+      if (allowedColor === 'white') {
+        return pt.startsWith('w') || pt.startsWith('W');
+      }
+      if (allowedColor === 'black') {
+        return pt.startsWith('b') || pt.startsWith('B');
+      }
+      return false;
+    },
+    [isDraggable, allowedColor]
+  );
 
   const maxBoardDimension = Math.round(620 * (boardScale || 1));
 
@@ -204,6 +253,14 @@ export default function ClassroomBoard({
         <div className="absolute top-3 left-3 z-20 px-3 py-1 bg-rose-600/90 backdrop-blur-md text-white font-extrabold text-xs rounded-xl shadow-lg border border-rose-500 flex items-center gap-1.5 animate-pulse">
           <span>🔒</span>
           <span>Board Locked by Coach</span>
+        </div>
+      )}
+
+      {/* Student Color Assignment Overlay Badge */}
+      {!isLocked && (allowedColor === 'white' || allowedColor === 'black') && (
+        <div className="absolute top-3 left-3 z-20 px-3 py-1 bg-slate-900/90 backdrop-blur-md text-white font-extrabold text-xs rounded-xl shadow-lg border border-slate-750 flex items-center gap-1.5 animate-in fade-in">
+          <span>{allowedColor === 'white' ? '⚪' : '⚫'}</span>
+          <span>{allowedColor === 'white' ? 'You play White' : 'You play Black'}</span>
         </div>
       )}
 
@@ -222,6 +279,7 @@ export default function ClassroomBoard({
           boardOrientation={orientation}
           arePiecesDraggable={isDraggable}
           allowDragging={isDraggable}
+          canDragPiece={canDragPiece}
           onPieceDrop={handlePieceDrop}
           arrows={v5Arrows}
           customArrows={renderedArrows}

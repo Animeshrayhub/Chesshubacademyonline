@@ -245,8 +245,17 @@ export default async function ClassroomPage({ params }: { params: { classId: str
     }
   }
 
-  // 5. Auto-provision Zoom meeting link if missing
-  if (!cls.zoom_join_url || !cls.zoom_meeting_id) {
+  // 5. Detect Video Provider & Provision meeting link only if missing
+  const rawJoinUrl = (cls.zoom_join_url || '').trim();
+  const videoProvider: 'ZOOM' | 'GOOGLE_MEET' | 'JITSI' | 'CUSTOM' = rawJoinUrl.includes('meet.google.com')
+    ? 'GOOGLE_MEET'
+    : rawJoinUrl.includes('jit.si')
+    ? 'JITSI'
+    : rawJoinUrl.includes('zoom.us') || (cls.zoom_meeting_id && !cls.zoom_meeting_id.startsWith('meet_'))
+    ? 'ZOOM'
+    : (cls.video_provider as any) || (rawJoinUrl ? 'CUSTOM' : 'ZOOM');
+
+  if (!rawJoinUrl) {
     try {
       const { createClassMeeting } = await import('@/lib/video');
       const videoRes = await createClassMeeting(
@@ -264,6 +273,8 @@ export default async function ClassroomPage({ params }: { params: { classId: str
     } catch (videoErr) {
       console.warn('Failed to provision Zoom meeting:', videoErr);
     }
+  } else if (videoProvider === 'GOOGLE_MEET' && !cls.zoom_meeting_id) {
+    cls.zoom_meeting_id = `meet_${params.classId.replace(/[^a-zA-Z0-9]/g, '')}`;
   }
 
   const mappedStudents = students.map((s) => ({
@@ -323,6 +334,8 @@ export default async function ClassroomPage({ params }: { params: { classId: str
         coachName={coachName}
         scheduledStart={cls.scheduled_start}
         durationMinutes={cls.duration_minutes || 60}
+        videoProvider={videoProvider}
+        meetingUrl={cls.zoom_join_url || ''}
       />
     </ClassroomStateProvider>
   );

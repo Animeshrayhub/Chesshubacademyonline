@@ -29,11 +29,16 @@ import {
   type ClassroomBookmark,
   type CoachQuestion,
   type PuzzleAttemptResult,
+  type StudentBoardColorPermission,
 } from '@/lib/classroom-v2/types';
 import { classroomReducer } from '@/lib/classroom-v2/reducer';
 import { DEFAULT_INITIAL_FEN } from '@/lib/classroom-v2/constants';
 import { validateChessMove, parsePgnToMoves } from '@/lib/classroom-v2/validation';
-import { canUserMoveBoard } from '@/lib/classroom-v2/permissions';
+import {
+  canUserMoveBoard,
+  getUserAllowedColor,
+  parseBoardControllers,
+} from '@/lib/classroom-v2/permissions';
 import {
   mutateClassroomMoveAction,
   mutateClassroomUndoAction,
@@ -66,6 +71,7 @@ export interface ClassroomContextValue {
   snapshot: ClassroomSnapshot;
   isCoach: boolean;
   canMove: boolean;
+  allowedColor: StudentBoardColorPermission;
   isBoardLocked: boolean;
   userId: string;
   userName: string;
@@ -89,7 +95,7 @@ export interface ClassroomContextValue {
   onResetBoard: () => Promise<boolean>;
   onToggleBoardLock: (isLocked: boolean) => Promise<boolean>;
   onToggleFreeMove: (allow: boolean) => Promise<boolean>;
-  onToggleStudentPermission: (studentId: string, enable: boolean) => Promise<boolean>;
+  onToggleStudentPermission: (studentId: string, enable: boolean | StudentBoardColorPermission) => Promise<boolean>;
   onLoadPuzzle: (puzzle: CanonicalPuzzleState) => Promise<boolean>;
   onRevealPuzzleSolution: () => Promise<boolean>;
   onNextPuzzle: (puzzle: CanonicalPuzzleState) => Promise<boolean>;
@@ -153,6 +159,7 @@ export function ClassroomStateProvider({
 
   const isCoach = role === 'coach' || role === 'admin';
   const canMove = canUserMoveBoard(role, userId, snapshot.permissions);
+  const allowedColor = getUserAllowedColor(role, userId, snapshot.permissions);
   const isBoardLocked = snapshot.permissions.isBoardLocked;
 
   const snapshotRef = useRef(snapshot);
@@ -231,6 +238,7 @@ export function ClassroomStateProvider({
             const rawMoves = Array.isArray(row.moves) ? row.moves : [];
             const moveIdx = row.current_move_index ?? (rawMoves.length - 1);
             if (moveIdx < current.board.currentMoveIndex) return current;
+            const parsedPerms = parseBoardControllers(row.board_controller_id || '');
             return {
               ...current,
               board: {
@@ -240,10 +248,13 @@ export function ClassroomStateProvider({
                 currentMoveIndex: moveIdx,
                 allowIllegalMoves: Boolean(row.allow_illegal_moves),
                 sideToMove: ((row.fen?.split(' ')[1] as 'w' | 'b') || current.board.sideToMove),
+                isBoardLocked: parsedPerms.isBoardLocked,
               },
               permissions: {
                 ...current.permissions,
-                boardControllerId: row.board_controller_id || null,
+                boardControllers: parsedPerms.boardControllers,
+                studentPermissions: parsedPerms.studentPermissions,
+                isBoardLocked: parsedPerms.isBoardLocked,
               },
             };
           });
@@ -471,7 +482,10 @@ export function ClassroomStateProvider({
 
     for (const s of students) {
       const isOnline = onlineUserIds.has(s.userId);
-      const hasControl = snapshot.permissions.boardControllers.includes(s.userId);
+      const studentPerm: StudentBoardColorPermission =
+        snapshot.permissions.studentPermissions?.[s.userId] ||
+        (snapshot.permissions.boardControllers.includes(s.userId) ? 'both' : 'none');
+      const hasControl = studentPerm !== 'none';
       const raisedHand = raisedHandUserIds.has(s.userId);
 
       list.push({
@@ -481,12 +495,13 @@ export function ClassroomStateProvider({
         role: 'student',
         isOnline,
         hasBoardControl: hasControl,
+        colorPermission: studentPerm,
         raisedHand,
       });
     }
 
     return list;
-  }, [students, coachName, onlineUserIds, snapshot.permissions.boardControllers, snapshot.permissions.coachId, raisedHandUserIds]);
+  }, [students, coachName, onlineUserIds, snapshot.permissions.boardControllers, snapshot.permissions.studentPermissions, snapshot.permissions.coachId, raisedHandUserIds]);
 
   // ── Action Handlers ───────────────────────────────────────────────────────
 
@@ -506,6 +521,14 @@ export function ClassroomStateProvider({
         return false;
       }
 
+      // Check allowed piece color for student
+      if (!isCoach) {
+        const studentColorPerm = getUserAllowedColor(role, userId, snapshotRef.current.permissions);
+        if (studentColorPerm === 'none') {
+          return false;
+        }
+      }
+
       // Optimistic Validation & Update
       const allowIllegalMoves = Boolean(snapshotRef.current?.board?.allowIllegalMoves);
       const validation = validateChessMove(snapshotRef.current.board.fen, { from, to, promotion }, allowIllegalMoves);
@@ -513,6 +536,18 @@ export function ClassroomStateProvider({
         console.warn('[ClassroomStateProvider] Move validation failed (silent):', validation.error);
         // Silent return — no error banner. Invalid moves snap back via FEN prop naturally.
         return false;
+      }
+
+      if (!isCoach) {
+        const studentColorPerm = getUserAllowedColor(role, userId, snapshotRef.current.permissions);
+        if (studentColorPerm === 'white' && validation.color !== 'w') {
+          console.warn('[ClassroomStateProvider] Student only permitted to play White');
+          return false;
+        }
+        if (studentColorPerm === 'black' && validation.color !== 'b') {
+          console.warn('[ClassroomStateProvider] Student only permitted to play Black');
+          return false;
+        }
       }
 
       const previousSnapshot = snapshotRef.current;
@@ -619,16 +654,40 @@ export function ClassroomStateProvider({
   );
 
   const onToggleStudentPermission = useCallback(
-    async (targetStudentId: string, enable: boolean): Promise<boolean> => {
-      setSnapshot((current) => ({
-        ...current,
-        permissions: {
-          ...current.permissions,
-          boardControllers: enable
+    async (targetStudentId: string, enable: boolean | StudentBoardColorPermission): Promise<boolean> => {
+      let resolvedPerm: StudentBoardColorPermission = 'none';
+      if (typeof enable === 'boolean') {
+        resolvedPerm = enable ? 'both' : 'none';
+      } else if (enable) {
+        resolvedPerm = enable;
+      }
+
+      setSnapshot((current) => {
+        const nextControllers =
+          resolvedPerm !== 'none'
             ? Array.from(new Set([...current.permissions.boardControllers, targetStudentId]))
-            : current.permissions.boardControllers.filter((id) => id !== targetStudentId),
-        },
-      }));
+            : current.permissions.boardControllers.filter((id) => id !== targetStudentId);
+
+        const nextStudentPerms: Record<string, StudentBoardColorPermission> = {
+          ...(current.permissions.studentPermissions || {}),
+        };
+
+        if (resolvedPerm === 'none') {
+          delete nextStudentPerms[targetStudentId];
+        } else {
+          nextStudentPerms[targetStudentId] = resolvedPerm;
+        }
+
+        return {
+          ...current,
+          permissions: {
+            ...current.permissions,
+            boardControllers: nextControllers,
+            studentPermissions: nextStudentPerms,
+          },
+        };
+      });
+
       const res = await mutateClassroomPermissionAction(
         sessionId,
         targetStudentId,
@@ -637,11 +696,12 @@ export function ClassroomStateProvider({
       );
       if (!res.success) {
         setErrorMessage(res.error || 'Failed to update student permission.');
+        reconcileSnapshot();
         return false;
       }
       return true;
     },
-    [sessionId]
+    [sessionId, reconcileSnapshot]
   );
 
   const onLoadPuzzle = useCallback(
@@ -947,6 +1007,7 @@ export function ClassroomStateProvider({
       snapshot,
       isCoach,
       canMove,
+      allowedColor,
       isBoardLocked,
       userId,
       userName,
@@ -993,6 +1054,7 @@ export function ClassroomStateProvider({
       snapshot,
       isCoach,
       canMove,
+      allowedColor,
       isBoardLocked,
       userId,
       userName,

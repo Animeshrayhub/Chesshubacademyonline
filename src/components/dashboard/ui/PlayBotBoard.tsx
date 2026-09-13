@@ -10,6 +10,7 @@ import { customChessPieces } from './ChessPieces';
 import { supabase } from '@/utils/supabaseClient';
 
 import { wrapChessboard } from '@/components/dashboard/ui/ChessboardWrapper';
+import { computeBotMove, safeExecuteMove } from '@/lib/bot-training/chessBotEngine';
 
 const ChessboardComponent = dynamic(
   () =>
@@ -146,55 +147,65 @@ export default function PlayBotBoard({ initialFen, classId, onCloseCustom }: Pla
     }
   };
 
-  // Make engine move
+  // Make engine move with resilient fallback
   const triggerEngineMove = () => {
     if (status !== 'active') return;
     setIsBotThinking(true);
     setMessage('Bot is thinking...');
 
-    // Initialize or reset Stockfish worker
-    stockfishRef.current?.terminate();
-    const worker = new Worker('/stockfish/stockfish.js');
-    stockfishRef.current = worker;
+    const botColor = boardOrientation === 'white' ? 'black' : 'white';
+    const lvlNum = level === 'pawn' ? 1 : level === 'knight' ? 2 : level === 'bishop' ? 3 : level === 'rook' ? 4 : level === 'queen' ? 5 : level === 'cm' ? 6 : level === 'im' ? 7 : 8;
 
-    worker.onmessage = (event) => {
-      const line = event.data;
-      if (line.startsWith('bestmove')) {
-        const parts = line.split(' ');
-        const bestMoveUci = parts[1];
+    const uciHistory: string[] = [];
+    gameRef.current.history({ verbose: true }).forEach((m) => {
+      uciHistory.push(`${m.from}${m.to}${m.promotion || ''}`);
+    });
 
-        if (bestMoveUci && bestMoveUci !== '(none)') {
-          const game = gameRef.current;
-          try {
-            const from = bestMoveUci.substring(0, 2);
-            const to = bestMoveUci.substring(2, 4);
-            const promotion = bestMoveUci.substring(4, 5) || undefined;
+    let engineRes: any = null;
+    try {
+      engineRes = computeBotMove(gameRef.current, lvlNum, botColor, uciHistory);
+    } catch (e) {
+      console.warn('[triggerEngineMove] computeBotMove exception:', e);
+    }
 
-            game.move({ from, to, promotion });
-            const nextFen = game.fen();
-            setFen(nextFen);
-            setHistory(game.history());
-
-
-
-            // Check game status after Bot move
-            checkGameStatus();
-
-          } catch (e) {
-            console.error('Failed to make bot move:', e);
-            setMessage('Error processing bot move.');
+    const applyMove = (from: string, to: string, promotion?: string) => {
+      try {
+        const game = gameRef.current;
+        let moveRes = safeExecuteMove(game, from, to, promotion);
+        if (!moveRes) {
+          const legal = game.moves({ verbose: true });
+          if (legal.length > 0) {
+            moveRes = game.move(legal[0]);
           }
         }
+
+        if (moveRes) {
+          const nextFen = game.fen();
+          setFen(nextFen);
+          setHistory(game.history());
+          checkGameStatus();
+        }
+      } catch (e) {
+        console.error('Failed to make bot move:', e);
+        setMessage('Error processing bot move.');
+      } finally {
         setIsBotThinking(false);
-        worker.terminate();
       }
     };
 
-    worker.postMessage('uci');
-    worker.postMessage(`setoption name Skill Level value ${getSkillLevel()}`);
-    worker.postMessage('ucinewgame');
-    worker.postMessage(`position fen ${gameRef.current.fen()}`);
-    worker.postMessage(`go depth ${getSearchDepth()}`);
+    // Apply move with natural human delay
+    setTimeout(() => {
+      if (engineRes) {
+        applyMove(engineRes.from, engineRes.to, engineRes.promotion);
+      } else {
+        const moves = gameRef.current.moves({ verbose: true });
+        if (moves.length > 0) applyMove(moves[0].from, moves[0].to, moves[0].promotion);
+        else {
+          setIsBotThinking(false);
+          checkGameStatus();
+        }
+      }
+    }, 500 + Math.random() * 300);
   };
 
   // Start Bot turn if it is the Bot's color to play
@@ -253,22 +264,12 @@ export default function PlayBotBoard({ initialFen, classId, onCloseCustom }: Pla
     if (optionSquares[square]) {
       const game = gameRef.current;
       try {
-        const isPromotion =
-          (game.get(selectedSquare as any)?.type === 'p' &&
-           (square.endsWith('8') || square.endsWith('1')));
-
-        const move = game.move({
-          from: selectedSquare!,
-          to: square,
-          promotion: isPromotion ? 'q' : undefined,
-        });
+        const move = safeExecuteMove(game, selectedSquare!, square);
 
         if (move) {
           const nextFen = game.fen();
           setFen(nextFen);
           setHistory(game.history());
-
-
 
           checkGameStatus();
           setSelectedSquare(null);
@@ -338,28 +339,16 @@ export default function PlayBotBoard({ initialFen, classId, onCloseCustom }: Pla
     setSelectedSquare(null);
     setOptionSquares({});
     try {
-      // Attempt standard moves including auto-queen promotions
-      const isPromotion = 
-        (game.get(sourceSquare as any)?.type === 'p' && 
-         (targetSquare.endsWith('8') || targetSquare.endsWith('1')));
-
-      const move = game.move({
-        from: sourceSquare,
-        to: targetSquare,
-        promotion: isPromotion ? 'q' : undefined,
-      });
+      const move = safeExecuteMove(game, sourceSquare, targetSquare);
 
       if (move) {
         const nextFen = game.fen();
         setFen(nextFen);
         setHistory(game.history());
 
-
-
         checkGameStatus();
         return true;
       }
-
     } catch (e) {}
     return false;
   };

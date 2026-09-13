@@ -551,15 +551,24 @@ export async function updateClass(id: string, data: UpdateClassInput): Promise<R
         updates.zoom_join_url = jitsiUrl;
         updates.zoom_start_url = jitsiUrl;
         updates.zoom_meeting_id = `jitsi_${safeId}`;
-      } else if (data.videoProvider === 'GOOGLE_MEET' && data.customUrl) {
-        const meetUrl = data.customUrl.startsWith('http') ? data.customUrl : `https://${data.customUrl}`;
-        updates.zoom_join_url = meetUrl;
-        updates.zoom_start_url = meetUrl;
-        updates.zoom_meeting_id = `meet_${safeId}`;
+      } else if (data.videoProvider === 'GOOGLE_MEET') {
+        const rawUrl = (data.customUrl || data.zoomJoinUrl || '').trim();
+        if (rawUrl) {
+          const meetUrl = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
+          updates.zoom_join_url = meetUrl;
+          updates.zoom_start_url = meetUrl;
+          updates.zoom_meeting_id = `meet_${safeId}`;
+        }
       }
     }
 
-    if (data.zoomJoinUrl !== undefined) updates.zoom_join_url = data.zoomJoinUrl;
+    if (data.zoomJoinUrl !== undefined) {
+      updates.zoom_join_url = data.zoomJoinUrl;
+      if (data.zoomJoinUrl.includes('meet.google.com') && !updates.zoom_meeting_id) {
+        const safeId = id.replace(/[^a-zA-Z0-9]/g, '');
+        updates.zoom_meeting_id = `meet_${safeId}`;
+      }
+    }
     if (data.zoomStartUrl !== undefined) updates.zoom_start_url = data.zoomStartUrl;
 
     if (data.coachUserId !== undefined) {

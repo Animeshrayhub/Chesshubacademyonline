@@ -15,6 +15,7 @@ import {
   type StudentResponseItem,
   type ClassroomBookmark,
   type CoachQuestion,
+  type StudentBoardColorPermission,
 } from './types';
 import { type RealtimeEventType } from './constants';
 
@@ -48,6 +49,7 @@ export type ClassroomRealtimePayload =
   | (ClassroomRealtimeBaseEvent & {
       type: 'PERMISSIONS_CHANGED';
       boardControllers: string[];
+      studentPermissions?: Record<string, StudentBoardColorPermission>;
       isBoardLocked: boolean;
     })
   | (ClassroomRealtimeBaseEvent & {

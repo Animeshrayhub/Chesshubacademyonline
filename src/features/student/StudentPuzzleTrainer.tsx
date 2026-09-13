@@ -33,15 +33,89 @@ export interface LichessPuzzle {
   explanation?: string;
 }
 
+export const MAX_CHANCES = 6;
+
+export interface MatchedMove {
+  from: string;
+  to: string;
+  promotion?: string;
+  san: string;
+  uci: string;
+  captured?: string;
+}
+
+/**
+ * Robustly matches any move representation (SAN like "Nd6+", "O-O", "Nxc8" or UCI like "f5d6", "e7e8q")
+ * against the legal moves of the current board position.
+ */
+export function findMatchingLegalMove(game: Chess, moveStr: string): MatchedMove | null {
+  if (!moveStr || !game) return null;
+  const raw = moveStr.trim();
+  const clean = raw.toLowerCase().replace(/[\s\-\#\+\!\?\=x]/g, '');
+
+  let legalMoves: any[] = [];
+  try {
+    legalMoves = game.moves({ verbose: true });
+  } catch {
+    return null;
+  }
+
+  for (const m of legalMoves) {
+    const uci = `${m.from}${m.to}${m.promotion || ''}`.toLowerCase();
+    const san = m.san;
+    const cleanSan = san.toLowerCase().replace(/[\s\-\#\+\!\?\=x]/g, '');
+
+    // 1. Direct UCI match (e.g. "f5d6", "e7e8q")
+    if (uci === raw.toLowerCase() || uci === clean) {
+      return { from: m.from, to: m.to, promotion: m.promotion, san: m.san, uci, captured: m.captured };
+    }
+
+    // 2. Direct SAN match (e.g. "Nd6+", "O-O", "Nxc8")
+    if (san.toLowerCase() === raw.toLowerCase() || san === raw) {
+      return { from: m.from, to: m.to, promotion: m.promotion, san: m.san, uci, captured: m.captured };
+    }
+
+    // 3. Sanitized SAN match (e.g. "nd6", "nxc8" vs "Nd6+", "Nxc8")
+    if (cleanSan === clean) {
+      return { from: m.from, to: m.to, promotion: m.promotion, san: m.san, uci, captured: m.captured };
+    }
+
+    // 4. Match stripped check/exclamation symbols e.g. "Nd6" vs "Nd6+"
+    const rawNoPunct = raw.replace(/[\+\#\!]*/g, '').toLowerCase();
+    const sanNoPunct = san.replace(/[\+\#\!]*/g, '').toLowerCase();
+    if (sanNoPunct === rawNoPunct) {
+      return { from: m.from, to: m.to, promotion: m.promotion, san: m.san, uci, captured: m.captured };
+    }
+  }
+
+  // 5. Fallback via chess.js parse
+  try {
+    const temp = new Chess(game.fen());
+    const res = temp.move(raw, { strict: false });
+    if (res) {
+      const uci = `${res.from}${res.to}${res.promotion || ''}`.toLowerCase();
+      return { from: res.from, to: res.to, promotion: res.promotion, san: res.san, uci, captured: res.captured };
+    }
+  } catch {}
+
+  return null;
+}
+
 function buildSolutionFens(initialFen: string, solutionMoves: string[]): string[] {
   try {
     const tempGame = new Chess(initialFen);
     const fens: string[] = [initialFen];
     for (const moveStr of solutionMoves) {
-      const from = moveStr.substring(0, 2);
-      const to = moveStr.substring(2, 4);
-      const promotion = moveStr.length > 4 ? moveStr.substring(4, 5) : undefined;
-      tempGame.move({ from: from as any, to: to as any, promotion: promotion as any });
+      const matched = findMatchingLegalMove(tempGame, moveStr);
+      if (matched) {
+        tempGame.move({
+          from: matched.from as any,
+          to: matched.to as any,
+          promotion: matched.promotion as any,
+        });
+      } else {
+        tempGame.move(moveStr);
+      }
       fens.push(tempGame.fen());
     }
     return fens;
@@ -69,7 +143,7 @@ export default function StudentPuzzleTrainer() {
 
   // Solving stats & metrics
   const [attempts, setAttempts] = useState(1);
-  const [lives, setLives] = useState(3);
+  const [lives, setLives] = useState(MAX_CHANCES);
   const [solveStartTime, setSolveStartTime] = useState<number>(Date.now());
   const [isSolved, setIsSolved] = useState(false);
   const [isFailed, setIsFailed] = useState(false);
@@ -125,7 +199,7 @@ export default function StudentPuzzleTrainer() {
       setCustomSquareStyles({});
       setSolutionStep(0);
       setAttempts(1);
-      setLives(3);
+      setLives(MAX_CHANCES);
       setUserMoveInput('');
 
       try {
@@ -172,7 +246,7 @@ export default function StudentPuzzleTrainer() {
           setSolveStartTime(Date.now());
           setFeedback({
             type: 'neutral',
-            text: `Find the best move for ${p.sideToMove === 'white' ? 'White ⚪' : 'Black ⬛'}! (3 tries remaining)`,
+            text: `Find the best move for ${p.sideToMove === 'white' ? 'White ⚪' : 'Black ⬛'}! (${MAX_CHANCES} chances remaining)`,
           });
           setPetReaction(
             p.source === 'ACADEMY'
@@ -228,26 +302,49 @@ export default function StudentPuzzleTrainer() {
     fetchPuzzle(practiceMode, selectedCategory, categoryIndex, studentRating);
   }, [practiceMode, selectedCategory, categoryIndex, fetchPuzzle]);
 
-  // Handle move validation
-  const checkMoveUci = (uciMove: string): boolean => {
+  // Handle move validation with universal SAN & UCI recognition
+  const checkMoveUci = (rawMove: string): boolean => {
     if (!currentPuzzle || isSolved || isFailed || isReplayingSolution) return false;
+    if (!rawMove || !rawMove.trim()) return false;
 
-    const cleanMove = uciMove.trim().toLowerCase();
-    const expectedMove = currentPuzzle.solution[solutionStep]?.toLowerCase();
+    const expectedMoveStr = currentPuzzle.solution[solutionStep];
+    if (!expectedMoveStr) return false;
 
-    if (!expectedMove) return false;
+    // Resolve user's move and expected move on current board
+    const userMatched = findMatchingLegalMove(chessRef.current, rawMove);
+    const expectedMatched = findMatchingLegalMove(chessRef.current, expectedMoveStr);
 
-    if (cleanMove === expectedMove) {
+    let isCorrect = false;
+
+    if (userMatched && expectedMatched) {
+      // Direct legal move match (same origin, destination, and promotion)
+      isCorrect =
+        userMatched.from === expectedMatched.from &&
+        userMatched.to === expectedMatched.to &&
+        (userMatched.promotion || '') === (expectedMatched.promotion || '');
+    } else {
+      // Fallback string comparisons for edge-cases
+      const cleanUser = rawMove.trim().toLowerCase().replace(/[\s\-\#\+\!\?\=x]/g, '');
+      const cleanExp = expectedMoveStr.trim().toLowerCase().replace(/[\s\-\#\+\!\?\=x]/g, '');
+      isCorrect = cleanUser === cleanExp;
+    }
+
+    if (isCorrect && (userMatched || expectedMatched)) {
+      const moveToPlay = userMatched || expectedMatched!;
       // Execute move on chess engine
       try {
-        const from = cleanMove.substring(0, 2);
-        const to = cleanMove.substring(2, 4);
-        const promotion = cleanMove.length > 4 ? cleanMove.substring(4, 5) : undefined;
-        chessRef.current.move({ from: from as any, to: to as any, promotion: promotion as any });
+        chessRef.current.move({
+          from: moveToPlay.from as any,
+          to: moveToPlay.to as any,
+          promotion: moveToPlay.promotion as any,
+        });
         setBoardFen(chessRef.current.fen());
-        playChessSound('move');
-      } catch (e) {}
+        playChessSound(moveToPlay.captured ? 'capture' : 'move');
+      } catch (e) {
+        console.warn('Could not execute player move:', e);
+      }
 
+      setUserMoveInput('');
       const nextStep = solutionStep + 1;
       setSolutionStep(nextStep);
 
@@ -262,20 +359,33 @@ export default function StudentPuzzleTrainer() {
       if (opponentReply) {
         setTimeout(() => {
           try {
-            const oppFrom = opponentReply.substring(0, 2);
-            const oppTo = opponentReply.substring(2, 4);
-            const oppProm = opponentReply.length > 4 ? opponentReply.substring(4, 5) : undefined;
-            chessRef.current.move({ from: oppFrom as any, to: oppTo as any, promotion: oppProm as any });
+            const oppMatched = findMatchingLegalMove(chessRef.current, opponentReply);
+            if (oppMatched) {
+              chessRef.current.move({
+                from: oppMatched.from as any,
+                to: oppMatched.to as any,
+                promotion: oppMatched.promotion as any,
+              });
+              playChessSound(oppMatched.captured ? 'capture' : 'move');
+            } else {
+              chessRef.current.move(opponentReply);
+              playChessSound('capture');
+            }
             setBoardFen(chessRef.current.fen());
             setSolutionStep(nextStep + 1);
-            playChessSound('capture');
-          } catch (e) {}
+
+            if (nextStep + 1 >= currentPuzzle.solution.length) {
+              handlePuzzleSolved();
+            }
+          } catch (e) {
+            console.warn('Could not execute opponent reply:', e);
+          }
         }, 400);
       }
 
       setFeedback({
         type: 'success',
-        text: 'Best move! Continue the combination...',
+        text: `Best move (${moveToPlay.san})! Continue the combination...`,
       });
       setPetReaction('Excellent! Now find the following blow!');
       return true;
@@ -285,15 +395,19 @@ export default function StudentPuzzleTrainer() {
       setAttempts((a) => a + 1);
       playChessSound('quiz_wrong');
 
+      const playedName = userMatched ? userMatched.san : rawMove.trim();
+
       if (remainingLives > 0) {
         setFeedback({
           type: 'error',
-          text: `❌ Move ${uciMove} is not best. ${remainingLives} ${remainingLives === 1 ? 'life' : 'lives'} remaining! Try again.`,
+          text: `❌ Move "${playedName}" is not best. ${remainingLives} ${
+            remainingLives === 1 ? 'chance' : 'chances'
+          } remaining! Try again.`,
         });
         setPetReaction(
           remainingLives === 1
-            ? '⚠️ One try left! Double-check king safety and undefended pieces.'
-            : 'Not the strongest move. Look for forcing lines!'
+            ? '⚠️ Final chance! Double-check king safety and undefended pieces.'
+            : `${remainingLives} chances left! Take your time to calculate all lines.`
         );
         return false;
       } else {
@@ -326,14 +440,23 @@ export default function StudentPuzzleTrainer() {
 
       const moveStr = solutionMoves[currentPly];
       try {
-        const from = moveStr.substring(0, 2);
-        const to = moveStr.substring(2, 4);
-        const promotion = moveStr.length > 4 ? moveStr.substring(4, 5) : undefined;
-        chessRef.current.move({ from: from as any, to: to as any, promotion: promotion as any });
+        const matched = findMatchingLegalMove(chessRef.current, moveStr);
+        if (matched) {
+          chessRef.current.move({
+            from: matched.from as any,
+            to: matched.to as any,
+            promotion: matched.promotion as any,
+          });
+          playChessSound(matched.captured ? 'capture' : 'move');
+        } else {
+          chessRef.current.move(moveStr);
+          playChessSound(currentPly % 2 === 0 ? 'move' : 'capture');
+        }
         setBoardFen(chessRef.current.fen());
         setStepReviewIndex(currentPly + 1);
-        playChessSound(currentPly % 2 === 0 ? 'move' : 'capture');
-      } catch {}
+      } catch (err) {
+        console.warn('Animation move failed:', err);
+      }
 
       currentPly++;
     }, 700);
@@ -509,7 +632,7 @@ export default function StudentPuzzleTrainer() {
       type: 'error',
       text: isForfeit
         ? `🏳️ Forfeited (${recordRes.ratingDelta} ⭐). Solution is replaying on the board:`
-        : `❌ 3 Strikes! Puzzle failed (${recordRes.ratingDelta} ⭐). Solution is replaying on the board:`,
+        : `❌ Out of chances! Puzzle failed (${recordRes.ratingDelta} ⭐). Solution is replaying on the board:`,
     });
     setPetReaction('Don&apos;t worry! Analyzing missed tactics is how champions learn.');
 
@@ -565,7 +688,7 @@ export default function StudentPuzzleTrainer() {
             type: 'error',
             text: isForfeit
               ? `🏳️ Forfeited (${sData.ratingDelta} ⭐). Solution is replaying on the board:`
-              : `❌ 3 Strikes! Puzzle failed (${sData.ratingDelta} ⭐). Solution is replaying on the board:`,
+              : `❌ Out of chances! Puzzle failed (${sData.ratingDelta} ⭐). Solution is replaying on the board:`,
           });
         }
       }
@@ -592,24 +715,34 @@ export default function StudentPuzzleTrainer() {
     } else if (currentPuzzle.explanation) {
       clueText = currentPuzzle.explanation;
     } else {
-      const from = currentExpected.substring(0, 2);
-      const to = currentExpected.substring(2, 4);
+      let fromSquare = '';
+      let toSquare = '';
+      const matchedExpected = findMatchingLegalMove(chessRef.current, currentExpected);
+      if (matchedExpected) {
+        fromSquare = matchedExpected.from;
+        toSquare = matchedExpected.to;
+      } else if (currentExpected.length >= 4) {
+        fromSquare = currentExpected.substring(0, 2);
+        toSquare = currentExpected.substring(2, 4);
+      }
 
       let pieceName = 'piece';
-      try {
-        const piece = chessRef.current.get(from as any);
-        if (piece) {
-          const names: Record<string, string> = {
-            p: 'pawn',
-            n: 'Knight',
-            b: 'Bishop',
-            r: 'Rook',
-            q: 'Queen',
-            k: 'King',
-          };
-          pieceName = names[piece.type] || 'piece';
-        }
-      } catch {}
+      if (fromSquare) {
+        try {
+          const piece = chessRef.current.get(fromSquare as any);
+          if (piece) {
+            const names: Record<string, string> = {
+              p: 'pawn',
+              n: 'Knight',
+              b: 'Bishop',
+              r: 'Rook',
+              q: 'Queen',
+              k: 'King',
+            };
+            pieceName = names[piece.type] || 'piece';
+          }
+        } catch {}
+      }
 
       const themes = (currentPuzzle.themes || []).map((t) => t.toLowerCase());
 
@@ -629,9 +762,11 @@ export default function StudentPuzzleTrainer() {
         clueText = `Consider a bold sacrifice to break open opponent's shelter and initiate a decisive breakthrough.`;
       } else {
         let isCapture = false;
-        try {
-          isCapture = !!chessRef.current.get(to as any);
-        } catch {}
+        if (toSquare) {
+          try {
+            isCapture = !!chessRef.current.get(toSquare as any);
+          } catch {}
+        }
 
         if (isCapture) {
           clueText = `Look for a tactical capture with your ${pieceName} that eliminates an essential defender or wins key material.`;
@@ -1019,17 +1154,28 @@ export default function StudentPuzzleTrainer() {
                     <span className="hidden sm:inline">Zen Mode • Untimed</span>
                   </span>
 
-                  {/* Lives Hearts */}
-                  <div className="flex items-center gap-0.5 text-sm" title={`${lives} attempts remaining`}>
-                    {lives === 3 ? (
-                      <><span>❤️</span><span>❤️</span><span>❤️</span></>
-                    ) : lives === 2 ? (
-                      <><span>❤️</span><span>❤️</span><span className="opacity-25">🖤</span></>
-                    ) : lives === 1 ? (
-                      <><span>❤️</span><span className="opacity-25">🖤</span><span className="opacity-25">🖤</span></>
-                    ) : (
-                      <><span className="opacity-25">🖤</span><span className="opacity-25">🖤</span><span className="opacity-25">🖤</span></>
-                    )}
+                  {/* Lives Hearts (6 chances) */}
+                  <div
+                    className="flex items-center gap-1 bg-slate-800/60 border border-slate-700/50 px-2.5 py-1 rounded-full text-xs shadow-inner"
+                    title={`${lives} / ${MAX_CHANCES} chances remaining`}
+                  >
+                    <div className="flex items-center gap-0.5">
+                      {Array.from({ length: MAX_CHANCES }).map((_, idx) => (
+                        <span
+                          key={idx}
+                          className={`text-sm transition-transform duration-200 ${
+                            idx < lives
+                              ? 'scale-100 opacity-100'
+                              : 'scale-90 opacity-20 grayscale'
+                          }`}
+                        >
+                          {idx < lives ? '❤️' : '🖤'}
+                        </span>
+                      ))}
+                    </div>
+                    <span className="text-[10px] font-mono font-bold text-amber-300 ml-1">
+                      {lives}/{MAX_CHANCES}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1073,7 +1219,7 @@ export default function StudentPuzzleTrainer() {
                   value={userMoveInput}
                   disabled={isSolved || isFailed || isReplayingSolution}
                   onChange={(e) => setUserMoveInput(e.target.value)}
-                  placeholder="Or enter move (e.g. e2e4)..."
+                  placeholder="Play on board or enter move (e.g. Nd6+, f5d6, e4)..."
                   className="flex-grow px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono text-xs focus:outline-none focus:border-amber-400 disabled:opacity-50"
                 />
                 <button

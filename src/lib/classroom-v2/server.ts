@@ -22,10 +22,16 @@ import {
   type ClassroomBookmark,
   type ChatMessage,
   type StudentResponseItem,
+  type StudentBoardColorPermission,
 } from './types';
 import { type ClassroomRealtimePayload } from './events';
 import { validateChessMove, parsePgnToMoves } from './validation';
-import { canUserMoveBoard, isCoachOrAdmin } from './permissions';
+import {
+  canUserMoveBoard,
+  isCoachOrAdmin,
+  parseBoardControllers,
+  serializeBoardControllers,
+} from './permissions';
 import { logClassroomTimelineEvent } from './timeline';
 import { logClassroomAudit } from './audit';
 import { DEFAULT_INITIAL_FEN } from './constants';
@@ -195,17 +201,10 @@ export async function getCanonicalClassroomSnapshot(
   const currentMoveIndex = boardRow?.current_move_index ?? (rawMoves.length - 1);
   const allowIllegalMoves = boardRow?.allow_illegal_moves ?? false;
 
-  // Extract controllers & lock state from board_controller_id
-  let isBoardLocked = false;
-  let boardControllers: string[] = [];
-  const rawController = boardRow?.board_controller_id || '';
-  if (rawController.startsWith('LOCKED')) {
-    isBoardLocked = true;
-    const remaining = rawController.replace(/^LOCKED:?/, '').trim();
-    boardControllers = remaining ? remaining.split(',').map((s: string) => s.trim()).filter(Boolean) : [];
-  } else if (rawController) {
-    boardControllers = rawController.split(',').map((s: string) => s.trim()).filter(Boolean);
-  }
+  // Extract controllers, student permissions & lock state from board_controller_id
+  const { isBoardLocked, boardControllers, studentPermissions } = parseBoardControllers(
+    boardRow?.board_controller_id || ''
+  );
 
   // Overlay states (Puzzle, Curriculum, Game, Quiz, Arrows)
   const overlay = getOverlayState(effectiveSessionId, rawMoves.length);
@@ -253,6 +252,7 @@ export async function getCanonicalClassroomSnapshot(
   const permissions: PermissionsState = {
     coachId: cls?.coach_id || '',
     boardControllers,
+    studentPermissions,
     isBoardLocked,
   };
 
@@ -306,20 +306,14 @@ export async function mutateClassroomMove(
   const currentFen = boardRow.fen || DEFAULT_INITIAL_FEN;
   const allowIllegalMoves = boardRow.allow_illegal_moves || false;
 
-  let isBoardLocked = false;
-  let boardControllers: string[] = [];
-  const rawController = boardRow.board_controller_id || '';
-  if (rawController.startsWith('LOCKED')) {
-    isBoardLocked = true;
-    const remaining = rawController.replace(/^LOCKED:?/, '').trim();
-    boardControllers = remaining ? remaining.split(',').map((s: string) => s.trim()).filter(Boolean) : [];
-  } else if (rawController) {
-    boardControllers = rawController.split(',').map((s: string) => s.trim()).filter(Boolean);
-  }
+  const { isBoardLocked, boardControllers, studentPermissions } = parseBoardControllers(
+    boardRow.board_controller_id || ''
+  );
 
   const permissions: PermissionsState = {
     coachId: '',
     boardControllers,
+    studentPermissions,
     isBoardLocked,
   };
 
@@ -359,6 +353,42 @@ export async function mutateClassroomMove(
       success: false,
       error: validation.error || 'Illegal chess move according to FIDE rules.',
     };
+  }
+
+  // 3b. Verify piece color permission for student (white only, black only, or both)
+  if (userRole !== 'coach' && userRole !== 'admin') {
+    const studentColorPerm = studentPermissions[userId] || 'both';
+    const moveColor = validation.color; // 'w' | 'b'
+
+    if (studentColorPerm === 'white' && moveColor !== 'w') {
+      await logClassroomAudit({
+        classId: sessionId,
+        sessionId,
+        actorId: userId,
+        actorRole: userRole,
+        action: 'UNAUTHORIZED_ATTEMPT_BLOCKED',
+        metadata: { reason: 'Student permitted to play White only attempted Black move' },
+      });
+      return {
+        success: false,
+        error: 'Permission Denied: You are only permitted to play White.',
+      };
+    }
+
+    if (studentColorPerm === 'black' && moveColor !== 'b') {
+      await logClassroomAudit({
+        classId: sessionId,
+        sessionId,
+        actorId: userId,
+        actorRole: userRole,
+        action: 'UNAUTHORIZED_ATTEMPT_BLOCKED',
+        metadata: { reason: 'Student permitted to play Black only attempted White move' },
+      });
+      return {
+        success: false,
+        error: 'Permission Denied: You are only permitted to play Black.',
+      };
+    }
   }
 
   const nextVersion = currentVersion + 1;
@@ -567,18 +597,11 @@ export async function mutateClassroomLock(
   const nextVersion = overlay.version + 1;
   overlay.version = nextVersion;
 
-  let currentControllers: string[] = [];
-  const rawController = boardRow?.board_controller_id || '';
-  if (rawController.startsWith('LOCKED')) {
-    const remaining = rawController.replace(/^LOCKED:?/, '').trim();
-    currentControllers = remaining ? remaining.split(',').map((s: string) => s.trim()).filter(Boolean) : [];
-  } else if (rawController) {
-    currentControllers = rawController.split(',').map((s: string) => s.trim()).filter(Boolean);
-  }
+  const { boardControllers: currentControllers, studentPermissions } = parseBoardControllers(
+    boardRow?.board_controller_id || ''
+  );
 
-  const newControllerStr = isLocked
-    ? `LOCKED:${currentControllers.join(',')}`
-    : currentControllers.join(',');
+  const newControllerStr = serializeBoardControllers(isLocked, studentPermissions);
 
   const { error } = await admin
     .from('live_session_board_state')
@@ -604,6 +627,7 @@ export async function mutateClassroomLock(
     eventId: `perm_${Date.now()}`,
     type: 'PERMISSIONS_CHANGED',
     boardControllers: currentControllers,
+    studentPermissions,
     isBoardLocked: isLocked,
     version: nextVersion,
     timestamp: new Date().toISOString(),
@@ -664,14 +688,15 @@ export async function mutateClassroomFreeMove(
 }
 
 /**
- * Grants or revokes board control for a specific student (Coach only).
+ * Grants or revokes board control for a specific student, specifying
+ * whether they can play White only, Black only, or Both colors (Coach only).
  */
 export async function mutateClassroomPermission(
   sessionId: string,
   userId: string,
   userRole: UserRole,
   targetStudentId: string,
-  enable: boolean,
+  enable: boolean | StudentBoardColorPermission,
   expectedVersion?: number
 ): Promise<{ success: boolean; error?: string }> {
   if (!isCoachOrAdmin(userRole)) {
@@ -684,24 +709,31 @@ export async function mutateClassroomPermission(
   const nextVersion = overlay.version + 1;
   overlay.version = nextVersion;
 
-  let isLocked = false;
-  let currentControllers: string[] = [];
-  const rawController = boardRow?.board_controller_id || '';
-  if (rawController.startsWith('LOCKED')) {
-    isLocked = true;
-    const remaining = rawController.replace(/^LOCKED:?/, '').trim();
-    currentControllers = remaining ? remaining.split(',').map((s: string) => s.trim()).filter(Boolean) : [];
-  } else if (rawController) {
-    currentControllers = rawController.split(',').map((s: string) => s.trim()).filter(Boolean);
+  const { isBoardLocked, boardControllers: currentControllers, studentPermissions: currentPerms } = parseBoardControllers(
+    boardRow?.board_controller_id || ''
+  );
+
+  let newPerm: StudentBoardColorPermission = 'none';
+  if (typeof enable === 'boolean') {
+    newPerm = enable ? 'both' : 'none';
+  } else if (enable) {
+    newPerm = enable;
   }
 
-  const updatedControllers = enable
-    ? Array.from(new Set([...currentControllers, targetStudentId]))
-    : currentControllers.filter((id) => id !== targetStudentId);
+  const updatedPerms: Record<string, StudentBoardColorPermission> = { ...currentPerms };
+  let updatedControllers = [...currentControllers];
 
-  const newControllerStr = isLocked
-    ? `LOCKED:${updatedControllers.join(',')}`
-    : updatedControllers.join(',');
+  if (newPerm === 'none') {
+    delete updatedPerms[targetStudentId];
+    updatedControllers = updatedControllers.filter((id) => id !== targetStudentId);
+  } else {
+    updatedPerms[targetStudentId] = newPerm;
+    if (!updatedControllers.includes(targetStudentId)) {
+      updatedControllers.push(targetStudentId);
+    }
+  }
+
+  const newControllerStr = serializeBoardControllers(isBoardLocked, updatedPerms);
 
   const { error } = await admin
     .from('live_session_board_state')
@@ -719,8 +751,9 @@ export async function mutateClassroomPermission(
     sessionId,
     actorId: userId,
     actorRole: userRole,
-    action: enable ? 'BOARD_CONTROL_GRANTED' : 'BOARD_CONTROL_REVOKED',
+    action: newPerm === 'none' ? 'BOARD_CONTROL_REVOKED' : 'BOARD_CONTROL_GRANTED',
     targetUserId: targetStudentId,
+    metadata: { colorPermission: newPerm },
   });
 
   await broadcastToLiveSession(sessionId, {
@@ -728,7 +761,8 @@ export async function mutateClassroomPermission(
     eventId: `perm_${Date.now()}`,
     type: 'PERMISSIONS_CHANGED',
     boardControllers: updatedControllers,
-    isBoardLocked: isLocked,
+    studentPermissions: updatedPerms,
+    isBoardLocked,
     version: nextVersion,
     timestamp: new Date().toISOString(),
   });

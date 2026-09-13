@@ -36,6 +36,8 @@ interface ClassroomShellProps {
   coachName?: string;
   scheduledStart?: string;
   durationMinutes?: number;
+  videoProvider?: 'ZOOM' | 'GOOGLE_MEET' | 'JITSI' | 'CUSTOM';
+  meetingUrl?: string;
 }
 
 export default function ClassroomShell({
@@ -46,11 +48,14 @@ export default function ClassroomShell({
   coachName = 'Academy Coach',
   scheduledStart,
   durationMinutes = 60,
+  videoProvider = 'ZOOM',
+  meetingUrl = '',
 }: ClassroomShellProps) {
   const {
     snapshot,
     isCoach,
     canMove,
+    allowedColor,
     isBoardLocked,
     userId,
     userName,
@@ -718,6 +723,7 @@ export default function ClassroomShell({
               orientation={orientation}
               isLocked={isBoardLocked}
               canMove={canMove}
+              allowedColor={allowedColor}
               allowIllegalMoves={snapshot.board.allowIllegalMoves}
               arrows={snapshot.board.arrows}
               highlights={snapshot.board.highlights}
@@ -849,6 +855,48 @@ export default function ClassroomShell({
               </>
             )}
 
+            {/* Student Playing Status Indicator */}
+            {!isCoach && (
+              <div className="flex items-center">
+                {allowedColor === 'white' && (
+                  <div
+                    className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-400/20 text-amber-300 border border-amber-400/30 flex items-center gap-1.5"
+                    title="You are permitted to play White pieces only"
+                  >
+                    <span>⚪</span>
+                    <span>Playing White</span>
+                  </div>
+                )}
+                {allowedColor === 'black' && (
+                  <div
+                    className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-300/20 text-slate-200 border border-slate-400/30 flex items-center gap-1.5"
+                    title="You are permitted to play Black pieces only"
+                  >
+                    <span>⚫</span>
+                    <span>Playing Black</span>
+                  </div>
+                )}
+                {allowedColor === 'both' && (
+                  <div
+                    className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5"
+                    title="You are permitted to play both White and Black pieces"
+                  >
+                    <span>⚔️</span>
+                    <span>Both Colors</span>
+                  </div>
+                )}
+                {allowedColor === 'none' && (
+                  <div
+                    className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-800/80 text-slate-400 border border-slate-700/60 flex items-center gap-1.5"
+                    title="Board moves are currently locked or not assigned to you"
+                  >
+                    <span>👁️</span>
+                    <span>View Only</span>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Theme Picker Button + Popup */}
             <div className="relative">
               <button
@@ -969,6 +1017,9 @@ export default function ClassroomShell({
               role={role}
               isCoach={isCoach}
               onMuteAllRef={zoomMuteAllRef}
+              videoProvider={videoProvider}
+              meetingUrl={meetingUrl}
+              coachName={coachName}
             />
           </div>
 

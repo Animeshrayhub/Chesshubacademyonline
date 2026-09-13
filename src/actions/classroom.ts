@@ -34,6 +34,7 @@ import {
   type CanonicalCurriculumState,
   type BoardArrow,
   type BoardHighlight,
+  type StudentBoardColorPermission,
 } from '@/lib/classroom-v2/types';
 import { checkProcessedMutation, recordProcessedMutation } from '@/lib/classroom-v2/idempotency';
 
@@ -147,7 +148,7 @@ export async function mutateClassroomFreeMoveAction(
 export async function mutateClassroomPermissionAction(
   sessionId: string,
   targetStudentId: string,
-  enable: boolean,
+  enable: boolean | StudentBoardColorPermission,
   expectedVersion?: number
 ) {
   const auth = await getAuthContext();

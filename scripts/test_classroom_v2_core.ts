@@ -16,6 +16,9 @@ import {
 import {
   canUserMoveBoard,
   isCoachOrAdmin,
+  parseBoardControllers,
+  serializeBoardControllers,
+  getUserAllowedColor,
 } from '../src/lib/classroom-v2/permissions';
 import {
   evaluateEventRecovery,
@@ -90,6 +93,51 @@ async function runAllTests() {
   // Multi-controller test (Buddy / Group class support)
   const multiPermissions = { coachId: 'coach_1', boardControllers: ['student_1', 'student_2'], isBoardLocked: false };
   assert(canUserMoveBoard('student', 'student_1', multiPermissions) && canUserMoveBoard('student', 'student_2', multiPermissions), 'Test 17: Multiple authorized students in boardControllers array can move');
+
+  // 4b. Student Board Color Permissions (White Only, Black Only, Both, Off)
+  const parsedFromString = parseBoardControllers('student_white:white,student_black:black,student_both:both,student_legacy');
+  assert(parsedFromString.boardControllers.length === 4, 'Test 17b: parseBoardControllers parsed 4 controllers');
+  assert(parsedFromString.studentPermissions['student_white'] === 'white', 'Test 17c: student_white assigned white only');
+  assert(parsedFromString.studentPermissions['student_black'] === 'black', 'Test 17d: student_black assigned black only');
+  assert(parsedFromString.studentPermissions['student_both'] === 'both', 'Test 17e: student_both assigned both');
+  assert(parsedFromString.studentPermissions['student_legacy'] === 'both', 'Test 17f: legacy controller without color defaulted to both');
+
+  const serialized = serializeBoardControllers(false, parsedFromString.studentPermissions);
+  assert(serialized.includes('student_white:white') && serialized.includes('student_black:black'), 'Test 17g: serializeBoardControllers preserves color tokens');
+
+  const colorPermsState = {
+    coachId: 'coach_1',
+    boardControllers: ['student_white', 'student_black', 'student_both'],
+    studentPermissions: {
+      student_white: 'white' as const,
+      student_black: 'black' as const,
+      student_both: 'both' as const,
+    },
+    isBoardLocked: false,
+  };
+
+  // Coach can move any color
+  assert(getUserAllowedColor('coach', 'coach_1', colorPermsState) === 'both', 'Test 17h: Coach allowed both colors');
+  assert(canUserMoveBoard('coach', 'coach_1', colorPermsState, 'w') && canUserMoveBoard('coach', 'coach_1', colorPermsState, 'b'), 'Test 17i: Coach can move both White and Black');
+
+  // Student White only
+  assert(getUserAllowedColor('student', 'student_white', colorPermsState) === 'white', 'Test 17j: student_white allowedColor is white');
+  assert(canUserMoveBoard('student', 'student_white', colorPermsState, 'w'), 'Test 17k: student_white CAN move White pieces');
+  assert(!canUserMoveBoard('student', 'student_white', colorPermsState, 'b'), 'Test 17l: student_white CANNOT move Black pieces');
+
+  // Student Black only
+  assert(getUserAllowedColor('student', 'student_black', colorPermsState) === 'black', 'Test 17m: student_black allowedColor is black');
+  assert(canUserMoveBoard('student', 'student_black', colorPermsState, 'b'), 'Test 17n: student_black CAN move Black pieces');
+  assert(!canUserMoveBoard('student', 'student_black', colorPermsState, 'w'), 'Test 17o: student_black CANNOT move White pieces');
+
+  // Student Both
+  assert(getUserAllowedColor('student', 'student_both', colorPermsState) === 'both', 'Test 17p: student_both allowedColor is both');
+  assert(canUserMoveBoard('student', 'student_both', colorPermsState, 'w') && canUserMoveBoard('student', 'student_both', colorPermsState, 'b'), 'Test 17q: student_both CAN move both White and Black');
+
+  // Student Off / No control
+  assert(getUserAllowedColor('student', 'student_none', colorPermsState) === 'none', 'Test 17r: unauthorized student allowedColor is none');
+  assert(!canUserMoveBoard('student', 'student_none', colorPermsState, 'w'), 'Test 17s: unauthorized student cannot move White');
+  assert(!canUserMoveBoard('student', 'student_none', colorPermsState, 'b'), 'Test 17t: unauthorized student cannot move Black');
 
   // 5. Reducer State Reconciliation
   const initialSnapshot = createDefaultSnapshot('cls_1', 'sess_1', 'Chess Masterclass', 'Coach Anand');

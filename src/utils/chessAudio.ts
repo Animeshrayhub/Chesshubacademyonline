@@ -25,7 +25,7 @@ export function isChessSoundEnabled(): boolean {
   return soundEnabled;
 }
 
-export function playChessSound(type: 'move' | 'capture' | 'check' | 'castle' | 'victory' | 'hand' | 'quiz_correct' | 'quiz_wrong') {
+export function playChessSound(type: 'move' | 'capture' | 'check' | 'castle' | 'victory' | 'hand' | 'quiz_correct' | 'quiz_wrong' | 'critical_hit') {
   if (!soundEnabled) return;
   const ctx = getAudioContext();
   if (!ctx) return;
@@ -83,6 +83,30 @@ export function playChessSound(type: 'move' | 'capture' | 'check' | 'castle' | '
     gain.connect(ctx.destination);
     osc.start(now);
     osc.stop(now + 0.2);
+  } else if (type === 'critical_hit') {
+    // Dramatic Boss Battle Strike (impact + metallic shimmer)
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(320, now);
+    osc.frequency.exponentialRampToValueAtTime(60, now + 0.18);
+    gain.gain.setValueAtTime(0.4, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.18);
+
+    const chime = ctx.createOscillator();
+    const chimeGain = ctx.createGain();
+    chime.type = 'sine';
+    chime.frequency.setValueAtTime(1318.5, now + 0.05); // E6
+    chimeGain.gain.setValueAtTime(0.25, now + 0.05);
+    chimeGain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    chime.connect(chimeGain);
+    chimeGain.connect(ctx.destination);
+    chime.start(now + 0.05);
+    chime.stop(now + 0.3);
   } else if (type === 'castle') {
     // Double thud
     playChessSound('move');

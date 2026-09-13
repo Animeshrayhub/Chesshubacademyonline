@@ -82,9 +82,12 @@ export interface CanonicalCurriculumState {
   moves: string[];
 }
 
+export type StudentBoardColorPermission = 'white' | 'black' | 'both' | 'none';
+
 export interface PermissionsState {
   coachId: string;
   boardControllers: string[]; // List of userIds allowed to move (supports 1-to-1 and future group)
+  studentPermissions?: Record<string, StudentBoardColorPermission>; // Student-specific color permissions: 'white' | 'black' | 'both' | 'none'
   isBoardLocked: boolean;
 }
 
@@ -154,6 +157,7 @@ export interface ParticipantInfo {
   role: UserRole;
   isOnline: boolean;
   hasBoardControl: boolean;
+  colorPermission?: StudentBoardColorPermission;
   raisedHand: boolean;
 }
 

@@ -25,6 +25,9 @@ export interface BotLevelConfig {
   depth: number;
   skillLevel: number;
   avatarIcon: string;
+  openingStyle?: string;
+  speciality?: string;
+  personality?: string;
 }
 
 export interface StudentBotProfile {

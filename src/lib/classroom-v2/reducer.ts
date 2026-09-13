@@ -39,6 +39,7 @@ export function createDefaultSnapshot(
   const permissions: PermissionsState = {
     coachId: '',
     boardControllers: [],
+    studentPermissions: {},
     isBoardLocked: false,
   };
 
@@ -84,8 +85,7 @@ export function classroomReducer(
     action.type !== 'PRIVATE_CHAT_MESSAGE' &&
     action.type !== 'STUDENT_RESPONSE' &&
     action.type !== 'REACTION' &&
-    action.type !== 'PERMISSIONS_CHANGED' &&
-    action.type !== 'BOARD_STATE_UPDATED'
+    action.type !== 'PERMISSIONS_CHANGED'
   ) {
     if (action.version && action.version < state.version) {
       return state;
@@ -154,6 +154,7 @@ export function classroomReducer(
         permissions: {
           ...state.permissions,
           boardControllers: action.boardControllers,
+          studentPermissions: action.studentPermissions || state.permissions.studentPermissions || {},
           isBoardLocked: action.isBoardLocked,
         },
         board: {
