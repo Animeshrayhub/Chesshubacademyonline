@@ -25,7 +25,7 @@ export function isChessSoundEnabled(): boolean {
   return soundEnabled;
 }
 
-export function playChessSound(type: 'move' | 'capture' | 'check' | 'castle' | 'victory' | 'hand' | 'quiz_correct' | 'quiz_wrong' | 'critical_hit') {
+export function playChessSound(type: 'move' | 'capture' | 'check' | 'castle' | 'victory' | 'hand' | 'quiz_correct' | 'quiz_wrong' | 'critical_hit' | 'fanfare') {
   if (!soundEnabled) return;
   const ctx = getAudioContext();
   if (!ctx) return;
@@ -126,6 +126,29 @@ export function playChessSound(type: 'move' | 'capture' | 'check' | 'castle' | '
       gain.connect(ctx.destination);
       osc.start(startTime);
       osc.stop(startTime + 0.3);
+    });
+  } else if (type === 'fanfare') {
+    // Majestic Brass Fanfare: Ascending heroic brass chords with rich harmonics
+    const notes = [
+      { time: 0.00, chord: [523.25, 659.25, 783.99], dur: 0.18 }, // C major
+      { time: 0.18, chord: [587.33, 739.99, 880.00], dur: 0.18 }, // D major
+      { time: 0.38, chord: [659.25, 830.61, 987.77], dur: 0.22 }, // E major
+      { time: 0.62, chord: [523.25, 659.25, 783.99, 1046.50], dur: 0.70 }, // High C major Grand Finale
+    ];
+
+    notes.forEach(({ time, chord, dur }) => {
+      chord.forEach((freq) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle'; // Warm brass tone
+        osc.frequency.setValueAtTime(freq, now + time);
+        gain.gain.setValueAtTime(0.22, now + time);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + time + dur);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + time);
+        osc.stop(now + time + dur);
+      });
     });
   } else if (type === 'hand') {
     // Soft bell notification

@@ -242,6 +242,26 @@ export default function StudentBotTrainingView() {
   const [pgnCopiedToast, setPgnCopiedToast] = useState<boolean>(false);
   const [shareLinkCopiedToast, setShareLinkCopiedToast] = useState<boolean>(false);
 
+  // Post-Victory Confetti & Fanfare Celebration State
+  const [showConfetti, setShowConfetti] = useState<boolean>(false);
+
+  const triggerVictoryCelebration = (customSpeech?: string) => {
+    setShowConfetti(true);
+    try {
+      playChessSound('fanfare');
+      playChessSound('victory');
+    } catch {}
+    if (voiceNarrationOn) {
+      speakCoachAdvice(
+        customSpeech || 'Checkmate! Outstanding victory! You defeated the bot and earned bonus XP!',
+        { force: true }
+      );
+    }
+    setTimeout(() => {
+      setShowConfetti(false);
+    }, 6000);
+  };
+
   // PGN & Replay Export Utilities
   const generatePgn = (game: {
     whiteName: string;
@@ -954,8 +974,8 @@ ${formattedMoves || '1. e4'} ${game.result}`;
         setChestQuizSelectedOption(null);
         setChestQuizAnswerSubmitted(false);
         const shuffled = [...TACTICAL_QUIZ_QUESTIONS].sort(() => 0.5 - Math.random()).slice(0, 3);
-        setChestQuizQuestions(shuffled);
-        try { playChessSound('victory'); } catch {}
+        const botName = BOT_LEVELS.find((b) => b.level === selectedLevel)?.name || 'the Bot';
+        triggerVictoryCelebration(`Magnificent victory! You defeated ${botName}! Loot chest unlocked!`);
       } else {
         if (result === 'loss') setStudentHp(0);
         setShowAnalysisModal(true);
@@ -1213,29 +1233,113 @@ ${formattedMoves || '1. e4'} ${game.result}`;
 
   return (
     <div className="space-y-4 pb-20">
-      {/* Ultra-Compact Gaming HUD Header */}
-      <div className="bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-2xl px-4 py-3 shadow-xl flex flex-col md:flex-row items-center justify-between gap-3">
-        {/* Left: Compact Brand & Rank */}
-        <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center text-xl shadow-md shadow-amber-500/20">
-              ♟️
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base font-black text-white tracking-tight">Bot Training</h1>
-                <span className="text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                  Level {profile?.current_level || 1}
+      {/* Sleek Micro-Grid HUD (Unified Top Bar) */}
+      <div className="bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-2xl p-2.5 shadow-xl">
+        <div className="grid grid-cols-1 lg:grid-cols-12 items-center gap-2.5">
+          {/* Col 1: Left Brand, Level & Rating (lg:col-span-4) */}
+          <div className="flex items-center justify-between lg:justify-start gap-2.5 lg:col-span-4">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center text-base shadow-md shadow-amber-500/20 shrink-0">
+                ♟️
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-sm font-black text-white tracking-tight">Bot Arena</span>
+                <span className="text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded-full">
+                  Lvl {profile?.current_level || 1}
+                </span>
+                <span className="text-[10px] font-black font-mono text-amber-400 bg-slate-950/80 border border-slate-800 px-2 py-0.5 rounded-lg shadow-inner">
+                  ⚡ {profile?.rating || 400}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 hidden sm:block">
-                Battle 10 bots, conquer tactical quests & master openings
-              </p>
+            </div>
+
+            {/* Mobile Audio Quick Toggle */}
+            <div className="flex items-center gap-1 lg:hidden">
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !soundOn;
+                  setSoundOn(next);
+                  setChessSoundEnabled(next);
+                }}
+                className="p-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs"
+              >
+                {soundOn ? '🔊' : '🔇'}
+              </button>
             </div>
           </div>
 
-          {/* Quick Audio & Dev Toggle on mobile */}
-          <div className="flex items-center gap-1.5 md:hidden">
+          {/* Col 2: Center Slim XP Mini-Meter (lg:col-span-4) */}
+          <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl px-3 py-1.5 space-y-1 lg:col-span-4">
+            <div className="flex items-center justify-between text-[10px] font-mono leading-none">
+              <span className="text-slate-400 font-semibold flex items-center gap-1">
+                <span>⭐ Tier {currentLevelNum}</span>
+                <span className="text-slate-600">➔</span>
+                <span className="text-amber-400 font-bold">Tier {Math.min(10, currentLevelNum + 1)}</span>
+              </span>
+              <span className="font-extrabold text-amber-400">{xpInLevel}/{xpTarget} XP ({xpPercent}%)</span>
+            </div>
+            <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-amber-500 via-emerald-400 to-sky-400 rounded-full transition-all duration-700 shadow-sm shadow-amber-500/50"
+                style={{ width: `${xpPercent}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Col 3: Right Action Chips Grid (lg:col-span-4) */}
+          <div className="flex items-center flex-wrap gap-1.5 justify-end lg:col-span-4">
+            {/* Puzzles Chip */}
+            <div className="flex items-center gap-1 bg-slate-950/80 border border-slate-800/80 rounded-lg px-2 py-1 text-[11px] font-bold text-sky-400 shadow-inner">
+              <span>🧩</span>
+              <span>{profile?.puzzles_solved || 0}</span>
+            </div>
+
+            {/* Streak & Missions Chip */}
+            <button
+              type="button"
+              onClick={() => setShowMissionsModal(true)}
+              className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold border transition-all ${
+                allCompleted && !dailyBonusClaimed
+                  ? 'bg-amber-500/20 border-amber-500 text-amber-300 animate-pulse ring-1 ring-amber-500'
+                  : 'bg-slate-950/80 border-slate-800 hover:border-amber-500/50 text-slate-300'
+              }`}
+              title="Daily Training Missions"
+            >
+              <span>🔥</span>
+              <span>{streakCount}d</span>
+              <span className={`text-[9px] font-mono px-1 rounded ${
+                allCompleted ? 'bg-emerald-500/20 text-emerald-300 font-black' : 'bg-slate-800 text-amber-400'
+              }`}>
+                {completedMissionsCount}/3
+              </span>
+            </button>
+
+            {/* AI Voice Toggle */}
+            <button
+              type="button"
+              onClick={() => {
+                const next = !voiceNarrationOn;
+                setVoiceNarrationOn(next);
+                setCoachVoiceEnabled(next);
+                if (next) {
+                  speakCoachAdvice('Coach voice enabled! Ready for your session!', { force: true });
+                } else {
+                  stopCoachVoice();
+                }
+              }}
+              title={voiceNarrationOn ? 'AI Coach Voice is ON' : 'AI Coach Voice is Muted'}
+              className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] font-bold transition-all ${
+                voiceNarrationOn
+                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                  : 'bg-slate-950/80 border-slate-800 text-slate-500'
+              }`}
+            >
+              <span>{voiceNarrationOn ? '🗣️' : '🔇'}</span>
+              <span className="text-[9px] uppercase font-mono">{voiceNarrationOn ? 'Voice' : 'Off'}</span>
+            </button>
+
+            {/* Sound Toggle (Desktop) */}
             <button
               type="button"
               onClick={() => {
@@ -1243,115 +1347,32 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                 setSoundOn(next);
                 setChessSoundEnabled(next);
               }}
-              title={soundOn ? 'Sound On' : 'Muted'}
-              className="p-2 rounded-xl bg-slate-850 border border-slate-700 text-sm"
-            >
-              {soundOn ? '🔊' : '🔇'}
-            </button>
-          </div>
-        </div>
-
-        {/* Right: Micro Grid Stat Pills */}
-        <div className="flex items-center flex-wrap gap-2 w-full md:w-auto justify-end">
-          {/* Rating Stat Pill */}
-          <div className="flex items-center gap-1.5 bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-1.5 shadow-inner">
-            <span className="text-xs">⚡</span>
-            <span className="text-xs font-black text-amber-400">{profile?.rating || 400}</span>
-            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Rating</span>
-          </div>
-
-          {/* Puzzles Solved Pill */}
-          <div className="flex items-center gap-1.5 bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-1.5 shadow-inner">
-            <span className="text-xs">🧩</span>
-            <span className="text-xs font-black text-sky-400">{profile?.puzzles_solved || 0}</span>
-            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Puzzles</span>
-          </div>
-
-          {/* Daily Streak & Missions Button */}
-          <button
-            type="button"
-            onClick={() => setShowMissionsModal(true)}
-            className={`flex items-center gap-2 rounded-xl px-3 py-1.5 border transition-all ${
-              allCompleted && !dailyBonusClaimed
-                ? 'bg-amber-500/20 border-amber-500 text-amber-300 animate-pulse ring-1 ring-amber-500'
-                : 'bg-slate-950/80 border-slate-800 hover:border-amber-500/50 text-slate-300'
-            }`}
-            title="View Daily Training Missions"
-          >
-            <span className="text-xs">🔥</span>
-            <span className="text-xs font-extrabold text-white">{streakCount}d Streak</span>
-            <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
-              allCompleted
-                ? 'bg-emerald-500/20 text-emerald-300 font-black'
-                : 'bg-slate-800 text-amber-400 font-bold'
-            }`}>
-              {completedMissionsCount}/3
-            </span>
-            {allCompleted && !dailyBonusClaimed && (
-              <span className="text-[9px] font-black text-amber-400 bg-amber-500/30 px-1.5 py-0.5 rounded animate-bounce">
-                Claim!
-              </span>
-            )}
-          </button>
-
-          {/* Sound Toggle (Desktop) */}
-          <button
-            type="button"
-            onClick={() => {
-              const next = !soundOn;
-              setSoundOn(next);
-              setChessSoundEnabled(next);
-            }}
-            title={soundOn ? 'Sound is ON' : 'Muted'}
-            className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${
-              soundOn
-                ? 'bg-slate-950/80 border-slate-800 text-slate-300 hover:border-amber-500/50'
-                : 'bg-rose-950/30 border-rose-500/30 text-rose-400'
-            }`}
-          >
-            <span>{soundOn ? '🔊' : '🔇'}</span>
-            <span className="text-[10px] uppercase font-mono">{soundOn ? 'SFX' : 'Muted'}</span>
-          </button>
-
-          {/* AI Coach Voice Narration Toggle */}
-          <button
-            type="button"
-            onClick={() => {
-              const next = !voiceNarrationOn;
-              setVoiceNarrationOn(next);
-              setCoachVoiceEnabled(next);
-              if (next) {
-                speakCoachAdvice('Coach voice enabled! Ready for your training session!', { force: true });
-              } else {
-                stopCoachVoice();
-              }
-            }}
-            title={voiceNarrationOn ? 'AI Coach Voice is ON' : 'AI Coach Voice is Muted'}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${
-              voiceNarrationOn
-                ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 hover:bg-amber-500/25'
-                : 'bg-slate-950/80 border-slate-800 text-slate-500'
-            }`}
-          >
-            <span>{voiceNarrationOn ? '🗣️' : '🔇'}</span>
-            <span className="text-[10px] uppercase font-mono">{voiceNarrationOn ? 'Coach Voice' : 'Voice Off'}</span>
-          </button>
-
-          {/* Dev Diagnostics Toggle Button */}
-          {process.env.NODE_ENV === 'development' && (
-            <button
-              type="button"
-              onClick={() => setShowDevDiagnostics((d) => !d)}
-              className={`p-1.5 rounded-xl border text-xs transition-all ${
-                showDevDiagnostics
-                  ? 'bg-amber-500/20 border-amber-500 text-amber-300'
-                  : 'bg-slate-950/80 border-slate-800 text-slate-500 hover:text-amber-400'
+              title={soundOn ? 'SFX ON' : 'SFX Muted'}
+              className={`hidden sm:flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] font-bold transition-all ${
+                soundOn
+                  ? 'bg-slate-950/80 border-slate-800 text-slate-300 hover:border-amber-500/50'
+                  : 'bg-rose-950/30 border-rose-500/30 text-rose-400'
               }`}
-              title="Toggle Dev Diagnostics"
             >
-              🔧
+              <span>{soundOn ? '🔊' : '🔇'}</span>
             </button>
-          )}
+
+            {/* Dev Diagnostics Toggle */}
+            {process.env.NODE_ENV === 'development' && (
+              <button
+                type="button"
+                onClick={() => setShowDevDiagnostics((d) => !d)}
+                className={`p-1 rounded-lg border text-xs ${
+                  showDevDiagnostics
+                    ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+                    : 'bg-slate-950/80 border-slate-800 text-slate-500'
+                }`}
+                title="Toggle Dev Diagnostics"
+              >
+                🔧
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1371,36 +1392,6 @@ ${formattedMoves || '1. e4'} ${game.result}`;
           </div>
         </div>
       )}
-
-      {/* Student Bot Ranking XP Progression Bar */}
-      <div className="bg-slate-900/90 backdrop-blur-sm border border-slate-800 rounded-2xl px-4 py-2.5 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5 shrink-0">
-          <span className="text-base">⭐</span>
-          <div>
-            <div className="text-xs font-black text-white flex items-center gap-2">
-              <span>Level {currentLevelNum} ({BOT_LEVELS.find((b) => b.level === currentLevelNum)?.name.replace(/Level \d+ — /, '') || 'Pawn'})</span>
-              <span className="text-[10px] text-slate-500">➔</span>
-              <span className="text-amber-400 font-extrabold">Level {Math.min(10, currentLevelNum + 1)}</span>
-            </div>
-            <div className="text-[10px] text-slate-400">
-              {xpRemaining} XP needed to advance to next Bot Tier
-            </div>
-          </div>
-        </div>
-
-        <div className="flex-1 max-w-md w-full space-y-1">
-          <div className="flex items-center justify-between text-[10px] font-mono">
-            <span className="text-slate-400 font-semibold">Tier Mastery Progress</span>
-            <span className="font-extrabold text-amber-400">{xpInLevel} / {xpTarget} XP ({xpPercent}%)</span>
-          </div>
-          <div className="w-full bg-slate-950 rounded-full h-2 border border-slate-800/80 overflow-hidden relative">
-            <div
-              className="h-full bg-gradient-to-r from-amber-500 via-emerald-400 to-sky-400 rounded-full transition-all duration-700 shadow-sm shadow-amber-500/50"
-              style={{ width: `${xpPercent}%` }}
-            />
-          </div>
-        </div>
-      </div>
 
       {/* Sleek Segmented Tab Navigation Bar */}
       <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-1.5 shadow-lg overflow-x-auto no-scrollbar">
@@ -3616,7 +3607,7 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                   onClick={() => {
                     setDailyBonusClaimed(true);
                     setStreakCount((s) => s + 1);
-                    try { playChessSound('victory'); } catch {}
+                    triggerVictoryCelebration('Streak reward unlocked! Plus 100 XP gained!');
                   }}
                   className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-amber-500/25 animate-bounce"
                 >
@@ -3637,22 +3628,26 @@ ${formattedMoves || '1. e4'} ${game.result}`;
       )}
 
       {/* Floating Gaming Quick Dock (Bottom Type Navigation) */}
-      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-slate-950/90 backdrop-blur-xl border border-slate-700/80 rounded-full px-3 py-1.5 shadow-2xl flex items-center gap-1 sm:gap-1.5 ring-1 ring-white/10">
+      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-slate-950/95 backdrop-blur-xl border border-slate-700/80 rounded-full px-3 py-1.5 shadow-2xl flex items-center gap-1 sm:gap-1.5 ring-1 ring-white/10">
         {[
           { id: 'play', icon: '♟️', label: 'Play' },
           { id: 'quests', icon: '🎯', label: 'Quests' },
           { id: 'openings', icon: '🌳', label: 'Openings' },
           { id: 'leaderboard', icon: '🏆', label: 'Rank' },
           { id: 'history', icon: '📜', label: 'History' },
+          { id: 'plan', icon: '🧩', label: 'Puzzles' },
         ].map((item) => {
           const isActive = activeTab === item.id;
           return (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id as any)}
+              onClick={() => {
+                setActiveTab(item.id as any);
+                try { playChessSound('move'); } catch {}
+              }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black transition-all ${
                 isActive
-                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-lg shadow-amber-500/30 ring-1 ring-amber-300'
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-lg shadow-amber-500/30 ring-1 ring-amber-300 scale-105'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
               }`}
             >
@@ -3667,7 +3662,10 @@ ${formattedMoves || '1. e4'} ${game.result}`;
         {/* Quick Missions trigger in bottom dock */}
         <button
           type="button"
-          onClick={() => setShowMissionsModal(true)}
+          onClick={() => {
+            setShowMissionsModal(true);
+            try { playChessSound('move'); } catch {}
+          }}
           className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-black transition-all ${
             allCompleted && !dailyBonusClaimed
               ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white animate-bounce'
@@ -3679,6 +3677,64 @@ ${formattedMoves || '1. e4'} ${game.result}`;
           <span className="text-[11px] font-mono">{completedMissionsCount}/3</span>
         </button>
       </div>
+
+      {/* Post-Victory Confetti & Fanfare Celebration Overlay */}
+      {showConfetti && (
+        <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
+          <style>{`
+            @keyframes confettiFall {
+              0% { transform: translateY(-20px) rotate(0deg) scale(0.8); opacity: 1; }
+              50% { transform: translateY(50vh) rotate(180deg) scale(1.1); opacity: 0.9; }
+              100% { transform: translateY(105vh) rotate(360deg) scale(0.6); opacity: 0; }
+            }
+          `}</style>
+          {Array.from({ length: 45 }).map((_, i) => {
+            const colors = ['#f59e0b', '#10b981', '#38bdf8', '#ec4899', '#8b5cf6', '#eab308', '#ef4444'];
+            const bg = colors[i % colors.length];
+            const left = `${(i * 2.2 + 2) % 96}%`;
+            const delay = `${(i % 12) * 0.18}s`;
+            const size = `${(i % 3) * 3 + 8}px`;
+            return (
+              <div
+                key={i}
+                className="absolute top-0 rounded-sm shadow-md"
+                style={{
+                  left,
+                  width: size,
+                  height: size,
+                  backgroundColor: bg,
+                  animation: `confettiFall ${2.5 + (i % 4) * 0.5}s cubic-bezier(0.25, 1, 0.5, 1) infinite`,
+                  animationDelay: delay,
+                }}
+              />
+            );
+          })}
+          {/* Victory Announcement Banner Overlay */}
+          <div className="absolute top-8 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
+            <div className="bg-slate-950/95 border-2 border-amber-400/80 rounded-2xl px-6 py-3 shadow-2xl shadow-amber-500/30 flex items-center gap-3 backdrop-blur-xl animate-in zoom-in-90 fade-in duration-300">
+              <span className="text-3xl animate-bounce">🏆</span>
+              <div>
+                <div className="text-sm font-black text-amber-300 uppercase tracking-widest flex items-center gap-2">
+                  Victory Achieved!
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/30 text-amber-200 border border-amber-400/40">
+                    +XP Awarded
+                  </span>
+                </div>
+                <div className="text-xs text-slate-300 font-semibold">
+                  Glorious checkmate! Outstanding game performance!
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowConfetti(false)}
+                className="ml-2 text-slate-400 hover:text-white text-xs px-2 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-800"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
