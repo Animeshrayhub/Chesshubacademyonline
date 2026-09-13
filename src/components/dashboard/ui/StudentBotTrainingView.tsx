@@ -30,6 +30,7 @@ import {
   type BookPositionSummary,
   type BookMoveContinuation,
 } from '@/lib/bot-training/openingBookExplorer';
+import { BOT_SCOUT_DATA, type BotScoutIntel } from '@/lib/bot-training/botScoutData';
 import type {
   StudentColor,
   TimeControlOption,
@@ -273,6 +274,13 @@ export default function StudentBotTrainingView() {
 
   // Interactive Opening Book Explorer State
   const [showBookExplorer, setShowBookExplorer] = useState<boolean>(false);
+
+  // Bot Opening Repertoire Scout State
+  const [showScoutIntel, setShowScoutIntel] = useState<boolean>(true);
+  const currentBotScout: BotScoutIntel = useMemo(
+    () => BOT_SCOUT_DATA[selectedLevel] || BOT_SCOUT_DATA[1],
+    [selectedLevel]
+  );
 
   // Compute live opening book continuations from current move history
   const currentBookSummary: BookPositionSummary = useMemo(() => {
@@ -1640,6 +1648,99 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                     );
                   })}
                 </div>
+
+                {/* Bot Opening Repertoire Scout Card */}
+                {(() => {
+                  const botMatches = recentGames.filter((g) => g.bot_level === selectedLevel);
+                  const botWins = botMatches.filter((g) => g.result === 'win').length;
+                  const botLosses = botMatches.filter((g) => g.result === 'loss').length;
+                  const botDraws = botMatches.filter((g) => g.result === 'draw').length;
+                  const botWinPct = botMatches.length > 0 ? Math.round((botWins / botMatches.length) * 100) : null;
+
+                  return (
+                    <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-3 shadow-inner">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-2xl">{currentBotScout.avatar}</span>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-black text-white">{currentBotScout.name}</span>
+                              <span className="text-[10px] font-mono font-black text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                                Rating {currentBotScout.rating}
+                              </span>
+                              <span className="text-[10px] font-bold text-sky-400 bg-sky-500/10 border border-sky-500/20 px-2 py-0.5 rounded-full">
+                                {currentBotScout.playstyleTag}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                              Signature Trap: <strong className="text-amber-300 font-semibold">{currentBotScout.signatureTrap}</strong>
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Head-to-Head record */}
+                        <div className="flex items-center gap-2 shrink-0 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg text-xs font-mono">
+                          <span className="text-slate-400 text-[10px] uppercase font-bold">H2H:</span>
+                          {botMatches.length > 0 ? (
+                            <span className="font-black text-white">
+                              <span className="text-emerald-400">{botWins}W</span> - <span className="text-rose-400">{botLosses}L</span> - <span className="text-slate-400">{botDraws}D</span> ({botWinPct}%)
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-slate-500 font-bold">No matches yet</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Repertoire Grid */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-xs">
+                        {/* Repertoire as White */}
+                        <div className="bg-slate-900/90 border border-slate-800/80 rounded-xl p-2.5 space-y-1">
+                          <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
+                            <span className="flex items-center gap-1 text-slate-200">
+                              <span>♔</span> White Repertoire:
+                            </span>
+                            <span className="font-mono text-amber-400">{currentBotScout.whiteRepertoire.frequency}</span>
+                          </div>
+                          <div className="font-extrabold text-white text-[11px]">
+                            {currentBotScout.whiteRepertoire.primary}
+                          </div>
+                          <p className="text-[10px] text-slate-400 leading-snug">
+                            {currentBotScout.whiteRepertoire.plan}
+                          </p>
+                        </div>
+
+                        {/* Repertoire as Black */}
+                        <div className="bg-slate-900/90 border border-slate-800/80 rounded-xl p-2.5 space-y-1">
+                          <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
+                            <span className="flex items-center gap-1 text-slate-200">
+                              <span>♚</span> Black Repertoire:
+                            </span>
+                            <span className="font-mono text-emerald-400">vs 1.e4 & 1.d4</span>
+                          </div>
+                          <div className="font-extrabold text-white text-[11px] truncate">
+                            {currentBotScout.blackRepertoire.vsE4}
+                          </div>
+                          <p className="text-[10px] text-slate-400 leading-snug">
+                            {currentBotScout.blackRepertoire.plan}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Coach Counter-Strategy & Weakness */}
+                      <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 flex items-start gap-2.5 text-xs text-amber-200">
+                        <span className="text-base leading-none mt-0.5 shrink-0">🛡️</span>
+                        <div className="space-y-0.5 leading-snug">
+                          <div className="font-extrabold text-amber-300 text-[11px]">
+                            Exploitable Weakness & Coach Counter-Strategy:
+                          </div>
+                          <div className="text-[10px] text-slate-300 font-medium">
+                            <strong className="text-rose-300 font-bold">{currentBotScout.weakness}</strong> — {currentBotScout.coachAdvice}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Game Settings */}
