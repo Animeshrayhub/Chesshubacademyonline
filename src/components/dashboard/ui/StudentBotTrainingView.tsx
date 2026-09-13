@@ -15,7 +15,7 @@ import {
   generateWeaknessPuzzlesAction,
   submitPuzzleAttemptAction,
 } from '@/actions/botTraining';
-import { playChessSound, setChessSoundEnabled } from '@/utils/chessAudio';
+import { playChessSound, setChessSoundEnabled, speakCoachAdvice, stopCoachVoice, setCoachVoiceEnabled } from '@/utils/chessAudio';
 import { computeBotMove, identifyOpeningFromMoves, safeExecuteMove } from '@/lib/bot-training/chessBotEngine';
 import { TACTICAL_QUIZ_QUESTIONS } from '@/lib/bot-training/tacticalQuizData';
 import { ALL_OPENING_ADVENTURES, FRIED_LIVER_ADVENTURE } from '@/lib/bot-training/openingTreeData';
@@ -223,8 +223,9 @@ export default function StudentBotTrainingView() {
   const [quizAnswerSubmitted, setQuizAnswerSubmitted] = useState<boolean>(false);
   const [quizScore, setQuizScore] = useState<number>(0);
 
-  // Audio SFX Control State
+  // Audio SFX & AI Coach Voice Control State
   const [soundOn, setSoundOn] = useState<boolean>(true);
+  const [voiceNarrationOn, setVoiceNarrationOn] = useState<boolean>(true);
 
   // Opening Tree Adventure State
   const [selectedAdventureId, setSelectedAdventureId] = useState<string>('italian-fried-liver');
@@ -619,7 +620,9 @@ ${formattedMoves || '1. e4'} ${game.result}`;
           }
 
           if (game.inCheck()) {
-            setCoachTipDialogue("⚠️ Your King is in CHECK! Check your 3 options (CPR): Capture the attacker, Protect with a block, or Run your King!");
+            const checkMsg = "Warning: Your King is in CHECK! Remember your CPR options: Capture the attacker, Protect with a block, or Run your King!";
+            setCoachTipDialogue(checkMsg);
+            if (voiceNarrationOn) speakCoachAdvice(checkMsg);
           }
 
           try {
@@ -844,7 +847,9 @@ ${formattedMoves || '1. e4'} ${game.result}`;
       }
 
       if (gameRef.current.inCheck()) {
-        setCoachTipDialogue("🎯 CHECK! You have the Bot's King under fire! Look for forcing follow-up moves.");
+        const studentCheckMsg = "Check! You have the Bot's King under fire! Look for forcing follow-up moves.";
+        setCoachTipDialogue(studentCheckMsg);
+        if (voiceNarrationOn) speakCoachAdvice(studentCheckMsg);
       }
 
       if (bossBattleMode) {
@@ -1306,6 +1311,30 @@ ${formattedMoves || '1. e4'} ${game.result}`;
           >
             <span>{soundOn ? '🔊' : '🔇'}</span>
             <span className="text-[10px] uppercase font-mono">{soundOn ? 'SFX' : 'Muted'}</span>
+          </button>
+
+          {/* AI Coach Voice Narration Toggle */}
+          <button
+            type="button"
+            onClick={() => {
+              const next = !voiceNarrationOn;
+              setVoiceNarrationOn(next);
+              setCoachVoiceEnabled(next);
+              if (next) {
+                speakCoachAdvice('Coach voice enabled! Ready for your training session!', { force: true });
+              } else {
+                stopCoachVoice();
+              }
+            }}
+            title={voiceNarrationOn ? 'AI Coach Voice is ON' : 'AI Coach Voice is Muted'}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${
+              voiceNarrationOn
+                ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 hover:bg-amber-500/25'
+                : 'bg-slate-950/80 border-slate-800 text-slate-500'
+            }`}
+          >
+            <span>{voiceNarrationOn ? '🗣️' : '🔇'}</span>
+            <span className="text-[10px] uppercase font-mono">{voiceNarrationOn ? 'Coach Voice' : 'Voice Off'}</span>
           </button>
 
           {/* Dev Diagnostics Toggle Button */}
@@ -2023,9 +2052,20 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                           <span>{currentQuest.options[quizSelectedOption!].isCorrect ? '🎉 EXCELLENT!' : '❌ NOT QUITE!'}</span>
                         </div>
                         <div>{currentQuest.options[quizSelectedOption!].explanation}</div>
-                        <div className="mt-2 text-[11px] font-bold text-amber-300 flex items-center gap-1.5 bg-slate-950/60 p-2.5 rounded-lg border border-amber-500/20">
-                          <span>💡 Coach Tip:</span>
-                          <span>{currentQuest.coachTip}</span>
+                        <div className="mt-2 text-[11px] font-bold text-amber-300 flex items-center justify-between gap-2 bg-slate-950/60 p-2.5 rounded-lg border border-amber-500/20">
+                          <div className="flex items-center gap-1.5">
+                            <span>💡 Coach Tip:</span>
+                            <span>{currentQuest.coachTip}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => speakCoachAdvice(`${currentQuest.options[quizSelectedOption!].explanation}. Coach tip: ${currentQuest.coachTip}`, { force: true })}
+                            className="px-2 py-0.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-[10px] font-bold border border-amber-500/40 shrink-0 flex items-center gap-1"
+                            title="Listen to Coach Voice"
+                          >
+                            <span>🗣️</span>
+                            <span>Listen</span>
+                          </button>
                         </div>
                       </div>
 
@@ -2290,12 +2330,23 @@ ${formattedMoves || '1. e4'} ${game.result}`;
 
                   {/* Coach Advice */}
                   {currentNode.coachTip && (
-                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3.5 flex items-start gap-3">
-                      <span className="text-xl shrink-0">💡</span>
-                      <div className="space-y-0.5">
-                        <div className="text-[10px] font-black uppercase tracking-wider text-amber-400">Coach Guidance</div>
-                        <p className="text-xs text-amber-200 font-medium">{currentNode.coachTip}</p>
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3.5 flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <span className="text-xl shrink-0">💡</span>
+                        <div className="space-y-0.5">
+                          <div className="text-[10px] font-black uppercase tracking-wider text-amber-400">Coach Guidance</div>
+                          <p className="text-xs text-amber-200 font-medium">{currentNode.coachTip}</p>
+                        </div>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => speakCoachAdvice(currentNode.coachTip, { force: true })}
+                        className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-[10px] font-bold border border-amber-500/30 flex items-center gap-1 shrink-0 transition-all"
+                        title="Listen to Coach Voice"
+                      >
+                        <span>🗣️</span>
+                        <span>Listen</span>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -2975,7 +3026,18 @@ ${formattedMoves || '1. e4'} ${game.result}`;
 
                     return (
                       <div key={idx} className="bg-slate-900 border border-slate-800 rounded-lg p-3 text-xs space-y-1">
-                        <div className="font-bold text-amber-300">💡 {expl}</div>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="font-bold text-amber-300">💡 {expl}</div>
+                          <button
+                            type="button"
+                            onClick={() => speakCoachAdvice(`${expl}. Recommendation: ${idea}`, { force: true })}
+                            className="text-amber-400 hover:text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 flex items-center gap-1 shrink-0"
+                            title="Listen to Coach Voice Analysis"
+                          >
+                            <span>🗣️</span>
+                            <span>Listen</span>
+                          </button>
+                        </div>
                         <div className="text-slate-400 text-[11px]">{idea}</div>
                       </div>
                     );

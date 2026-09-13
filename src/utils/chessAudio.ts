@@ -155,3 +155,59 @@ export function playChessSound(type: 'move' | 'capture' | 'check' | 'castle' | '
     osc.stop(now + 0.25);
   }
 }
+
+let coachVoiceEnabled = true;
+
+export function setCoachVoiceEnabled(enabled: boolean) {
+  coachVoiceEnabled = enabled;
+  if (!enabled && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
+}
+
+export function isCoachVoiceEnabled(): boolean {
+  return coachVoiceEnabled;
+}
+
+export function stopCoachVoice() {
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
+}
+
+export function speakCoachAdvice(text: string, options?: { pitch?: number; rate?: number; force?: boolean }) {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+  if (!coachVoiceEnabled && !options?.force) return;
+
+  try {
+    // Strip emojis and symbols for crystal clear speech synthesis
+    const cleanText = text
+      .replace(/[\u{1F300}-\u{1F9FF}]/gu, '')
+      .replace(/[♚♛♜♝♞♟♔♕♖♗♘♙⚔️⚡🎯🏆💡🔥]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!cleanText) return;
+
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.rate = options?.rate ?? 1.02;
+    utterance.pitch = options?.pitch ?? 1.05;
+    utterance.volume = 0.9;
+
+    // Pick a natural English voice if available
+    const voices = window.speechSynthesis.getVoices();
+    const naturalVoice = voices.find(
+      (v) => (v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Samantha') || v.name.includes('Karen') || v.name.includes('Daniel')))
+    ) || voices.find((v) => v.lang.startsWith('en'));
+
+    if (naturalVoice) {
+      utterance.voice = naturalVoice;
+    }
+
+    window.speechSynthesis.speak(utterance);
+  } catch (err) {
+    console.warn('[speakCoachAdvice] Speech synthesis failed:', err);
+  }
+}
