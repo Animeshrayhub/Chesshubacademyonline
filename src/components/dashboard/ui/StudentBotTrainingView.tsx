@@ -65,6 +65,19 @@ export const BOARD_THEMES: BoardThemeConfig[] = [
   { id: 'gold', name: 'Golden Palace', darkSquare: '#b45309', lightSquare: '#fef3c7', icon: '👑' },
 ];
 
+export const BOT_LEVEL_UNLOCK_REQUIREMENTS: Record<number, { minRating: number; minXp: number }> = {
+  1: { minRating: 400, minXp: 0 },
+  2: { minRating: 400, minXp: 0 },
+  3: { minRating: 500, minXp: 200 },
+  4: { minRating: 650, minXp: 450 },
+  5: { minRating: 800, minXp: 750 },
+  6: { minRating: 950, minXp: 1100 },
+  7: { minRating: 1100, minXp: 1500 },
+  8: { minRating: 1250, minXp: 2000 },
+  9: { minRating: 1400, minXp: 2600 },
+  10: { minRating: 1600, minXp: 3300 },
+};
+
 const BOT_LEVELS: BotLevelConfig[] = [
   {
     level: 1,
@@ -1393,9 +1406,39 @@ ${formattedMoves || '1. e4'} ${game.result}`;
   };
 
   const unlockedSet = useMemo(() => {
-    // All 10 bot levels are unlocked so students can practice against any bot difficulty directly
-    return new Set<number>([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-  }, []);
+    const set = new Set<number>(profile?.unlocked_levels || [1, 2]);
+    // Levels 1 and 2 are always open for beginners
+    set.add(1);
+    set.add(2);
+
+    const studentRating = profile?.rating || 400;
+
+    // 1. Points / Rating & XP Progression: achieving target points unlocks higher bots
+    Object.entries(BOT_LEVEL_UNLOCK_REQUIREMENTS).forEach(([lvlStr, req]) => {
+      const lvl = Number(lvlStr);
+      if (studentRating >= req.minRating || xpCurrent >= req.minXp) {
+        set.add(lvl);
+      }
+    });
+
+    // 2. Boss Knockout Progression: beating level L unlocks L+1
+    if (recentGames && recentGames.length > 0) {
+      recentGames.forEach((g) => {
+        if (g.result === 'win' && typeof g.bot_level === 'number') {
+          for (let lvl = 1; lvl <= Math.min(10, g.bot_level + 1); lvl++) {
+            set.add(lvl);
+          }
+        }
+      });
+    }
+
+    // 3. Coach Master Key override
+    if (profile?.coach_unlocked_levels) {
+      profile.coach_unlocked_levels.forEach((lvl) => set.add(lvl));
+    }
+
+    return set;
+  }, [profile?.unlocked_levels, profile?.coach_unlocked_levels, profile?.rating, xpCurrent, recentGames]);
 
   if (loadingProfile) {
     return (
@@ -1658,7 +1701,9 @@ ${formattedMoves || '1. e4'} ${game.result}`;
 
                         <div className="mt-2 space-y-0.5">
                           <div className="font-extrabold text-xs text-white truncate">{b.name.replace(/Level \d+ — /, '')}</div>
-                          <div className="text-[10px] text-slate-400 font-mono">Rating: {b.rating}</div>
+                          <div className="text-[10px] text-slate-400 font-mono">
+                            {isUnlocked ? `Rating: ${b.rating}` : `Unlocks: ${BOT_LEVEL_UNLOCK_REQUIREMENTS[b.level]?.minRating || b.rating} pts`}
+                          </div>
                         </div>
                       </div>
                     );
@@ -4255,11 +4300,13 @@ ${formattedMoves || '1. e4'} ${game.result}`;
 
             <div className="space-y-2.5 text-left text-xs">
               <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-start gap-3">
-                <span className="text-xl">🎯</span>
+                <span className="text-xl">🏆</span>
                 <div className="space-y-0.5">
-                  <div className="font-bold text-white">Path 1: Tactical Quiz Benchmark</div>
+                  <div className="font-bold text-white">Path 1: Earn Points / Rating</div>
                   <p className="text-slate-400 text-[11px]">
-                    Score 4/10 or more in Tactical Quests. Current score: <strong className="text-amber-400">{quizScore}/10</strong>.
+                    Reach <strong className="text-amber-400">{BOT_LEVEL_UNLOCK_REQUIREMENTS[gatekeeperLockedLevel]?.minRating || 1000}+ Rating</strong> or <strong className="text-sky-400">{BOT_LEVEL_UNLOCK_REQUIREMENTS[gatekeeperLockedLevel]?.minXp || 500}+ XP Points</strong>.
+                    <br />
+                    <span className="text-slate-500">Your Current:</span> <strong className="text-emerald-400">{profile?.rating || 400} Rating</strong> • <strong className="text-amber-400">{xpCurrent} XP</strong>
                   </p>
                 </div>
               </div>
@@ -4267,9 +4314,9 @@ ${formattedMoves || '1. e4'} ${game.result}`;
               <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-start gap-3">
                 <span className="text-xl">⚔️</span>
                 <div className="space-y-0.5">
-                  <div className="font-bold text-white">Path 2: Boss Knockout Progression</div>
+                  <div className="font-bold text-white">Path 2: Defeat Level {gatekeeperLockedLevel - 1}</div>
                   <p className="text-slate-400 text-[11px]">
-                    Defeat Level {gatekeeperLockedLevel - 1} in a Boss Battle Match to trigger auto-unlock.
+                    Win a match against <strong className="text-white">{BOT_LEVELS.find((b) => b.level === gatekeeperLockedLevel - 1)?.name || `Level ${gatekeeperLockedLevel - 1}`}</strong> to instantly unlock Level {gatekeeperLockedLevel}!
                   </p>
                 </div>
               </div>
@@ -4279,7 +4326,7 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                 <div className="space-y-0.5">
                   <div className="font-bold text-white">Path 3: Coach Master Key</div>
                   <p className="text-slate-400 text-[11px]">
-                    Your chess academy coach can unlock this level anytime from the coach management portal.
+                    Your chess academy coach can unlock this level anytime directly from the coach portal.
                   </p>
                 </div>
               </div>
@@ -4288,12 +4335,13 @@ ${formattedMoves || '1. e4'} ${game.result}`;
             <div className="flex gap-2.5 pt-2">
               <Button
                 onClick={() => {
+                  const targetPrev = Math.max(1, gatekeeperLockedLevel - 1);
+                  setSelectedLevel(targetPrev);
                   setGatekeeperLockedLevel(null);
-                  setActiveTab('quests');
                 }}
-                className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs uppercase shadow-md shadow-amber-500/20"
+                className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-extrabold text-xs uppercase shadow-md shadow-amber-500/20"
               >
-                Solve Quests 🎯
+                ⚔️ Play Level {gatekeeperLockedLevel - 1} To Unlock
               </Button>
               <Button
                 variant="outline"

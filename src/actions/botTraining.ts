@@ -140,11 +140,12 @@ export async function startBotGameAction(data: {
     const botCfg = getBotLevelConfig(data.botLevel);
 
     // Check if level is unlocked
-    const unlocked = getUnlockedLevels(profile.rating, profile.coach_unlocked_levels || []);
+    const previousUnlocked = profile.unlocked_levels || [1, 2];
+    const unlocked = getUnlockedLevels(profile.rating, profile.coach_unlocked_levels || [], 0, previousUnlocked);
     if (!unlocked.includes(data.botLevel)) {
       return {
         success: false,
-        error: { message: `Level ${data.botLevel} is locked. Reach rating target ${botCfg.rating} or ask your coach to unlock it.` },
+        error: { message: `Level ${data.botLevel} is locked. Earn more points or defeat Level ${data.botLevel - 1} to unlock it.` },
       };
     }
 
@@ -277,9 +278,11 @@ export async function finishBotGameAction(data: {
     const newDraws = profile.draws + (data.result === 'draw' ? 1 : 0);
     const newGamesCount = profile.games_played + 1;
 
-    // Check newly unlocked levels
+    // Check newly unlocked levels (with progressive points & knockout progression on win)
     const coachUnlocked = profile.coach_unlocked_levels || [];
-    const unlockedLevels = getUnlockedLevels(afterRating, coachUnlocked);
+    const previousUnlocked = profile.unlocked_levels || [1, 2];
+    const beatenLevel = data.result === 'win' ? data.botLevel : 0;
+    const unlockedLevels = getUnlockedLevels(afterRating, coachUnlocked, beatenLevel, previousUnlocked);
     const currentLevel = getCurrentLevelFromRating(afterRating);
 
     const nowISO = new Date().toISOString();
