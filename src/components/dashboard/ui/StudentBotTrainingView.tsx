@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Chess } from 'chess.js';
 import dynamic from 'next/dynamic';
 import DashboardIcon from './DashboardIcon';
@@ -14,6 +14,8 @@ import {
   solvePersonalizedPuzzleAction,
   generateWeaknessPuzzlesAction,
   submitPuzzleAttemptAction,
+  getAcademyStudentLeaderboardAction,
+  type AcademyLeaderboardStudent,
 } from '@/actions/botTraining';
 import { playChessSound, setChessSoundEnabled, speakCoachAdvice, stopCoachVoice, setCoachVoiceEnabled } from '@/utils/chessAudio';
 import { computeBotMove, identifyOpeningFromMoves, safeExecuteMove, evaluatePosition } from '@/lib/bot-training/chessBotEngine';
@@ -64,19 +66,6 @@ export const BOARD_THEMES: BoardThemeConfig[] = [
   { id: 'cyber', name: 'Cyber Midnight', darkSquare: '#334155', lightSquare: '#94a3b8', icon: '🌌' },
   { id: 'gold', name: 'Golden Palace', darkSquare: '#b45309', lightSquare: '#fef3c7', icon: '👑' },
 ];
-
-export const BOT_LEVEL_UNLOCK_REQUIREMENTS: Record<number, { minRating: number; minXp: number }> = {
-  1: { minRating: 400, minXp: 0 },
-  2: { minRating: 400, minXp: 0 },
-  3: { minRating: 500, minXp: 200 },
-  4: { minRating: 650, minXp: 450 },
-  5: { minRating: 800, minXp: 750 },
-  6: { minRating: 950, minXp: 1100 },
-  7: { minRating: 1100, minXp: 1500 },
-  8: { minRating: 1250, minXp: 2000 },
-  9: { minRating: 1400, minXp: 2600 },
-  10: { minRating: 1600, minXp: 3300 },
-};
 
 const BOT_LEVELS: BotLevelConfig[] = [
   {
@@ -273,6 +262,30 @@ export default function StudentBotTrainingView() {
   const [combatFlash, setCombatFlash] = useState<'student' | 'bot' | null>(null);
   const [pgnCopiedToast, setPgnCopiedToast] = useState<boolean>(false);
   const [shareLinkCopiedToast, setShareLinkCopiedToast] = useState<boolean>(false);
+
+  // Live Enrolled Students Leaderboard State
+  const [leaderboardList, setLeaderboardList] = useState<AcademyLeaderboardStudent[]>([]);
+  const [loadingLeaderboard, setLoadingLeaderboard] = useState<boolean>(false);
+  const [leaderboardSearch, setLeaderboardSearch] = useState<string>('');
+  const [leaderboardFilter, setLeaderboardFilter] = useState<'ALL' | 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED'>('ALL');
+
+  const fetchLeaderboard = useCallback(async () => {
+    setLoadingLeaderboard(true);
+    try {
+      const res = await getAcademyStudentLeaderboardAction();
+      if (res.success && res.data?.leaderboard) {
+        setLeaderboardList(res.data.leaderboard);
+      }
+    } catch (e) {
+      console.warn('[fetchLeaderboard] failed:', e);
+    } finally {
+      setLoadingLeaderboard(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLeaderboard();
+  }, [fetchLeaderboard]);
 
   // Live Engine Advantage Evaluation Bar & Move Accuracy State
   const [showEvalBar, setShowEvalBar] = useState<boolean>(true);
@@ -1406,22 +1419,28 @@ ${formattedMoves || '1. e4'} ${game.result}`;
   };
 
   const unlockedSet = useMemo(() => {
-    const set = new Set<number>(profile?.unlocked_levels || [1, 2]);
-    // Levels 1 and 2 are always open for beginners
-    set.add(1);
-    set.add(2);
-
+    // Level 1 is always unlocked for all beginners
+    const set = new Set<number>([1]);
     const studentRating = profile?.rating || 400;
 
-    // 1. Points / Rating & XP Progression: achieving target points unlocks higher bots
-    Object.entries(BOT_LEVEL_UNLOCK_REQUIREMENTS).forEach(([lvlStr, req]) => {
-      const lvl = Number(lvlStr);
-      if (studentRating >= req.minRating || xpCurrent >= req.minXp) {
-        set.add(lvl);
+    // 1. Point / Rating Milestone: achieving the bot rating points unlocks that level!
+    BOT_LEVELS.forEach((b) => {
+      if (studentRating >= b.rating) {
+        set.add(b.level);
       }
     });
 
-    // 2. Boss Knockout Progression: beating level L unlocks L+1
+    // 2. Database saved unlocked_levels
+    if (profile?.unlocked_levels && Array.isArray(profile.unlocked_levels)) {
+      profile.unlocked_levels.forEach((lvl) => set.add(lvl));
+    }
+
+    // 3. Coach Master Key override
+    if (profile?.coach_unlocked_levels && Array.isArray(profile.coach_unlocked_levels)) {
+      profile.coach_unlocked_levels.forEach((lvl) => set.add(lvl));
+    }
+
+    // 4. Knockout match progression: beating level L unlocks level L + 1
     if (recentGames && recentGames.length > 0) {
       recentGames.forEach((g) => {
         if (g.result === 'win' && typeof g.bot_level === 'number') {
@@ -1432,13 +1451,8 @@ ${formattedMoves || '1. e4'} ${game.result}`;
       });
     }
 
-    // 3. Coach Master Key override
-    if (profile?.coach_unlocked_levels) {
-      profile.coach_unlocked_levels.forEach((lvl) => set.add(lvl));
-    }
-
     return set;
-  }, [profile?.unlocked_levels, profile?.coach_unlocked_levels, profile?.rating, xpCurrent, recentGames]);
+  }, [profile?.rating, profile?.unlocked_levels, profile?.coach_unlocked_levels, recentGames]);
 
   if (loadingProfile) {
     return (
@@ -1667,6 +1681,9 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                     const isUnlocked = unlockedSet.has(b.level);
                     const isCoachUnlocked = profile?.coach_unlocked_levels?.includes(b.level);
                     const isSelected = selectedLevel === b.level;
+                    const studentRating = profile?.rating || 400;
+                    const ptsNeeded = Math.max(0, b.rating - studentRating);
+                    const progressPct = Math.min(100, Math.round((studentRating / b.rating) * 100));
 
                     return (
                       <div
@@ -1677,7 +1694,7 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                             ? 'border-amber-500 bg-amber-500/10 shadow-lg shadow-amber-500/15 ring-2 ring-amber-500'
                             : isUnlocked
                             ? 'border-slate-800 bg-slate-950 hover:border-slate-700 hover:bg-slate-900/60'
-                            : 'border-slate-900 bg-slate-950/40 hover:border-amber-500/40 opacity-70'
+                            : 'border-slate-900 bg-slate-950/40 hover:border-amber-500/40 opacity-75'
                         }`}
                       >
                         <div className="flex items-center justify-between">
@@ -1694,16 +1711,27 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                             )
                           ) : (
                             <span className="text-[9px] bg-rose-500/20 text-rose-300 font-bold px-1.5 py-0.5 rounded border border-rose-500/30">
-                              🔒 Locked
+                              🔒 {b.rating} pts
                             </span>
                           )}
                         </div>
 
-                        <div className="mt-2 space-y-0.5">
+                        <div className="mt-2 space-y-1">
                           <div className="font-extrabold text-xs text-white truncate">{b.name.replace(/Level \d+ — /, '')}</div>
-                          <div className="text-[10px] text-slate-400 font-mono">
-                            {isUnlocked ? `Rating: ${b.rating}` : `Unlocks: ${BOT_LEVEL_UNLOCK_REQUIREMENTS[b.level]?.minRating || b.rating} pts`}
+                          <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                            <span>Rating: {b.rating}</span>
+                            {!isUnlocked && (
+                              <span className="text-amber-400 font-bold">{ptsNeeded} pts left</span>
+                            )}
                           </div>
+                          {!isUnlocked && (
+                            <div className="w-full bg-slate-800 rounded-full h-1 overflow-hidden mt-1">
+                              <div
+                                className="bg-gradient-to-r from-amber-500 to-amber-400 h-full rounded-full transition-all duration-300"
+                                style={{ width: `${progressPct}%` }}
+                              />
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -2986,17 +3014,22 @@ ${formattedMoves || '1. e4'} ${game.result}`;
       {/* TAB: ACADEMY LEADERBOARD */}
       {activeTab === 'leaderboard' && (() => {
         const studentRating = profile?.rating || 400;
-        const maxBotBeaten = Math.max(...Array.from(unlockedSet), 1);
+        const currentStudentEntry = leaderboardList.find((s) => s.isYou);
+        const myRank = currentStudentEntry?.rank || 1;
 
-        const PEERS = [
-          { rank: 1, name: 'Aarav Sharma', rating: 1420, streak: 14, bossLevel: 7, badges: 12, avatar: '👑', isYou: false },
-          { rank: 2, name: 'Ananya Roy', rating: 1280, streak: 11, bossLevel: 6, badges: 9, avatar: '🎖️', isYou: false },
-          { rank: 3, name: 'Vihaan Patel', rating: 1150, streak: 8, bossLevel: 5, badges: 8, avatar: '🏅', isYou: false },
-          { rank: 4, name: 'You (Current Student)', rating: studentRating, streak: streakCount, bossLevel: maxBotBeaten, badges: badges.length, avatar: '🛡️', isYou: true },
-          { rank: 5, name: 'Rohan Gupta', rating: 780, streak: 5, bossLevel: 3, badges: 6, avatar: '♟️', isYou: false },
-          { rank: 6, name: 'Sara Khan', rating: 650, streak: 4, bossLevel: 2, badges: 4, avatar: '♞', isYou: false },
-          { rank: 7, name: 'Kabir Verma', rating: 520, streak: 2, bossLevel: 1, badges: 3, avatar: '♝', isYou: false },
-        ];
+        const filteredList = leaderboardList.filter((s) => {
+          const matchesSearch = !leaderboardSearch.trim() || s.name.toLowerCase().includes(leaderboardSearch.toLowerCase().trim());
+          const matchesFilter =
+            leaderboardFilter === 'ALL' ||
+            (leaderboardFilter === 'BEGINNER' && s.rating < 800) ||
+            (leaderboardFilter === 'INTERMEDIATE' && s.rating >= 800 && s.rating < 1400) ||
+            (leaderboardFilter === 'ADVANCED' && s.rating >= 1400);
+          return matchesSearch && matchesFilter;
+        });
+
+        const top1 = filteredList[0];
+        const top2 = filteredList[1];
+        const top3 = filteredList[2];
 
         return (
           <div className="space-y-6">
@@ -3006,142 +3039,311 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                 <div className="flex items-center gap-2">
                   <span className="text-2xl">🏆</span>
                   <span className="text-xs font-black uppercase tracking-wider text-amber-400">
-                    ChessHub Academy Standings
+                    Live Academy Standings
+                  </span>
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
+                    {leaderboardList.length} Enrolled Students
                   </span>
                 </div>
                 <h2 className="text-xl font-extrabold text-white">Student Training Leaderboard</h2>
                 <p className="text-xs text-slate-300">
-                  Compete with fellow academy peers across training ratings, daily streak flames, and boss knockouts!
+                  Real-time ranking of enrolled academy students based on bot training ratings, match victories, and streaks!
                 </p>
               </div>
 
-              {/* Your Rank Card */}
-              <div className="bg-slate-950/90 border border-amber-500/40 rounded-2xl p-4 flex items-center gap-4 shrink-0 shadow-lg">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center font-black text-xl text-white">
-                  #4
-                </div>
-                <div>
-                  <div className="text-[10px] text-slate-400 font-bold uppercase">Your Standing</div>
-                  <div className="text-sm font-black text-white">Student (You)</div>
-                  <div className="text-[11px] text-amber-400 font-bold">
-                    {studentRating} Rating • {streakCount}d Streak 🔥
+              {/* Your Standing Card & Refresh Button */}
+              <div className="flex items-center gap-3 shrink-0 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => fetchLeaderboard()}
+                  disabled={loadingLeaderboard}
+                  className="px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                  title="Refresh Leaderboard"
+                >
+                  <span className={loadingLeaderboard ? 'animate-spin' : ''}>🔄</span>
+                  <span>{loadingLeaderboard ? 'Updating...' : 'Refresh'}</span>
+                </button>
+
+                <div className="bg-slate-950/90 border border-amber-500/40 rounded-2xl p-3.5 flex items-center gap-3.5 shadow-lg">
+                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center font-black text-lg text-white shadow-md shadow-amber-500/20">
+                    #{myRank}
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-slate-400 font-bold uppercase">Your Standing</div>
+                    <div className="text-xs font-black text-white">
+                      {currentStudentEntry?.name || 'You (Student)'}
+                    </div>
+                    <div className="text-[11px] text-amber-400 font-bold">
+                      {studentRating} Rating • {streakCount}d Streak 🔥
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Top 3 Podium */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
-              {/* 2nd Place */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-center flex flex-col items-center justify-between space-y-3 order-2 sm:order-1">
-                <span className="text-3xl">🥈</span>
-                <div className="w-14 h-14 rounded-full bg-slate-800 flex items-center justify-center text-2xl border-2 border-slate-400/50">
-                  {PEERS[1].avatar}
-                </div>
-                <div>
-                  <div className="font-extrabold text-sm text-white">{PEERS[1].name}</div>
-                  <div className="text-xs font-black text-slate-300 mt-0.5">{PEERS[1].rating} Rating</div>
-                  <div className="text-[10px] text-slate-400">🔥 {PEERS[1].streak}-day streak</div>
-                </div>
-                <span className="text-[10px] font-black uppercase tracking-wider bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full">
-                  Rank #2 (Silver)
-                </span>
+            {/* Filter & Search Bar */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md">
+              {/* Search */}
+              <div className="relative w-full sm:w-72">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
+                <input
+                  type="text"
+                  value={leaderboardSearch}
+                  onChange={(e) => setLeaderboardSearch(e.target.value)}
+                  placeholder="Search enrolled students..."
+                  className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
+                />
+                {leaderboardSearch && (
+                  <button
+                    onClick={() => setLeaderboardSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
 
-              {/* 1st Place */}
-              <div className="bg-gradient-to-b from-slate-900 to-amber-950/40 border-2 border-amber-500/60 rounded-2xl p-6 text-center flex flex-col items-center justify-between space-y-3 order-1 sm:order-2 shadow-xl shadow-amber-500/10">
-                <span className="text-4xl animate-bounce">👑</span>
-                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center text-3xl shadow-lg border-2 border-amber-400">
-                  {PEERS[0].avatar}
-                </div>
-                <div>
-                  <div className="font-black text-base text-white">{PEERS[0].name}</div>
-                  <div className="text-sm font-black text-amber-400 mt-0.5">{PEERS[0].rating} Rating</div>
-                  <div className="text-[10px] text-amber-200">🔥 {PEERS[0].streak}-day streak • Defeated Lvl {PEERS[0].bossLevel}</div>
-                </div>
-                <span className="text-[10px] font-black uppercase tracking-wider bg-amber-500 text-slate-950 px-3 py-1 rounded-full shadow-md shadow-amber-500/30">
-                  🥇 Academy Champion
-                </span>
-              </div>
-
-              {/* 3rd Place */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-center flex flex-col items-center justify-between space-y-3 order-3">
-                <span className="text-3xl">🥉</span>
-                <div className="w-14 h-14 rounded-full bg-slate-800 flex items-center justify-center text-2xl border-2 border-amber-700/50">
-                  {PEERS[2].avatar}
-                </div>
-                <div>
-                  <div className="font-extrabold text-sm text-white">{PEERS[2].name}</div>
-                  <div className="text-xs font-black text-slate-300 mt-0.5">{PEERS[2].rating} Rating</div>
-                  <div className="text-[10px] text-slate-400">🔥 {PEERS[2].streak}-day streak</div>
-                </div>
-                <span className="text-[10px] font-black uppercase tracking-wider bg-slate-800 text-amber-400 px-2.5 py-1 rounded-full">
-                  Rank #3 (Bronze)
-                </span>
+              {/* Tier Filters */}
+              <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+                {(['ALL', 'BEGINNER', 'INTERMEDIATE', 'ADVANCED'] as const).map((tier) => (
+                  <button
+                    key={tier}
+                    onClick={() => setLeaderboardFilter(tier)}
+                    className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all whitespace-nowrap ${
+                      leaderboardFilter === tier
+                        ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                        : 'bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'
+                    }`}
+                  >
+                    {tier === 'ALL'
+                      ? 'All Tiers'
+                      : tier === 'BEGINNER'
+                      ? 'Beginner (<800)'
+                      : tier === 'INTERMEDIATE'
+                      ? 'Intermediate (800-1399)'
+                      : 'Advanced (1400+)'}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* Standings Table */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-              <h3 className="text-sm font-extrabold text-white">Full Student Academy Roster</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-950 text-slate-400 font-bold uppercase text-[10px]">
-                    <tr>
-                      <th className="p-3">Rank</th>
-                      <th className="p-3">Student</th>
-                      <th className="p-3">ChessHub Rating</th>
-                      <th className="p-3">Training Streak</th>
-                      <th className="p-3">Max Bot Conquered</th>
-                      <th className="p-3 text-right">Badges</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/50">
-                    {PEERS.map((student) => (
-                      <tr
-                        key={student.rank}
-                        className={`transition-colors ${
-                          student.isYou
-                            ? 'bg-amber-500/10 border-l-4 border-amber-500'
-                            : 'hover:bg-slate-800/30'
-                        }`}
-                      >
-                        <td className="p-3 font-black text-sm">
-                          {student.rank === 1 ? '🥇' : student.rank === 2 ? '🥈' : student.rank === 3 ? '🥉' : `#${student.rank}`}
-                        </td>
-                        <td className="p-3">
-                          <div className="flex items-center gap-2.5">
-                            <span className="text-lg">{student.avatar}</span>
-                            <div>
-                              <div className={`font-bold ${student.isYou ? 'text-amber-300' : 'text-white'}`}>
-                                {student.name}
-                              </div>
-                              {student.isYou && (
-                                <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-black uppercase">
-                                  YOU
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="p-3 font-black text-amber-400">{student.rating}</td>
-                        <td className="p-3 font-bold text-slate-300">
-                          <span className="flex items-center gap-1">
-                            <span>🔥</span>
-                            <span>{student.streak} days</span>
-                          </span>
-                        </td>
-                        <td className="p-3 font-bold text-slate-300">
-                          Level {student.bossLevel} ({BOT_LEVELS.find((b) => b.level === student.bossLevel)?.name})
-                        </td>
-                        <td className="p-3 text-right font-black text-purple-300">
-                          {student.badges} Crests 🛡️
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            {/* Top 3 Podium (shown if at least 2 entries available) */}
+            {filteredList.length >= 2 && !leaderboardSearch && leaderboardFilter === 'ALL' && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+                {/* 2nd Place */}
+                {top2 && (
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-center flex flex-col items-center justify-between space-y-3 order-2 sm:order-1 shadow-lg">
+                    <span className="text-3xl">🥈</span>
+                    <div className="w-14 h-14 rounded-full bg-slate-800 flex items-center justify-center text-2xl border-2 border-slate-400/50 shadow-md">
+                      {top2.avatar}
+                    </div>
+                    <div>
+                      <div className="font-extrabold text-sm text-white flex items-center justify-center gap-1.5">
+                        <span>{top2.name}</span>
+                        {top2.isYou && (
+                          <span className="text-[9px] bg-amber-500/20 text-amber-300 font-bold px-1.5 py-0.2 rounded">YOU</span>
+                        )}
+                      </div>
+                      <div className="text-xs font-black text-slate-300 mt-0.5">{top2.rating} Points</div>
+                      <div className="text-[10px] text-slate-400">🔥 {top2.streak}-day streak • {top2.wins} Wins</div>
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-wider bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full border border-slate-700">
+                      Rank #2 (Silver)
+                    </span>
+                  </div>
+                )}
+
+                {/* 1st Place */}
+                {top1 && (
+                  <div className="bg-gradient-to-b from-slate-900 via-amber-950/20 to-slate-900 border-2 border-amber-500/60 rounded-2xl p-6 text-center flex flex-col items-center justify-between space-y-3 order-1 sm:order-2 shadow-xl shadow-amber-500/10">
+                    <span className="text-4xl animate-bounce">👑</span>
+                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center text-3xl shadow-lg border-2 border-amber-400">
+                      {top1.avatar}
+                    </div>
+                    <div>
+                      <div className="font-black text-base text-white flex items-center justify-center gap-1.5">
+                        <span>{top1.name}</span>
+                        {top1.isYou && (
+                          <span className="text-[9px] bg-amber-500/20 text-amber-300 font-bold px-1.5 py-0.2 rounded">YOU</span>
+                        )}
+                      </div>
+                      <div className="text-sm font-black text-amber-400 mt-0.5">{top1.rating} Points</div>
+                      <div className="text-[10px] text-amber-200">
+                        🔥 {top1.streak}-day streak • Defeated Lvl {top1.bossLevel} ({top1.wins} wins)
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-wider bg-amber-500 text-slate-950 px-3 py-1 rounded-full shadow-md shadow-amber-500/30">
+                      🥇 Academy Leader
+                    </span>
+                  </div>
+                )}
+
+                {/* 3rd Place */}
+                {top3 && (
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-center flex flex-col items-center justify-between space-y-3 order-3 shadow-lg">
+                    <span className="text-3xl">🥉</span>
+                    <div className="w-14 h-14 rounded-full bg-slate-800 flex items-center justify-center text-2xl border-2 border-amber-700/50 shadow-md">
+                      {top3.avatar}
+                    </div>
+                    <div>
+                      <div className="font-extrabold text-sm text-white flex items-center justify-center gap-1.5">
+                        <span>{top3.name}</span>
+                        {top3.isYou && (
+                          <span className="text-[9px] bg-amber-500/20 text-amber-300 font-bold px-1.5 py-0.2 rounded">YOU</span>
+                        )}
+                      </div>
+                      <div className="text-xs font-black text-slate-300 mt-0.5">{top3.rating} Points</div>
+                      <div className="text-[10px] text-slate-400">🔥 {top3.streak}-day streak • {top3.wins} Wins</div>
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-wider bg-slate-800 text-amber-400 px-2.5 py-1 rounded-full border border-slate-700">
+                      Rank #3 (Bronze)
+                    </span>
+                  </div>
+                )}
               </div>
+            )}
+
+            {/* Standings Table */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-extrabold text-white flex items-center gap-2">
+                  <span>Enrolled Academy Student Roster</span>
+                  <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">
+                    {filteredList.length} of {leaderboardList.length}
+                  </span>
+                </h3>
+                {loadingLeaderboard && (
+                  <span className="text-xs text-amber-400 animate-pulse font-bold">Syncing Roster...</span>
+                )}
+              </div>
+
+              {filteredList.length === 0 ? (
+                <div className="text-center py-12 text-slate-400 space-y-2">
+                  <div className="text-3xl">🔍</div>
+                  <div className="text-sm font-bold text-white">No Enrolled Students Found</div>
+                  <p className="text-xs text-slate-500">
+                    {leaderboardSearch ? `No matches for "${leaderboardSearch}"` : 'No students found in this tier.'}
+                  </p>
+                  <button
+                    onClick={() => {
+                      setLeaderboardSearch('');
+                      setLeaderboardFilter('ALL');
+                    }}
+                    className="mt-2 text-xs text-amber-400 underline font-semibold"
+                  >
+                    Clear Search & Filter
+                  </button>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-950 text-slate-400 font-bold uppercase text-[10px]">
+                      <tr>
+                        <th className="p-3">Rank</th>
+                        <th className="p-3">Student</th>
+                        <th className="p-3">Rating Points</th>
+                        <th className="p-3">Win Rate & Matches</th>
+                        <th className="p-3">Training Streak</th>
+                        <th className="p-3">Max Bot Conquered</th>
+                        <th className="p-3 text-right">Academy Tier</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/50">
+                      {filteredList.map((student) => {
+                        const botCfg = BOT_LEVELS.find((b) => b.level === student.bossLevel);
+
+                        return (
+                          <tr
+                            key={student.studentId || student.name}
+                            className={`transition-colors ${
+                              student.isYou
+                                ? 'bg-amber-500/10 border-l-4 border-amber-500 font-bold'
+                                : 'hover:bg-slate-800/30'
+                            }`}
+                          >
+                            <td className="p-3 font-black text-sm">
+                              {student.rank === 1
+                                ? '🥇'
+                                : student.rank === 2
+                                ? '🥈'
+                                : student.rank === 3
+                                ? '🥉'
+                                : `#${student.rank}`}
+                            </td>
+                            <td className="p-3">
+                              <div className="flex items-center gap-2.5">
+                                <span className="text-lg">{student.avatar}</span>
+                                <div>
+                                  <div className={`font-bold ${student.isYou ? 'text-amber-300' : 'text-white'}`}>
+                                    {student.name}
+                                  </div>
+                                  {student.isYou && (
+                                    <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-black uppercase">
+                                      YOU
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="p-3">
+                              <span className="font-mono font-black text-amber-400 text-sm">
+                                {student.rating}
+                              </span>
+                              <span className="text-[10px] text-slate-500 ml-1">pts</span>
+                            </td>
+                            <td className="p-3">
+                              <div className="space-y-1 min-w-[120px]">
+                                <div className="flex items-center justify-between text-[10px]">
+                                  <span className="text-slate-300 font-bold">{student.winRate}% win rate</span>
+                                  <span className="text-slate-400">{student.wins}W / {student.losses}L</span>
+                                </div>
+                                <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                                  <div
+                                    className="bg-emerald-400 h-full rounded-full"
+                                    style={{ width: `${student.winRate}%` }}
+                                  />
+                                </div>
+                              </div>
+                            </td>
+                            <td className="p-3 font-bold text-slate-300">
+                              <span className="flex items-center gap-1 text-xs">
+                                <span>🔥</span>
+                                <span>{student.streak}d streak</span>
+                              </span>
+                            </td>
+                            <td className="p-3 font-bold text-slate-300">
+                              <div className="flex items-center gap-1.5">
+                                <span>{botCfg?.avatarIcon || '♟️'}</span>
+                                <span>Level {student.bossLevel}</span>
+                                <span className="text-[10px] text-slate-500 hidden md:inline">
+                                  ({botCfg?.name?.replace(/Level \d+ — /, '') || 'Novice'})
+                                </span>
+                              </div>
+                            </td>
+                            <td className="p-3 text-right">
+                              <span
+                                className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${
+                                  student.rating >= 1400
+                                    ? 'bg-purple-500/15 text-purple-300 border-purple-500/30'
+                                    : student.rating >= 800
+                                    ? 'bg-sky-500/15 text-sky-300 border-sky-500/30'
+                                    : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                }`}
+                              >
+                                {student.rating >= 1400
+                                  ? 'Advanced'
+                                  : student.rating >= 800
+                                  ? 'Intermediate'
+                                  : 'Beginner'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         );
@@ -4281,79 +4483,112 @@ ${formattedMoves || '1. e4'} ${game.result}`;
         </div>
       )}
 
-      {/* LEVEL GATEKEEPER CHALLENGE MODAL */}
-      {gatekeeperLockedLevel !== null && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200">
-          <div className="bg-slate-900 border-2 border-amber-500/50 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl text-center relative overflow-hidden">
-            <div className="text-5xl">🔒</div>
-            <div className="space-y-1">
-              <span className="text-[10px] uppercase font-black tracking-wider text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/30">
-                Gatekeeper Challenge
-              </span>
-              <h2 className="text-xl font-extrabold text-white">
-                Level {gatekeeperLockedLevel} is Locked!
-              </h2>
-              <p className="text-xs text-slate-400">
-                Unlock {BOT_LEVELS.find((b) => b.level === gatekeeperLockedLevel)?.name} using any of the 3 mastery paths:
-              </p>
-            </div>
+      {/* LEVEL UNLOCK POINT PROGRESSION MODAL */}
+      {gatekeeperLockedLevel !== null && (() => {
+        const lockedBot = BOT_LEVELS.find((b) => b.level === gatekeeperLockedLevel);
+        const studentRating = profile?.rating || 400;
+        const targetRating = lockedBot?.rating || 1000;
+        const ptsNeeded = Math.max(0, targetRating - studentRating);
+        const pct = Math.min(100, Math.round((studentRating / targetRating) * 100));
+        const highestUnlocked = Math.max(...Array.from(unlockedSet), 1);
+        const prevLevel = Math.max(1, gatekeeperLockedLevel - 1);
 
-            <div className="space-y-2.5 text-left text-xs">
-              <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-start gap-3">
-                <span className="text-xl">🏆</span>
-                <div className="space-y-0.5">
-                  <div className="font-bold text-white">Path 1: Earn Points / Rating</div>
-                  <p className="text-slate-400 text-[11px]">
-                    Reach <strong className="text-amber-400">{BOT_LEVEL_UNLOCK_REQUIREMENTS[gatekeeperLockedLevel]?.minRating || 1000}+ Rating</strong> or <strong className="text-sky-400">{BOT_LEVEL_UNLOCK_REQUIREMENTS[gatekeeperLockedLevel]?.minXp || 500}+ XP Points</strong>.
-                    <br />
-                    <span className="text-slate-500">Your Current:</span> <strong className="text-emerald-400">{profile?.rating || 400} Rating</strong> • <strong className="text-amber-400">{xpCurrent} XP</strong>
-                  </p>
+        return (
+          <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-slate-900 border-2 border-amber-500/50 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl text-center relative overflow-hidden">
+              <div className="text-5xl">{lockedBot?.avatarIcon || '🔒'}</div>
+              <div className="space-y-1">
+                <span className="text-[10px] uppercase font-black tracking-wider text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/30">
+                  Level {gatekeeperLockedLevel} Locked
+                </span>
+                <h2 className="text-xl font-extrabold text-white">
+                  {lockedBot?.name || `Level ${gatekeeperLockedLevel}`}
+                </h2>
+                <p className="text-xs text-slate-400">
+                  Earn points or defeat previous bots to unlock this challenge!
+                </p>
+              </div>
+
+              {/* Point Progress Bar */}
+              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-2 text-left">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-300">Rating Points Required:</span>
+                  <span className="font-mono font-black text-amber-400">
+                    {studentRating} / {targetRating} pts
+                  </span>
+                </div>
+                <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden">
+                  <div
+                    className="bg-gradient-to-r from-amber-500 via-amber-400 to-emerald-400 h-full rounded-full transition-all duration-500"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <div className="text-[11px] text-slate-400 text-right">
+                  {ptsNeeded > 0 ? (
+                    <span>Only <strong className="text-amber-300 font-bold">{ptsNeeded} more points</strong> needed to unlock automatically!</span>
+                  ) : (
+                    <span className="text-emerald-400 font-bold">Target points achieved!</span>
+                  )}
                 </div>
               </div>
 
-              <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-start gap-3">
-                <span className="text-xl">⚔️</span>
-                <div className="space-y-0.5">
-                  <div className="font-bold text-white">Path 2: Defeat Level {gatekeeperLockedLevel - 1}</div>
-                  <p className="text-slate-400 text-[11px]">
-                    Win a match against <strong className="text-white">{BOT_LEVELS.find((b) => b.level === gatekeeperLockedLevel - 1)?.name || `Level ${gatekeeperLockedLevel - 1}`}</strong> to instantly unlock Level {gatekeeperLockedLevel}!
-                  </p>
+              {/* 3 Ways to Unlock */}
+              <div className="space-y-2.5 text-left text-xs">
+                <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-3 flex items-start gap-3">
+                  <span className="text-xl">⚡</span>
+                  <div className="space-y-0.5">
+                    <div className="font-bold text-white">Way 1: Win Bot Matches (+20 Pts)</div>
+                    <p className="text-slate-400 text-[11px]">
+                      Play against your unlocked bots. Every victory awards +20 to +40 rating points toward unlocking {lockedBot?.name?.replace(/Level \d+ — /, '')}.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-3 flex items-start gap-3">
+                  <span className="text-xl">⚔️</span>
+                  <div className="space-y-0.5">
+                    <div className="font-bold text-white">Way 2: Defeat Level {prevLevel} in a Knockout</div>
+                    <p className="text-slate-400 text-[11px]">
+                      Defeat Level {prevLevel} in a match to trigger an instant knockout promotion and unlock Level {gatekeeperLockedLevel} immediately!
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-3 flex items-start gap-3">
+                  <span className="text-xl">🔑</span>
+                  <div className="space-y-0.5">
+                    <div className="font-bold text-white">Way 3: Coach Academy Pass</div>
+                    <p className="text-slate-400 text-[11px]">
+                      Your coach can also unlock any level for you during master training sessions.
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-start gap-3">
-                <span className="text-xl">🔑</span>
-                <div className="space-y-0.5">
-                  <div className="font-bold text-white">Path 3: Coach Master Key</div>
-                  <p className="text-slate-400 text-[11px]">
-                    Your chess academy coach can unlock this level anytime directly from the coach portal.
-                  </p>
-                </div>
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row gap-2.5 pt-2">
+                <Button
+                  onClick={() => {
+                    setSelectedLevel(highestUnlocked);
+                    setGatekeeperLockedLevel(null);
+                    setActiveTab('play');
+                  }}
+                  className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-extrabold text-xs uppercase shadow-md shadow-amber-500/20"
+                >
+                  ⚔️ Play Level {highestUnlocked} to Earn Points
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setGatekeeperLockedLevel(null)}
+                  className="py-3 px-4 text-xs font-bold text-slate-300 border-slate-800 hover:bg-slate-800"
+                >
+                  Close
+                </Button>
               </div>
-            </div>
-
-            <div className="flex gap-2.5 pt-2">
-              <Button
-                onClick={() => {
-                  const targetPrev = Math.max(1, gatekeeperLockedLevel - 1);
-                  setSelectedLevel(targetPrev);
-                  setGatekeeperLockedLevel(null);
-                }}
-                className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-extrabold text-xs uppercase shadow-md shadow-amber-500/20"
-              >
-                ⚔️ Play Level {gatekeeperLockedLevel - 1} To Unlock
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setGatekeeperLockedLevel(null)}
-                className="py-3 px-4 text-xs font-bold text-slate-300 border-slate-800 hover:bg-slate-800"
-              >
-                Close
-              </Button>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* DAILY MISSIONS MODAL */}
       {showMissionsModal && (

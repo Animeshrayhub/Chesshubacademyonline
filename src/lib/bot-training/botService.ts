@@ -144,50 +144,34 @@ export function calculateRatingDelta(result: GameResult): number {
   return 0;
 }
 
-export const BOT_LEVEL_UNLOCK_REQUIREMENTS: Record<number, { minRating: number; minXp: number }> = {
-  1: { minRating: 400, minXp: 0 },
-  2: { minRating: 400, minXp: 0 },
-  3: { minRating: 500, minXp: 200 },
-  4: { minRating: 650, minXp: 450 },
-  5: { minRating: 800, minXp: 750 },
-  6: { minRating: 950, minXp: 1100 },
-  7: { minRating: 1100, minXp: 1500 },
-  8: { minRating: 1250, minXp: 2000 },
-  9: { minRating: 1400, minXp: 2600 },
-  10: { minRating: 1600, minXp: 3300 },
-};
-
 export function getUnlockedLevels(
   rating: number,
   coachUnlocked: number[] = [],
-  beatenLevel: number = 0,
-  previousUnlocked: number[] = []
+  savedUnlocked: number[] = [],
+  beatenLevels: number[] = []
 ): number[] {
-  // Levels 1 and 2 are unlocked by default for foundational beginner practice
-  const unlocked = new Set<number>(previousUnlocked && previousUnlocked.length > 0 ? previousUnlocked : [1, 2]);
-  unlocked.add(1);
-  unlocked.add(2);
-
-  // Progressive Points / Rating unlocks
-  Object.entries(BOT_LEVEL_UNLOCK_REQUIREMENTS).forEach(([lvlStr, req]) => {
-    const lvl = Number(lvlStr);
-    if (rating >= req.minRating) {
-      unlocked.add(lvl);
+  // Level 1 is foundational and always open
+  const unlocked = new Set<number>([1]);
+  // 1. Point / Rating milestone unlock: achieving the bot rating unlocks that level!
+  BOT_LEVELS.forEach((b) => {
+    if (rating >= b.rating) {
+      unlocked.add(b.level);
     }
   });
-
-  // Knockout progression: beating level L unlocks up to L + 1
-  if (beatenLevel > 0) {
-    for (let lvl = 1; lvl <= Math.min(10, beatenLevel + 1); lvl++) {
-      unlocked.add(lvl);
+  // 2. Previously saved unlocked levels in profile
+  savedUnlocked.forEach((lvl) => {
+    if (lvl >= 1 && lvl <= 10) unlocked.add(lvl);
+  });
+  // 3. Victory Progression: beating level L unlocks level L + 1
+  beatenLevels.forEach((lvl) => {
+    for (let l = 1; l <= Math.min(10, lvl + 1); l++) {
+      unlocked.add(l);
     }
-  }
-
-  // Coach Master Key override
+  });
+  // 4. Coach Master Key override
   coachUnlocked.forEach((lvl) => {
     if (lvl >= 1 && lvl <= 10) unlocked.add(lvl);
   });
-
   return Array.from(unlocked).sort((a, b) => a - b);
 }
 
@@ -209,7 +193,7 @@ export async function getOrCreateStudentBotProfile(studentUserId: string): Promi
       .maybeSingle();
 
     if (!error && existing) {
-      const unlocked = getUnlockedLevels(existing.rating, existing.coach_unlocked_levels || []);
+      const unlocked = getUnlockedLevels(existing.rating, existing.coach_unlocked_levels || [], existing.unlocked_levels || []);
       return {
         ...existing,
         unlocked_levels: unlocked,
