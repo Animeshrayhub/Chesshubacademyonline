@@ -1393,45 +1393,9 @@ ${formattedMoves || '1. e4'} ${game.result}`;
   };
 
   const unlockedSet = useMemo(() => {
-    const set = new Set<number>(profile?.unlocked_levels || [1, 2, 3]);
-    // Levels 1-3 always open for beginners
-    set.add(1);
-    set.add(2);
-    set.add(3);
-
-    // 1. Coach Master Key override
-    if (profile?.coach_unlocked_levels) {
-      profile.coach_unlocked_levels.forEach((lvl) => set.add(lvl));
-    }
-
-    // 2. Tactical Quiz Benchmark: 4+ correct answers unlocks levels 4-5, 7+ unlocks 6-7, 10 unlocks all
-    if (quizScore >= 4) {
-      set.add(4);
-      set.add(5);
-    }
-    if (quizScore >= 7) {
-      set.add(6);
-      set.add(7);
-    }
-    if (quizScore >= 10) {
-      set.add(8);
-      set.add(9);
-      set.add(10);
-    }
-
-    // 3. Boss Knockout Progression: beating level L unlocks L+1
-    if (recentGames && recentGames.length > 0) {
-      recentGames.forEach((g) => {
-        if (g.result === 'win' && typeof g.bot_level === 'number') {
-          for (let lvl = 1; lvl <= Math.min(10, g.bot_level + 1); lvl++) {
-            set.add(lvl);
-          }
-        }
-      });
-    }
-
-    return set;
-  }, [profile?.unlocked_levels, profile?.coach_unlocked_levels, quizScore, recentGames]);
+    // All 10 bot levels are unlocked so students can practice against any bot difficulty directly
+    return new Set<number>([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  }, []);
 
   if (loadingProfile) {
     return (
