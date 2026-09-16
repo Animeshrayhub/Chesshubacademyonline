@@ -87,7 +87,7 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
     durationMinutes: 60,
     classType: 'GROUP' as ClassType,
     status: 'SCHEDULED' as ClassStatus,
-    videoProvider: 'ZOOM' as VideoProvider,
+    videoProvider: 'GOOGLE_MEET' as VideoProvider,
     zoomJoinUrl: '',
     zoomStartUrl: '',
     recordingUrl: '',
@@ -104,6 +104,39 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState(false);
+
+  // Quick Google Meet Modal state
+  const [isMeetModalOpen, setIsMeetModalOpen] = useState(false);
+  const [meetModalClass, setMeetModalClass] = useState<AdminClassRow | null>(null);
+  const [quickMeetUrl, setQuickMeetUrl] = useState('');
+  const [isSavingMeetUrl, setIsSavingMeetUrl] = useState(false);
+
+  const openQuickMeetModal = (cls: AdminClassRow) => {
+    setMeetModalClass(cls);
+    setQuickMeetUrl(cls.zoom_join_url || '');
+    setIsMeetModalOpen(true);
+  };
+
+  const handleSaveQuickMeetUrl = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!meetModalClass) return;
+    setIsSavingMeetUrl(true);
+    try {
+      const url = quickMeetUrl.trim();
+      const res = await updateClassAction(meetModalClass.id, {
+        videoProvider: 'GOOGLE_MEET',
+        zoomJoinUrl: url,
+      });
+      if (res.success) {
+        setIsMeetModalOpen(false);
+        setMeetModalClass(null);
+      } else {
+        alert(res.error?.message || 'Failed to update meeting link.');
+      }
+    } finally {
+      setIsSavingMeetUrl(false);
+    }
+  };
 
   const pageSize = 10;
 
@@ -143,7 +176,7 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
       durationMinutes: 60,
       classType: 'GROUP',
       status: 'SCHEDULED',
-      videoProvider: 'ZOOM',
+      videoProvider: 'GOOGLE_MEET',
       zoomJoinUrl: '',
       zoomStartUrl: '',
       recordingUrl: '',
@@ -279,6 +312,11 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
       return;
     }
 
+    if (!formData.zoomJoinUrl || !formData.zoomJoinUrl.trim()) {
+      setFormError('A Google Meet link (e.g., https://meet.google.com/xxx-yyyy-zzz) is required before this class can be scheduled.');
+      return;
+    }
+
     const studentCount = formData.studentUserIds.length;
     const maxAllowed = CAPACITY_LIMITS[formData.classType] || 5;
     if (studentCount > maxAllowed && !allowCapacityOverride) {
@@ -382,10 +420,15 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
           window.open(`/classroom/${cls.id}`, '_blank');
         },
       },
+      {
+        label: isMeet ? '🎥 Edit Google Meet Link' : '🎥 Assign Google Meet Link',
+        iconKey: 'video',
+        onClick: () => openQuickMeetModal(cls),
+      },
       ...(cls.zoom_join_url
         ? [
             {
-              label: 'Open Zoom Direct Link',
+              label: isMeet ? 'Open Google Meet Direct Link' : 'Open Zoom Direct Link',
               iconKey: 'video',
               onClick: () => {
                 if (cls.zoom_join_url) {
@@ -1166,7 +1209,15 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
                   label={formData.videoProvider === 'JITSI' ? 'Jitsi Room Link (Auto-generated if empty)' : formData.videoProvider === 'ZOOM' ? 'Zoom Join Link (Auto-generated via Zoom API if empty)' : 'Google Meet / Custom Meeting Link'}
                   placeholder={formData.videoProvider === 'JITSI' ? 'Auto-generated Jitsi Link' : formData.videoProvider === 'ZOOM' ? 'https://zoom.us/j/...' : 'https://meet.google.com/xyz-abc-def'}
                   value={formData.zoomJoinUrl}
-                  onChange={(e) => setFormData((p) => ({ ...p, zoomJoinUrl: e.target.value }))}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const detected = val.includes('meet.google.com')
+                      ? 'GOOGLE_MEET'
+                      : val.includes('jit.si')
+                      ? 'JITSI'
+                      : formData.videoProvider;
+                    setFormData((p) => ({ ...p, zoomJoinUrl: val, videoProvider: detected }));
+                  }}
                 />
               </div>
 
@@ -1223,6 +1274,64 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
         classData={selectedRecordingClass}
         onEditRecordingLink={(cls) => openEdit(cls)}
       />
+
+      {/* Quick Google Meet Assignment Modal */}
+      <Modal
+        isOpen={isMeetModalOpen}
+        onClose={() => { setIsMeetModalOpen(false); setMeetModalClass(null); }}
+        title="Assign Google Meet Link"
+      >
+        <form onSubmit={handleSaveQuickMeetUrl} className="space-y-4 pt-2">
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-xs text-amber-300">
+            <p className="font-bold flex items-center gap-1.5">
+              <span>🟡</span>
+              <span>1-Click Google Meet for Students & Coach</span>
+            </p>
+            <p className="text-[11px] text-amber-200/80 mt-1">
+              Paste the Google Meet link below (e.g., https://meet.google.com/xxx-yyyy-zzz). Students will be able to join with a single click from their dashboard, waiting room, and live classroom!
+            </p>
+          </div>
+
+          <div>
+            <Input
+              id="quick-meet-url"
+              label="Google Meet URL"
+              placeholder="https://meet.google.com/abc-defg-hij"
+              value={quickMeetUrl}
+              onChange={(e) => setQuickMeetUrl(e.target.value)}
+              autoFocus
+            />
+          </div>
+
+          <div className="flex items-center justify-between pt-2">
+            <button
+              type="button"
+              onClick={() => window.open('https://meet.google.com/new', '_blank')}
+              className="text-[11px] font-bold text-blue-600 hover:text-blue-500 flex items-center gap-1 cursor-pointer"
+            >
+              <span>↗️</span>
+              <span>Create New Google Meet Tab</span>
+            </button>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => { setIsMeetModalOpen(false); setMeetModalClass(null); }}
+                className="px-3.5 py-1.5 rounded-xl border border-border text-xs font-semibold hover:bg-surface-light cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSavingMeetUrl}
+                className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-md cursor-pointer disabled:opacity-50"
+              >
+                {isSavingMeetUrl ? 'Saving…' : 'Save & Publish Meet Link'}
+              </button>
+            </div>
+          </div>
+        </form>
+      </Modal>
 
       {/* Delete Confirmation */}
       <ConfirmationModal

@@ -1,12 +1,60 @@
 import type { Metadata } from 'next';
 import Container from '@/components/ui/Container';
-import { SITE_URL, SITE_EMAIL, SITE_NAME } from '@/constants/SITE';
+import JsonLd from '@/components/seo/JsonLd';
+import { SITE_URL, SITE_EMAIL, SITE_NAME, SITE_OG_IMAGE } from '@/constants/SITE';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy',
-  description: `${SITE_NAME}'s Privacy Policy — learn how we collect, use, and protect your personal information.`,
-  alternates: { canonical: `${SITE_URL}/privacy-policy` },
-  robots: { index: true, follow: true },
+  description:
+    `Learn how ${SITE_NAME} collects, protects, and handles personal data for students and parents. Our Privacy Policy covers children's online privacy (COPPA compliance), data security, cookies, and user data rights.`,
+  keywords: [
+    'ChessHub Academy privacy policy',
+    'chess academy data protection',
+    'children privacy chess lessons',
+    'COPPA compliance chess academy',
+    'online chess coaching student privacy',
+    'chess platform data security',
+    'ChessHub Academy privacy',
+  ],
+  alternates: {
+    canonical: `${SITE_URL}/privacy-policy`,
+  },
+  openGraph: {
+    title: `Privacy Policy | ${SITE_NAME}`,
+    description:
+      `Learn how ${SITE_NAME} safeguards student and parent information, upholds children's data privacy, and maintains high data protection standards.`,
+    url: `${SITE_URL}/privacy-policy`,
+    siteName: SITE_NAME,
+    locale: 'en_US',
+    type: 'website',
+    images: [
+      {
+        url: SITE_OG_IMAGE,
+        width: 1200,
+        height: 630,
+        alt: `Privacy Policy — ${SITE_NAME}`,
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: `Privacy Policy | ${SITE_NAME}`,
+    description:
+      `Learn how ${SITE_NAME} safeguards student and parent information, upholds children's privacy, and ensures data protection.`,
+    images: [SITE_OG_IMAGE],
+    creator: '@chesshubacademy',
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
 };
 
 const SECTIONS = [
@@ -107,8 +155,53 @@ To exercise any of these rights, please contact us at the email address below.`,
 ];
 
 export default function PrivacyPolicyPage() {
+  const webPageSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'WebPage',
+    '@id': `${SITE_URL}/privacy-policy/#webpage`,
+    url: `${SITE_URL}/privacy-policy`,
+    name: `Privacy Policy | ${SITE_NAME}`,
+    description: `Learn how ${SITE_NAME} collects, protects, and handles personal data for students and parents. Our Privacy Policy covers children's online privacy (COPPA compliance), data security, cookies, and user data rights.`,
+    isPartOf: {
+      '@type': 'WebSite',
+      '@id': `${SITE_URL}/#website`,
+      name: SITE_NAME,
+      url: SITE_URL,
+    },
+    about: {
+      '@type': 'EducationalOrganization',
+      name: SITE_NAME,
+      url: SITE_URL,
+    },
+    inLanguage: 'en-US',
+    datePublished: '2024-01-01',
+    dateModified: '2026-07-01',
+  };
+
+  const breadcrumbSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'Home',
+        item: SITE_URL,
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: 'Privacy Policy',
+        item: `${SITE_URL}/privacy-policy`,
+      },
+    ],
+  };
+
   return (
     <>
+      <JsonLd data={webPageSchema} />
+      <JsonLd data={breadcrumbSchema} />
+
       {/* Header */}
       <section className="pt-32 pb-12 bg-surface-dark text-white" aria-label="Privacy policy header">
         <Container>

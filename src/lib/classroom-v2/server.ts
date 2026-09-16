@@ -25,7 +25,7 @@ import {
   type StudentBoardColorPermission,
 } from './types';
 import { type ClassroomRealtimePayload } from './events';
-import { validateChessMove, parsePgnToMoves } from './validation';
+import { validateChessMove, parsePgnToMoves, validateFen } from './validation';
 import {
   canUserMoveBoard,
   isCoachOrAdmin,
@@ -62,6 +62,11 @@ export async function broadcastToLiveSession(
         },
         body: JSON.stringify({
           messages: [
+            {
+              topic: `realtime:live-session:${sessionId}`,
+              event: payload.type,
+              payload,
+            },
             {
               topic: `live-session:${sessionId}`,
               event: payload.type,
@@ -939,21 +944,39 @@ export async function mutateClassroomLoadGame(
     return { success: false, error: 'Only coach or admin can load games.' };
   }
 
-  const { moves, finalFen } = parsePgnToMoves(pgnText, userId);
+  const trimmed = (pgnText || '').trim();
+  let moves: MoveData[] = [];
+  let finalFen = DEFAULT_INITIAL_FEN;
+  let initialFen = DEFAULT_INITIAL_FEN;
+
+  if (validateFen(trimmed)) {
+    // Direct FEN string input
+    finalFen = trimmed;
+    initialFen = trimmed;
+    moves = [];
+  } else {
+    // PGN game text input
+    const parsed = parsePgnToMoves(pgnText, userId);
+    moves = parsed.moves;
+    finalFen = parsed.finalFen;
+  }
+
   const admin = createSupabaseAdmin();
   const overlay = getOverlayState(sessionId, moves.length);
   const nextVersion = overlay.version + 1;
   overlay.version = nextVersion;
 
+  const currentMoveIndex = moves.length > 0 ? moves.length - 1 : -1;
+
   const gameState: CanonicalGameState = {
     gameId: `game_${Date.now()}`,
-    whiteName: 'White',
+    whiteName: gameTitle || 'White',
     blackName: 'Black',
     result: '*',
     pgn: pgnText,
-    initialFen: DEFAULT_INITIAL_FEN,
+    initialFen,
     moves,
-    currentMoveIndex: moves.length - 1,
+    currentMoveIndex,
   };
 
   overlay.game = gameState;
@@ -965,7 +988,7 @@ export async function mutateClassroomLoadGame(
     .update({
       fen: finalFen,
       moves,
-      current_move_index: moves.length - 1,
+      current_move_index: currentMoveIndex,
       updated_by: userId,
       updated_at: new Date().toISOString(),
     })
@@ -1554,17 +1577,84 @@ export async function endClassroomSession(
     }
   }
 
-  // 5. Save real attendance and class report
+  // 5. Save real attendance and class report directly to database
+  const notesToSave = reviewNotes && reviewNotes.trim()
+    ? reviewNotes.trim()
+    : `Class concluded normally. Actual conducted duration: ${actualDurationMinutes} mins.`;
+
   try {
-    const { markClassAttendance } = await import('../coaches');
-    const notesToSave = reviewNotes && reviewNotes.trim()
-      ? reviewNotes.trim()
-      : `Class concluded normally. Actual conducted duration: ${actualDurationMinutes} mins.`;
-    await markClassAttendance(
-      classId,
-      (attendanceRecords || []) as any,
-      notesToSave
-    );
+    // Resolve coach profile id for class report linkage
+    let coachProfileId = cls?.coach_id;
+    if (!coachProfileId) {
+      const { data: cp } = await admin
+        .from('coach_profiles')
+        .select('id')
+        .eq('user_id', userId)
+        .maybeSingle();
+      coachProfileId = cp?.id;
+    }
+
+    // Upsert class report
+    let { data: report } = await admin
+      .from('class_reports')
+      .select('id')
+      .eq('class_id', classId)
+      .maybeSingle();
+
+    if (!report) {
+      const { data: insertedReport } = await admin
+        .from('class_reports')
+        .insert({
+          class_id: classId,
+          coach_id: coachProfileId || null,
+          notes: notesToSave,
+          submitted_at: endedAt,
+        })
+        .select('id')
+        .single();
+      report = insertedReport;
+    } else {
+      await admin
+        .from('class_reports')
+        .update({
+          notes: notesToSave,
+          updated_at: endedAt,
+          submitted_at: endedAt,
+        })
+        .eq('id', report.id);
+    }
+
+    // Upsert individual student attendance records
+    if (report && attendanceRecords && attendanceRecords.length > 0) {
+      for (const rec of attendanceRecords) {
+        if (!rec.studentProfileId) continue;
+        const { data: existingAtt } = await admin
+          .from('class_attendance')
+          .select('id')
+          .eq('class_report_id', report.id)
+          .eq('student_id', rec.studentProfileId)
+          .maybeSingle();
+
+        if (existingAtt) {
+          await admin
+            .from('class_attendance')
+            .update({
+              status: rec.status,
+              feedback: rec.feedback || null,
+            })
+            .eq('id', existingAtt.id);
+        } else {
+          await admin
+            .from('class_attendance')
+            .insert({
+              class_report_id: report.id,
+              student_id: rec.studentProfileId,
+              status: rec.status,
+              feedback: rec.feedback || null,
+            });
+        }
+      }
+    }
   } catch (attErr) {
     console.warn('[End Class] Attendance logging warning:', attErr);
   }
@@ -1586,12 +1676,15 @@ export async function endClassroomSession(
     metadata: { actualDurationMinutes, endedAt },
   });
 
-  // 8. Broadcast global class end to all clients
+  // 8. Broadcast global class end with session summary to all clients
   await broadcastToLiveSession(sessionId, {
     sessionId,
     eventId: `end_${Date.now()}`,
     type: 'CLASS_ENDED',
     endedAt,
+    reviewNotes: notesToSave,
+    actualDurationMinutes,
+    attendanceRecords: attendanceRecords || [],
     version: 999999,
     timestamp: endedAt,
   });

@@ -118,9 +118,25 @@ export type ClassroomRealtimePayload =
   | (ClassroomRealtimeBaseEvent & {
       type: 'CLASS_ENDED';
       endedAt: string;
+      reviewNotes?: string;
+      actualDurationMinutes?: number;
+      attendanceRecords?: Array<{ studentProfileId: string; status: 'PRESENT' | 'ABSENT' | 'LATE' | 'LEFT_EARLY'; feedback?: string }>;
     })
   | (ClassroomRealtimeBaseEvent & {
       /** Coach broadcasts a question/prompt to all students */
       type: 'COACH_QUESTION';
       question: CoachQuestion;
+    })
+  | (ClassroomRealtimeBaseEvent & {
+      /** Coach marks a student response as correct, incorrect, or pending */
+      type: 'RESPONSE_EVALUATED';
+      responseId: string;
+      status: 'correct' | 'incorrect' | 'pending';
+      coachFeedback?: string;
+    })
+  | (ClassroomRealtimeBaseEvent & {
+      /** Coach toggles revealing all student responses to class for open discussion */
+      type: 'TOGGLE_REVEAL_RESPONSES';
+      areResponsesRevealed: boolean;
+      allResponses?: StudentResponseItem[];
     });

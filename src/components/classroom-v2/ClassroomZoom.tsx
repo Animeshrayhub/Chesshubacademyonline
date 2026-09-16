@@ -46,12 +46,47 @@ export default function ClassroomZoom({
   const [isCompanionOpen, setIsCompanionOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
-  // Determine effective provider
-  const isGoogleMeet = videoProvider === 'GOOGLE_MEET' || meetingUrl.includes('meet.google.com');
+  // Dynamic Meeting URL state (allows Coach/Admin to set/update meet link live in classroom)
+  const [currentMeetingUrl, setCurrentMeetingUrl] = useState(meetingUrl);
+  const [isEditingMeetUrl, setIsEditingMeetUrl] = useState(false);
+  const [newMeetUrlInput, setNewMeetUrlInput] = useState('');
+  const [isSavingMeetUrl, setIsSavingMeetUrl] = useState(false);
 
-  const effectiveMeetingUrl = meetingUrl || (zoomMeetingId
+  useEffect(() => {
+    if (meetingUrl) setCurrentMeetingUrl(meetingUrl);
+  }, [meetingUrl]);
+
+  // Determine effective provider
+  const isGoogleMeet = videoProvider === 'GOOGLE_MEET' || (currentMeetingUrl && currentMeetingUrl.includes('meet.google.com')) || (!currentMeetingUrl && !zoomMeetingId);
+
+  const effectiveMeetingUrl = currentMeetingUrl || (zoomMeetingId
     ? `https://zoom.us/j/${zoomMeetingId.replace(/[^0-9]/g, '')}?pwd=${zoomPasscode}`
     : '');
+
+  const handleSaveMeetUrl = async () => {
+    if (!newMeetUrlInput.trim()) return;
+    setIsSavingMeetUrl(true);
+    try {
+      const { updateClassAction } = await import('@/actions/classes');
+      const formatted = newMeetUrlInput.trim().startsWith('http')
+        ? newMeetUrlInput.trim()
+        : `https://${newMeetUrlInput.trim()}`;
+      const res = await updateClassAction(classId, {
+        videoProvider: 'GOOGLE_MEET',
+        zoomJoinUrl: formatted,
+      });
+      if (res.success) {
+        setCurrentMeetingUrl(formatted);
+        setIsEditingMeetUrl(false);
+      } else {
+        alert(res.error?.message || 'Failed to update meeting link.');
+      }
+    } catch (e: any) {
+      alert(e.message || 'Error updating meeting link.');
+    } finally {
+      setIsSavingMeetUrl(false);
+    }
+  };
 
   const [layoutMode, setLayoutMode] = useState<'gallery' | 'speaker'>(() => {
     if (typeof window !== 'undefined') {
@@ -97,7 +132,9 @@ export default function ClassroomZoom({
     }
   }, [isGoogleMeet]);
 
-  // Open meeting in synchronized companion window
+  const companionWinRef = useRef<Window | null>(null);
+
+  // Open meeting in synchronized side-by-side companion window (40% width docked to right edge)
   const openCompanionWindow = useCallback((urlToOpen?: string) => {
     const target = urlToOpen || effectiveMeetingUrl;
     if (!target) return;
@@ -105,10 +142,10 @@ export default function ClassroomZoom({
     if (typeof window !== 'undefined') {
       const screenW = window.screen.availWidth || 1280;
       const screenH = window.screen.availHeight || 800;
-      const width = Math.min(540, screenW - 40);
-      const height = Math.min(680, screenH - 80);
-      const left = Math.max(0, screenW - width - 20);
-      const top = 30;
+      const width = Math.max(480, Math.min(Math.round(screenW * 0.4), 720));
+      const height = Math.max(580, Math.min(Math.round(screenH * 0.92), screenH - 60));
+      const left = Math.max(0, screenW - width - 10);
+      const top = 20;
 
       const win = window.open(
         target,
@@ -117,17 +154,29 @@ export default function ClassroomZoom({
       );
 
       if (win) {
+        companionWinRef.current = win;
         setIsCompanionOpen(true);
         try {
           win.focus();
         } catch {}
       } else {
         // Browser blocked popup window: fallback to new tab
-        window.open(target, '_blank');
+        const tabWin = window.open(target, '_blank');
+        if (tabWin) companionWinRef.current = tabWin;
         setIsCompanionOpen(true);
       }
     }
   }, [effectiveMeetingUrl]);
+
+  const focusCompanionWindow = useCallback(() => {
+    if (companionWinRef.current && !companionWinRef.current.closed) {
+      try {
+        companionWinRef.current.focus();
+      } catch {}
+    } else {
+      openCompanionWindow();
+    }
+  }, [openCompanionWindow]);
 
   const handleCopyLink = () => {
     if (!effectiveMeetingUrl) return;
@@ -349,9 +398,21 @@ export default function ClassroomZoom({
                     {isCompanionOpen ? 'Live Call Running (Side Window)' : 'Click to Join Video & Audio'}
                   </span>
                 </div>
-                <span className="text-[10px] text-slate-500 font-mono">
-                  {isCompanionOpen ? '🟢 Active' : '🟡 Ready'}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    {isCompanionOpen ? '🟢 Active' : '🟡 Ready'}
+                  </span>
+                  {isCompanionOpen && (
+                    <button
+                      type="button"
+                      onClick={focusCompanionWindow}
+                      className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold border border-slate-700 cursor-pointer"
+                      title="Bring Google Meet companion window to front"
+                    >
+                      🔍 Focus
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -367,9 +428,70 @@ export default function ClassroomZoom({
                   <span>{isCompanionOpen ? 'RE-OPEN GOOGLE MEET WINDOW' : 'JOIN GOOGLE MEET (1-CLICK)'}</span>
                 </button>
               ) : (
-                <div className="p-3 bg-rose-950/40 border border-rose-800/50 rounded-xl text-rose-300 text-xs">
-                  <p className="font-bold">Google Meet Link Missing</p>
-                  <p className="text-[10px] text-rose-400 mt-0.5">Please ask the Academy Admin to assign the Google Meet link in Admin Classes Registry.</p>
+                <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl text-left space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="font-bold text-xs text-amber-300 flex items-center gap-1">
+                      <span>🟡</span> Google Meet Link Not Set
+                    </p>
+                    {isCoach && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewMeetUrlInput('');
+                          setIsEditingMeetUrl(true);
+                        }}
+                        className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] cursor-pointer"
+                      >
+                        + Add Meet Link
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    {isCoach
+                      ? 'Click "+ Add Meet Link" to paste your Google Meet room URL for students.'
+                      : 'Please wait for the Coach or Academy Admin to assign the Google Meet link.'}
+                  </p>
+                </div>
+              )}
+
+              {/* Inline Meet Link Editor for Coach */}
+              {isEditingMeetUrl && isCoach && (
+                <div className="p-3 bg-slate-950 border border-emerald-500/50 rounded-xl text-left space-y-2.5 animate-fadeIn">
+                  <p className="text-[11px] font-bold text-emerald-300">Set Google Meet URL for this Class</p>
+                  <input
+                    type="url"
+                    placeholder="https://meet.google.com/abc-defg-hij"
+                    value={newMeetUrlInput}
+                    onChange={(e) => setNewMeetUrlInput(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:outline-none focus:border-emerald-500"
+                    autoFocus
+                  />
+                  <div className="flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => window.open('https://meet.google.com/new', '_blank')}
+                      className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>↗️</span> Create New Meet
+                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingMeetUrl(false)}
+                        className="px-2.5 py-1 rounded bg-slate-800 text-slate-300 text-[10px] font-bold cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!newMeetUrlInput.trim() || isSavingMeetUrl}
+                        onClick={handleSaveMeetUrl}
+                        className="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold disabled:opacity-50 cursor-pointer"
+                      >
+                        {isSavingMeetUrl ? 'Saving…' : 'Save & Publish'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -396,14 +518,29 @@ export default function ClassroomZoom({
 
             {/* Bottom Actions */}
             <div className="pt-2 border-t border-slate-800/70 flex items-center justify-between text-[10px]">
-              <button
-                type="button"
-                onClick={handleCopyLink}
-                className="text-slate-400 hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
-              >
-                <span>{copiedLink ? '✓' : '📋'}</span>
-                <span>{copiedLink ? 'Meeting Link Copied!' : 'Copy Meeting Link'}</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopyLink}
+                  className="text-slate-400 hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
+                >
+                  <span>{copiedLink ? '✓' : '📋'}</span>
+                  <span>{copiedLink ? 'Link Copied!' : 'Copy Link'}</span>
+                </button>
+                {isCoach && effectiveMeetingUrl && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewMeetUrlInput(effectiveMeetingUrl);
+                      setIsEditingMeetUrl((v) => !v);
+                    }}
+                    className="text-slate-400 hover:text-amber-300 flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <span>✏️</span>
+                    <span>Edit Link</span>
+                  </button>
+                )}
+              </div>
 
               <a
                 href={effectiveMeetingUrl || '#'}

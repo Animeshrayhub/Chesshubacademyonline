@@ -93,6 +93,21 @@ export async function endClassAction(id: string) {
 
 export async function startClassAction(id: string) {
   try {
+    const { createSupabaseAdmin } = await import('@/lib/supabase/admin');
+    const admin = createSupabaseAdmin();
+    const { data: cls } = await admin
+      .from('classes')
+      .select('id, zoom_join_url, status')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (!cls?.zoom_join_url || !cls.zoom_join_url.trim()) {
+      return {
+        success: false,
+        error: { message: 'Cannot start class: A Google Meet link has not been assigned by Admin yet. Please assign a Google Meet link in Admin Classes Registry before starting.' }
+      };
+    }
+
     const { getCurrentUser } = await import('@/lib/supabase/auth');
     const user = await getCurrentUser();
     const role = user?.role || 'COACH';

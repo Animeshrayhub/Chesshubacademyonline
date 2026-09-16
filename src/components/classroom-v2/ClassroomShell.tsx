@@ -9,6 +9,7 @@ import ClassroomParticipants from './ClassroomParticipants';
 import ClassroomQuiz from './ClassroomQuiz';
 import ClassroomResponses from './ClassroomResponses';
 import ClassroomZoom from './ClassroomZoom';
+import ClassroomPositionLoaderModal from './ClassroomPositionLoaderModal';
 import ClassroomEnginePanel from '@/components/dashboard/ui/ClassroomEnginePanel';
 import { type BoardOrientation, type CanonicalPuzzleState, type CanonicalCurriculumState } from '@/lib/classroom-v2/types';
 import { DEFAULT_INITIAL_FEN } from '@/lib/classroom-v2/constants';
@@ -87,8 +88,13 @@ export default function ClassroomShell({
     onRevealQuiz,
     onSubmitQuizAnswer,
     onSubmitResponse,
+    areResponsesRevealed,
+    onToggleRevealResponses,
+    onEvaluateResponse,
     onSendMessage,
     onToggleRaiseHand,
+    onCoachLowerHand,
+    onCoachLowerAllHands,
     hasRaisedHand,
     onSendReaction,
     onAskQuestion,
@@ -101,6 +107,24 @@ export default function ClassroomShell({
   const [orientation, setOrientation] = useState<BoardOrientation>('white');
   const [showCoords, setShowCoords] = useState(true);
   const [showSquareLabels, setShowSquareLabels] = useState(false);
+  const [coachDrawColor, setCoachDrawColor] = useState<string>('#10b981');
+  const [showPositionLoader, setShowPositionLoader] = useState(false);
+  const [showReconnectedBanner, setShowReconnectedBanner] = useState(false);
+  const prevConnectionStateRef = useRef(connectionState);
+
+  // Track connection state transitions for seamless rehydration feedback
+  useEffect(() => {
+    if (
+      (prevConnectionStateRef.current === 'reconnecting' || prevConnectionStateRef.current === 'disconnected') &&
+      connectionState === 'connected'
+    ) {
+      setShowReconnectedBanner(true);
+      const timer = setTimeout(() => setShowReconnectedBanner(false), 3000);
+      return () => clearTimeout(timer);
+    }
+    prevConnectionStateRef.current = connectionState;
+  }, [connectionState]);
+
   const localMountTimeRef = useRef<number>(Date.now());
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
@@ -115,6 +139,10 @@ export default function ClassroomShell({
   const unreadChatCount = activeTab === 'chat' ? 0 : Math.max(0, messages.length - lastReadMsgCount);
   const onlineCount = useMemo(() => participants.filter((p) => p.isOnline).length, [participants]);
   const raisedHandsCount = useMemo(() => participants.filter((p) => p.raisedHand).length, [participants]);
+  const raisedHandStudents = useMemo(
+    () => participants.filter((p) => p.role === 'student' && p.raisedHand),
+    [participants]
+  );
 
   // Auto-switch to 'response' tab for student when Coach sends a live question
   useEffect(() => {
@@ -464,7 +492,7 @@ export default function ClassroomShell({
       ? studentParticipants
       : Object.keys(attendanceRecords).map((id) => ({ userId: id }))
     ).map((student: any) => ({
-      studentProfileId: student.userId,
+      studentProfileId: student.studentProfileId || student.userId,
       status: attendanceRecords[student.userId]?.status || (student.isOnline ? 'PRESENT' : 'ABSENT'),
       feedback: studentFeedbackMap[student.userId] || attendanceRecords[student.userId]?.notes || '',
     }));
@@ -477,13 +505,23 @@ export default function ClassroomShell({
     setIsEndingSession(true);
     const studentParticipants = participants.filter((p) => p.role === 'student');
     const records = studentParticipants.map((student) => ({
-      studentProfileId: student.userId,
+      studentProfileId: student.studentProfileId || student.userId,
       status: student.isOnline ? 'PRESENT' : 'ABSENT',
       feedback: 'Attended live classroom session.',
     }));
     await onEndClass(records, learnedTopics || 'Live session completed.');
     setIsEndingSession(false);
   };
+
+  // Resolve personal attendance record for student
+  const myAttendanceRecord = useMemo(() => {
+    if (isCoach || !snapshot.sessionSummary?.attendanceRecords) return null;
+    return snapshot.sessionSummary.attendanceRecords.find(
+      (r) =>
+        r.studentProfileId === userId ||
+        participants.some((p) => p.userId === userId && p.studentProfileId === r.studentProfileId)
+    );
+  }, [isCoach, snapshot.sessionSummary, userId, participants]);
 
   return (
     <div className="flex flex-col min-h-screen lg:h-screen w-screen bg-[#0B0F19] text-white overflow-x-hidden overflow-y-auto lg:overflow-hidden font-sans select-none relative">
@@ -505,24 +543,86 @@ export default function ClassroomShell({
         </div>
       )}
 
-      {/* ── Class Concluded Overlay ───────────────────────────────────────── */}
+      {/* ── Class Concluded & Lesson Summary Modal ───────────────────────── */}
       {snapshot.status === 'ended' && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-750 rounded-3xl p-8 max-w-md w-full text-center space-y-4 shadow-2xl animate-in zoom-in-95 duration-200">
-            <span className="text-4xl block">🏁</span>
-            <h2 className="text-lg font-bold text-white">Live Class Concluded</h2>
-            <p className="text-xs text-slate-400">
-              The coach has concluded this session. All moves, board history, and attendance records have been safely recorded.
-            </p>
-            <div className="pt-2">
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4 select-none">
+          <div className="bg-slate-900 border border-slate-750 rounded-3xl p-6 sm:p-8 max-w-lg w-full space-y-5 shadow-2xl animate-in zoom-in-95 duration-300">
+            <div className="text-center space-y-2">
+              <span className="text-5xl block animate-bounce">🏆</span>
+              <h2 className="text-xl font-black text-white">Live Class Concluded!</h2>
+              <p className="text-xs text-slate-400">
+                Conducted with Coach <strong className="text-slate-200">{coachName}</strong> • {snapshot.sessionSummary?.actualDurationMinutes || Math.max(1, Math.round(elapsedSeconds / 60))} mins
+              </p>
+            </div>
+
+            {/* Student Personal Attendance & Feedback Badge */}
+            {!isCoach && (
+              <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-400">Your Attendance:</span>
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                    <span>✓</span> {myAttendanceRecord?.status || 'PRESENT'}
+                  </span>
+                </div>
+                {myAttendanceRecord?.feedback && (
+                  <div className="pt-2 border-t border-slate-850">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-purple-400 block mb-1">
+                      🎯 Coach Feedback For You:
+                    </span>
+                    <p className="text-xs text-purple-200 italic leading-relaxed">
+                      &ldquo;{myAttendanceRecord.feedback}&rdquo;
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* WHAT WE LEARNED Card */}
+            <div className="bg-indigo-950/40 border border-indigo-800/50 rounded-2xl p-4 space-y-2">
+              <div className="flex items-center gap-2 text-indigo-300">
+                <span>📖</span>
+                <span className="text-xs font-extrabold uppercase tracking-wider">
+                  What We Learned Today
+                </span>
+              </div>
+              <p className="text-xs text-slate-200 leading-relaxed whitespace-pre-wrap">
+                {snapshot.sessionSummary?.reviewNotes || 'Great participation and tactical analysis across today’s lesson! Keep practicing your moves.'}
+              </p>
+            </div>
+
+            {/* Action CTAs */}
+            <div className="flex items-center justify-center gap-3 pt-2">
               <a
                 href={isCoach ? '/dashboard/coach/classes' : '/dashboard/student/classes'}
-                className="inline-block px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-lg transition-colors"
+                className="w-full text-center px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-black shadow-xl shadow-blue-600/30 transition-all flex items-center justify-center gap-2"
               >
-                Return to Dashboard
+                <span>Return to Dashboard</span>
+                <span>→</span>
               </a>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Network Auto-Reconnection & Sync Non-blocking Banners ───────── */}
+      {(connectionState === 'reconnecting' || connectionState === 'disconnected') && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-2xl bg-amber-950/95 border border-amber-500/70 shadow-2xl backdrop-blur-md flex items-center gap-2.5 text-xs font-bold text-amber-200 animate-pulse">
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
+          <span>Reconnecting to live classroom… Resyncing board</span>
+        </div>
+      )}
+
+      {showReconnectedBanner && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-2xl bg-emerald-950/95 border border-emerald-500/70 shadow-2xl backdrop-blur-md flex items-center gap-2 text-xs font-bold text-emerald-200 animate-in fade-in">
+          <span>✓</span>
+          <span>Live Session Reconnected & Synchronized</span>
+        </div>
+      )}
+
+      {!isCoach && isCoachReconnecting && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-40 px-4 py-1.5 rounded-xl bg-slate-900/95 border border-slate-700 shadow-xl backdrop-blur-md flex items-center gap-2 text-[11px] font-bold text-slate-300 animate-pulse">
+          <span>👨‍🏫</span>
+          <span>Coach is briefly reconnecting… Live classroom will resume automatically.</span>
         </div>
       )}
 
@@ -718,6 +818,104 @@ export default function ClassroomShell({
         {/* Left Area / Center on Mobile: Chessboard & Controls (order-2 on phone) */}
         <div className="order-2 lg:order-none lg:col-start-1 lg:row-start-1 lg:row-span-2 flex flex-col items-center justify-between w-full h-auto lg:h-full bg-slate-950/40 border border-slate-850 rounded-2xl p-2 sm:p-3 overflow-hidden">
           <div ref={boardContainerRef} className="flex-1 w-full flex items-center justify-center p-2 overflow-hidden relative">
+            {/* ── Coach Floating Hand-Raise Notification Banner ── */}
+            {isCoach && raisedHandStudents.length > 0 && (
+              <div
+                data-testid="floating-hand-banner"
+                className="absolute top-3 left-1/2 -translate-x-1/2 w-[94%] max-w-md z-30 animate-in fade-in slide-in-from-top-3 duration-200"
+              >
+                <div className="bg-slate-900/95 backdrop-blur-md border-2 border-amber-500/80 rounded-2xl shadow-2xl shadow-amber-500/20 p-3 text-slate-100 flex flex-col gap-2">
+                  <div className="flex items-center justify-between pb-1.5 border-b border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl animate-bounce">✋</span>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] font-black text-amber-400 tracking-wider uppercase">
+                            Hand Raised
+                          </span>
+                          <span className="px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 font-black text-[9px] border border-amber-500/40">
+                            {raisedHandStudents.length}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-300 font-medium leading-tight">
+                          {raisedHandStudents.length === 1
+                            ? `${raisedHandStudents[0].firstName} ${raisedHandStudents[0].lastName} wants to demonstrate a move!`
+                            : `${raisedHandStudents.map((s) => s.firstName).join(', ')} raised hands!`}
+                        </p>
+                      </div>
+                    </div>
+                    {raisedHandStudents.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => onCoachLowerAllHands()}
+                        className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold border border-slate-750 transition-colors"
+                      >
+                        Lower All
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Student Delegation Rows */}
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                    {raisedHandStudents.map((student) => (
+                      <div
+                        key={student.userId}
+                        className="flex items-center justify-between bg-slate-950/80 rounded-xl px-2.5 py-1.5 border border-slate-800 gap-2"
+                      >
+                        <span className="text-xs font-bold text-slate-200 truncate">
+                          {student.firstName} {student.lastName}
+                        </span>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onToggleStudentPermission(student.userId, 'white');
+                              onCoachLowerHand(student.userId);
+                            }}
+                            className="px-2 py-1 rounded-lg text-[10px] font-black bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-sm transition-all flex items-center gap-1"
+                            title="Grant student White pieces only and lower hand"
+                          >
+                            <span>⚪</span> White
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onToggleStudentPermission(student.userId, 'black');
+                              onCoachLowerHand(student.userId);
+                            }}
+                            className="px-2 py-1 rounded-lg text-[10px] font-black bg-slate-200 hover:bg-white text-slate-950 shadow-sm transition-all flex items-center gap-1"
+                            title="Grant student Black pieces only and lower hand"
+                          >
+                            <span>⚫</span> Black
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onToggleStudentPermission(student.userId, 'both');
+                              onCoachLowerHand(student.userId);
+                            }}
+                            className="px-2 py-1 rounded-lg text-[10px] font-black bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition-all flex items-center gap-1"
+                            title="Grant student both colors and lower hand"
+                          >
+                            <span>⚔️</span> Both
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onCoachLowerHand(student.userId)}
+                            className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                            title="Lower hand without granting board control"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
             <ClassroomBoard
               fen={displayedFen}
               orientation={orientation}
@@ -733,6 +931,9 @@ export default function ClassroomShell({
               lightSquareColor={BOARD_THEMES[boardTheme].light}
               boardScale={boardScale}
               onMove={onMakeMove}
+              onDrawChange={(arrows, highlights) => onSetDrawing(arrows, highlights)}
+              isCoach={isCoach}
+              activeDrawColor={coachDrawColor}
               className="w-full h-full"
             />
 
@@ -780,6 +981,14 @@ export default function ClassroomShell({
                   className="px-3 py-1 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors flex items-center gap-1"
                 >
                   <span>🔄</span> Reset
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPositionLoader(true)}
+                  className="px-3 py-1 rounded-lg text-xs font-bold bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                  title="Load custom PGN, FEN, or Academy study"
+                >
+                  <span>📖</span> Load Game / PGN
                 </button>
               </>
             )}
@@ -852,7 +1061,47 @@ export default function ClassroomShell({
                   <span>{snapshot.board.allowIllegalMoves ? '⚡' : '♟️'}</span>
                   <span>{snapshot.board.allowIllegalMoves ? 'Free Move ON' : 'Strict Rules'}</span>
                 </button>
+
+                {/* Coach Interactive Drawing Color Palette & Clear Button */}
+                <div className="flex items-center gap-1 bg-slate-800/80 px-2 py-1 rounded-xl border border-slate-700">
+                  <span className="text-[10px] text-slate-400 font-extrabold mr-0.5">Arrow:</span>
+                  {[
+                    { color: '#10b981', label: 'Green', title: 'Good Move / Key Plan (Green)' },
+                    { color: '#ef4444', label: 'Red', title: 'Tactical Threat / Blunder (Red)' },
+                    { color: '#3b82f6', label: 'Blue', title: 'Alternative / Candidate (Blue)' },
+                    { color: '#f59e0b', label: 'Yellow', title: 'Caution / Warning (Yellow)' },
+                  ].map((item) => (
+                    <button
+                      key={item.color}
+                      type="button"
+                      onClick={() => setCoachDrawColor(item.color)}
+                      className={`w-4 h-4 rounded-full transition-transform cursor-pointer border ${
+                        coachDrawColor === item.color
+                          ? 'scale-125 border-white ring-2 ring-white/50 shadow-xs'
+                          : 'border-slate-600 opacity-60 hover:opacity-100'
+                      }`}
+                      style={{ backgroundColor: item.color }}
+                      title={item.title}
+                    />
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => onSetDrawing([], [])}
+                    className="ml-1.5 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600 transition-colors flex items-center gap-1 cursor-pointer"
+                    title="Clear all arrows & highlights for the class"
+                  >
+                    <span>🧹</span> Clear
+                  </button>
+                </div>
               </>
+            )}
+
+            {/* Student Right-Click Drawing Helper */}
+            {!isCoach && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-purple-950/30 border border-purple-800/40 text-[10px] text-purple-300 font-semibold" title="Right-click and drag on the board to draw private calculation arrows only visible to you">
+                <span>✏️</span>
+                <span>Right-click board for private notes</span>
+              </div>
             )}
 
             {/* Student Playing Status Indicator */}
@@ -1132,6 +1381,9 @@ export default function ClassroomShell({
                 onSubmitResponse={onSubmitResponse}
                 onAskQuestion={onAskQuestion}
                 activeQuestion={snapshot.activeQuestion}
+                areResponsesRevealed={areResponsesRevealed}
+                onToggleRevealResponses={onToggleRevealResponses}
+                onEvaluateResponse={onEvaluateResponse}
                 className="w-full h-full border-none rounded-none"
               />
             )}
@@ -1153,6 +1405,8 @@ export default function ClassroomShell({
                 participants={participants}
                 isCoach={isCoach}
                 onToggleControl={onToggleStudentPermission}
+                onLowerHand={onCoachLowerHand}
+                onLowerAllHands={onCoachLowerAllHands}
                 onMuteAll={async () => {
                   if (zoomMuteAllRef.current) {
                     await zoomMuteAllRef.current();
@@ -1486,6 +1740,14 @@ export default function ClassroomShell({
             </div>
           </div>
         </div>
+      )}
+
+      {showPositionLoader && (
+        <ClassroomPositionLoaderModal
+          isOpen={showPositionLoader}
+          onClose={() => setShowPositionLoader(false)}
+          onLoadGame={onLoadGame}
+        />
       )}
     </div>
   );

@@ -1,12 +1,61 @@
 import type { Metadata } from 'next';
 import Container from '@/components/ui/Container';
-import { SITE_URL, SITE_EMAIL, SITE_NAME } from '@/constants/SITE';
+import JsonLd from '@/components/seo/JsonLd';
+import { SITE_URL, SITE_EMAIL, SITE_NAME, SITE_OG_IMAGE } from '@/constants/SITE';
 
 export const metadata: Metadata = {
   title: 'Terms & Conditions',
-  description: `${SITE_NAME}'s Terms and Conditions — the agreement governing your use of our platform and services.`,
-  alternates: { canonical: `${SITE_URL}/terms-and-conditions` },
-  robots: { index: true, follow: true },
+  description:
+    `Read the official Terms and Conditions for ${SITE_NAME}. Review our rules and policies regarding live online chess coaching, trial sessions, student enrollment, fee payments, class cancellations, refunds, student conduct, and intellectual property.`,
+  keywords: [
+    'ChessHub Academy terms and conditions',
+    'chess coaching terms of service',
+    'online chess academy terms',
+    'chess class cancellation policy',
+    'chess academy refund policy',
+    'student code of conduct chess academy',
+    'chess coaching agreement',
+    'ChessHub Academy legal policies',
+  ],
+  alternates: {
+    canonical: `${SITE_URL}/terms-and-conditions`,
+  },
+  openGraph: {
+    title: `Terms & Conditions | ${SITE_NAME}`,
+    description:
+      `Read the official Terms and Conditions governing your use of ${SITE_NAME}'s online chess coaching programs, demo sessions, and platform services.`,
+    url: `${SITE_URL}/terms-and-conditions`,
+    siteName: SITE_NAME,
+    locale: 'en_US',
+    type: 'website',
+    images: [
+      {
+        url: SITE_OG_IMAGE,
+        width: 1200,
+        height: 630,
+        alt: `Terms & Conditions — ${SITE_NAME}`,
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: `Terms & Conditions | ${SITE_NAME}`,
+    description:
+      `Read the official Terms and Conditions for ${SITE_NAME} online chess coaching platform and programs.`,
+    images: [SITE_OG_IMAGE],
+    creator: '@chesshubacademy',
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
 };
 
 const SECTIONS = [
@@ -96,8 +145,53 @@ To the maximum extent permitted by law, ChessHub Academy shall not be liable for
 ];
 
 export default function TermsPage() {
+  const webPageSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'WebPage',
+    '@id': `${SITE_URL}/terms-and-conditions/#webpage`,
+    url: `${SITE_URL}/terms-and-conditions`,
+    name: `Terms & Conditions | ${SITE_NAME}`,
+    description: `Read the official Terms and Conditions for ${SITE_NAME}. Review our rules and policies regarding live online chess coaching, trial sessions, student enrollment, fee payments, class cancellations, refunds, student conduct, and intellectual property.`,
+    isPartOf: {
+      '@type': 'WebSite',
+      '@id': `${SITE_URL}/#website`,
+      name: SITE_NAME,
+      url: SITE_URL,
+    },
+    about: {
+      '@type': 'EducationalOrganization',
+      name: SITE_NAME,
+      url: SITE_URL,
+    },
+    inLanguage: 'en-US',
+    datePublished: '2024-01-01',
+    dateModified: '2026-07-01',
+  };
+
+  const breadcrumbSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'Home',
+        item: SITE_URL,
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: 'Terms & Conditions',
+        item: `${SITE_URL}/terms-and-conditions`,
+      },
+    ],
+  };
+
   return (
     <>
+      <JsonLd data={webPageSchema} />
+      <JsonLd data={breadcrumbSchema} />
+
       {/* Header */}
       <section className="pt-32 pb-12 bg-surface-dark text-white" aria-label="Terms header">
         <Container>

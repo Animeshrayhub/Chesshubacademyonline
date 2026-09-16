@@ -1392,15 +1392,6 @@ ${formattedMoves || '1. e4'} ${game.result}`;
     }
   };
 
-  if (loadingProfile) {
-    return (
-      <div className="p-12 text-center text-slate-400">
-        <DashboardIcon iconKey="brain" className="w-10 h-10 animate-bounce mx-auto text-primary mb-3" />
-        <p className="font-bold text-sm">Loading Student Bot Training Dashboard...</p>
-      </div>
-    );
-  }
-
   const unlockedSet = useMemo(() => {
     const set = new Set<number>(profile?.unlocked_levels || [1, 2, 3]);
     // Levels 1-3 always open for beginners
@@ -1441,6 +1432,15 @@ ${formattedMoves || '1. e4'} ${game.result}`;
 
     return set;
   }, [profile?.unlocked_levels, profile?.coach_unlocked_levels, quizScore, recentGames]);
+
+  if (loadingProfile) {
+    return (
+      <div className="p-12 text-center text-slate-400">
+        <DashboardIcon iconKey="brain" className="w-10 h-10 animate-bounce mx-auto text-primary mb-3" />
+        <p className="font-bold text-sm">Loading Student Bot Training Dashboard...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 pb-20">
@@ -4086,7 +4086,7 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                 VICTORY LOOT CHEST
               </h2>
               <p className="text-xs text-slate-300 max-w-xs mx-auto">
-                You shattered the Level {selectedLevel} Bot's defenses with clinical precision!
+                You shattered the Level {selectedLevel} Bot&apos;s defenses with clinical precision!
               </p>
             </div>
 

@@ -144,11 +144,23 @@ export default async function ClassroomPage({ params }: { params: { classId: str
         .from('class_students')
         .select('id')
         .eq('class_id', params.classId)
-        .eq('student_id', sp.id)
+        .or(`student_id.eq.${sp.id},student_id.eq.${user.id}`)
         .is('archived_at', null)
         .maybeSingle();
 
       if (enrollment) {
+        isAuthorized = true;
+      }
+    } else {
+      const { data: directEnrollment } = await admin
+        .from('class_students')
+        .select('id')
+        .eq('class_id', params.classId)
+        .eq('student_id', user.id)
+        .is('archived_at', null)
+        .maybeSingle();
+
+      if (directEnrollment) {
         isAuthorized = true;
       }
     }
@@ -301,6 +313,7 @@ export default async function ClassroomPage({ params }: { params: { classId: str
         coachName={coachName}
         scheduledStart={cls.scheduled_start}
         durationMinutes={cls.duration_minutes}
+        meetingUrl={rawJoinUrl}
       />
     );
   }

@@ -96,13 +96,20 @@ export function getUserAllowedColor(
     return 'none';
   }
 
-  if (!Array.isArray(permissions.boardControllers) || !permissions.boardControllers.includes(userId)) {
+  const assignedColor = permissions.studentPermissions?.[userId];
+  if (assignedColor === 'none') {
     return 'none';
   }
-
-  const assignedColor = permissions.studentPermissions?.[userId];
   if (assignedColor) {
     return assignedColor;
+  }
+
+  // If specific board controllers are set, check if student is in the list.
+  // If no controllers are set (empty list / default session), default to allowing classroom participants to move.
+  if (Array.isArray(permissions.boardControllers) && permissions.boardControllers.length > 0) {
+    if (!permissions.boardControllers.includes(userId)) {
+      return 'none';
+    }
   }
 
   return 'both';
@@ -111,7 +118,7 @@ export function getUserAllowedColor(
 /**
  * Checks if a user is permitted to move chess pieces on the canonical board.
  * - Coach & Admin ALWAYS have authority (unless board is strictly frozen for everyone).
- * - Student has permission ONLY IF their userId is included in boardControllers and isBoardLocked is false.
+ * - Student has permission by default unless isBoardLocked is true, boardControllers excludes them, or color is restricted.
  * - If pieceColor is specified, verifies student is allowed to play that color.
  */
 export function canUserMoveBoard(
@@ -128,13 +135,12 @@ export function canUserMoveBoard(
     return false;
   }
 
-  if (!Array.isArray(permissions.boardControllers) || !permissions.boardControllers.includes(userId)) {
+  const allowed = getUserAllowedColor(userRole, userId, permissions);
+  if (allowed === 'none') {
     return false;
   }
 
   if (pieceColor) {
-    const allowed = getUserAllowedColor(userRole, userId, permissions);
-    if (allowed === 'none') return false;
     const isWhitePiece = pieceColor === 'w' || pieceColor === 'white';
     const isBlackPiece = pieceColor === 'b' || pieceColor === 'black';
 

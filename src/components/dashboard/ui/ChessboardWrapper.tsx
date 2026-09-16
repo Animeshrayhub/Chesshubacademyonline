@@ -173,6 +173,43 @@ export function wrapChessboard(CB: any) {
       };
     }
 
+    // Normalize onArrowsChange handler for react-chessboard v4 and v5
+    if (typeof merged.onArrowsChange === 'function') {
+      const originalArrowsChange = merged.onArrowsChange;
+      merged.onArrowsChange = (arg0: any) => {
+        let rawArrows = arg0;
+        if (arg0 && typeof arg0 === 'object' && 'arrows' in arg0) {
+          rawArrows = arg0.arrows;
+        }
+        try {
+          return originalArrowsChange(rawArrows, arg0);
+        } catch (err) {
+          console.error('[ChessboardAdapter] onArrowsChange error:', err);
+        }
+      };
+    }
+
+    // Normalize onSquareRightClick handler for square highlighting
+    if (typeof merged.onSquareRightClick === 'function') {
+      const originalSquareRightClick = merged.onSquareRightClick;
+      merged.onSquareRightClick = (arg0: any, arg1?: any) => {
+        let sq = typeof arg0 === 'string' ? arg0 : (arg0?.square || '');
+        try {
+          return originalSquareRightClick(sq, arg0);
+        } catch (err) {
+          console.error('[ChessboardAdapter] onSquareRightClick error:', err);
+        }
+      };
+    }
+
+    // Arrow color mappings
+    if (merged.customArrowColor && !merged.arrowColor) {
+      merged.arrowColor = merged.customArrowColor;
+    }
+    if (merged.arrowColor && !merged.customArrowColor) {
+      merged.customArrowColor = merged.arrowColor;
+    }
+
     return <CB options={merged} />;
   };
 }

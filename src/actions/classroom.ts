@@ -429,6 +429,19 @@ export async function mutateClassroomRaiseHandAction(
   return mutateClassroomRaiseHand(sessionId, auth.userId, raised);
 }
 
+export async function mutateClassroomLowerStudentHandAction(
+  sessionId: string,
+  targetStudentId: string
+) {
+  const auth = await getAuthContext();
+  if (!auth) return { success: false, error: 'Unauthorized' };
+  if (auth.userRole !== 'coach' && auth.userRole !== 'admin') {
+    return { success: false, error: 'Only coach or admin can lower student hands.' };
+  }
+  return mutateClassroomRaiseHand(sessionId, targetStudentId, false);
+}
+
+
 export async function endClassroomSessionAction(
   classId: string,
   sessionId: string,

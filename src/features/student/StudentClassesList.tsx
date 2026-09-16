@@ -417,10 +417,13 @@ export default function StudentClassesList({ classes: initialClasses }: StudentC
                         <span>View Review</span>
                       </button>
                     ) : (
-                      <span className="px-4 py-2 bg-amber-500/10 border border-amber-500/20 text-amber-700 font-bold text-xs rounded-xl flex items-center gap-1">
-                        <span>⏳</span>
-                        <span>Upcoming</span>
-                      </span>
+                      <Link
+                        href={`/classroom/${c.id}`}
+                        className="px-4 py-2 bg-slate-100 hover:bg-purple-50 hover:border-purple-300 border border-slate-200 text-slate-700 hover:text-purple-700 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all shadow-xs"
+                      >
+                        <span>♟️</span>
+                        <span>Enter Classroom</span>
+                      </Link>
                     )}
                   </div>
                 </div>

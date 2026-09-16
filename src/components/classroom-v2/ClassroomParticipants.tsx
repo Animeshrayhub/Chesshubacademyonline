@@ -7,6 +7,8 @@ interface ClassroomParticipantsProps {
   participants: ParticipantInfo[];
   isCoach: boolean;
   onToggleControl?: (studentId: string, enable: boolean | StudentBoardColorPermission) => void;
+  onLowerHand?: (studentId: string) => void;
+  onLowerAllHands?: () => void;
   onMuteAll?: () => Promise<boolean | void>;
   className?: string;
 }
@@ -15,11 +17,15 @@ export default function ClassroomParticipants({
   participants = [],
   isCoach,
   onToggleControl,
+  onLowerHand,
+  onLowerAllHands,
   onMuteAll,
   className = '',
 }: ClassroomParticipantsProps) {
   const [isMuting, setIsMuting] = React.useState(false);
   const [mutedSuccess, setMutedSuccess] = React.useState(false);
+
+  const raisedParticipants = participants.filter((p) => p.role === 'student' && p.raisedHand);
 
   const handleMuteAllClick = async () => {
     if (!onMuteAll) return;
@@ -36,26 +42,49 @@ export default function ClassroomParticipants({
   return (
     <div className={`flex flex-col h-full bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden ${className}`}>
       {/* Header */}
-      <div className="h-9 bg-slate-950/80 px-3 border-b border-slate-800 flex items-center justify-between">
-        <span className="font-extrabold text-xs text-slate-300 tracking-wide uppercase">
-          Participants ({participants.length})
-        </span>
-        {isCoach && onMuteAll && (
-          <button
-            type="button"
-            onClick={handleMuteAllClick}
-            disabled={isMuting}
-            className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all flex items-center gap-1 shadow-sm ${
-              mutedSuccess
-                ? 'bg-emerald-600 text-white'
-                : 'bg-rose-950/70 border border-rose-700/50 hover:bg-rose-900 text-rose-300'
-            }`}
-            title="Mute all students in Zoom video meeting"
-          >
-            <span>{mutedSuccess ? '✓' : '🔇'}</span>
-            <span>{mutedSuccess ? 'All Muted' : isMuting ? 'Muting…' : 'Mute All'}</span>
-          </button>
-        )}
+      <div className="h-9 bg-slate-950/80 px-3 border-b border-slate-800 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <span className="font-extrabold text-xs text-slate-300 tracking-wide uppercase">
+            Participants ({participants.length})
+          </span>
+          {raisedParticipants.length > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-black border border-amber-500/40 flex items-center gap-0.5 animate-pulse">
+              <span>✋</span>
+              <span>{raisedParticipants.length}</span>
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          {isCoach && raisedParticipants.length > 0 && onLowerAllHands && (
+            <button
+              type="button"
+              onClick={onLowerAllHands}
+              className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950/70 border border-amber-700/50 hover:bg-amber-900 text-amber-300 transition-colors flex items-center gap-1"
+              title="Lower all student hands"
+            >
+              <span>✋</span>
+              <span>Lower All</span>
+            </button>
+          )}
+
+          {isCoach && onMuteAll && (
+            <button
+              type="button"
+              onClick={handleMuteAllClick}
+              disabled={isMuting}
+              className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all flex items-center gap-1 shadow-sm ${
+                mutedSuccess
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-rose-950/70 border border-rose-700/50 hover:bg-rose-900 text-rose-300'
+              }`}
+              title="Mute all students in Zoom video meeting"
+            >
+              <span>{mutedSuccess ? '✓' : '🔇'}</span>
+              <span>{mutedSuccess ? 'All Muted' : isMuting ? 'Muting…' : 'Mute All'}</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Roster List */}
@@ -66,7 +95,11 @@ export default function ClassroomParticipants({
           return (
             <div
               key={p.userId}
-              className="flex items-center justify-between p-2 rounded-xl bg-slate-800/40 hover:bg-slate-850 border border-slate-750/50 transition-colors gap-2"
+              className={`flex items-center justify-between p-2 rounded-xl transition-all gap-2 ${
+                p.raisedHand
+                  ? 'bg-amber-500/10 hover:bg-amber-500/15 border-2 border-amber-500/70 shadow-lg shadow-amber-500/10'
+                  : 'bg-slate-800/40 hover:bg-slate-850 border border-slate-750/50'
+              }`}
             >
               <div className="flex items-center gap-2 min-w-0">
                 <span
@@ -82,11 +115,58 @@ export default function ClassroomParticipants({
                     <span className="font-bold text-slate-200 truncate">
                       {p.firstName} {p.lastName}
                     </span>
-                    {p.raisedHand && <span className="text-amber-400 text-xs animate-bounce">✋</span>}
+                    {p.raisedHand && (
+                      <span className="text-amber-400 text-xs animate-bounce" title="Hand Raised">✋</span>
+                    )}
                   </div>
                   <span className="text-[10px] text-slate-400 block capitalize">
                     {isParticipantCoach ? '👑 Coach (Host)' : '🎓 Student'}
                   </span>
+                  {p.raisedHand && isCoach && (
+                    <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onToggleControl?.(p.userId, 'white');
+                          onLowerHand?.(p.userId);
+                        }}
+                        className="px-1.5 py-0.5 rounded text-[9px] font-black bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-sm"
+                        title="Grant White & lower hand"
+                      >
+                        ⚪ White
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onToggleControl?.(p.userId, 'black');
+                          onLowerHand?.(p.userId);
+                        }}
+                        className="px-1.5 py-0.5 rounded text-[9px] font-black bg-slate-200 hover:bg-white text-slate-950 shadow-sm"
+                        title="Grant Black & lower hand"
+                      >
+                        ⚫ Black
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onToggleControl?.(p.userId, 'both');
+                          onLowerHand?.(p.userId);
+                        }}
+                        className="px-1.5 py-0.5 rounded text-[9px] font-black bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm"
+                        title="Grant Both & lower hand"
+                      >
+                        ⚔️ Both
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onLowerHand?.(p.userId)}
+                        className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-700 hover:bg-rose-900/80 text-slate-300 hover:text-rose-200 transition-colors"
+                        title="Lower student hand"
+                      >
+                        ✕ Lower
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 

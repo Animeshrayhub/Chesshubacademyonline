@@ -97,6 +97,14 @@ export interface CoachQuestion {
   type:
     | 'Best Move'
     | 'Find the Threat'
+    | 'Tactical Blunder'
+    | 'Candidate Moves'
+    | 'Pawn Structure & Plan'
+    | 'Piece Evaluation'
+    | 'King Safety'
+    | 'Calculate 3 Moves'
+    | 'Endgame Technique'
+    | 'Open Discussion'
     | 'What is Wrong?'
     | 'Which Piece?'
     | 'Calculate'
@@ -147,11 +155,21 @@ export interface ClassroomSnapshot {
   permissions: PermissionsState;
   /** Active coach question broadcast to all students */
   activeQuestion: CoachQuestion | null;
+  /** Whether student responses are revealed to the whole class or currently blind */
+  areResponsesRevealed?: boolean;
+  /** Concluded session summary, attendance, and what we learned notes */
+  sessionSummary?: {
+    reviewNotes?: string;
+    actualDurationMinutes?: number;
+    endedAt?: string;
+    attendanceRecords?: Array<{ studentProfileId: string; status: 'PRESENT' | 'ABSENT' | 'LATE' | 'LEFT_EARLY'; feedback?: string }>;
+  };
   updatedAt: string;
 }
 
 export interface ParticipantInfo {
   userId: string;
+  studentProfileId?: string;
   firstName: string;
   lastName: string;
   role: UserRole;
@@ -181,6 +199,8 @@ export interface StudentResponseItem {
   prompt: string;
   response: string;
   createdAt: string;
+  status?: 'pending' | 'correct' | 'incorrect';
+  coachFeedback?: string;
 }
 
 export interface ClassroomBookmark {

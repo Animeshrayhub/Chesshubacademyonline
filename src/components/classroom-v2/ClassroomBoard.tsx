@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import { ChessboardAdapter } from '@/components/dashboard/ui/ChessboardWrapper';
 import {
   type BoardArrow,
@@ -28,6 +28,8 @@ interface ClassroomBoardProps {
   onDrawChange?: (arrows: BoardArrow[], highlights: BoardHighlight[]) => void;
   className?: string;
   boardScale?: number;
+  isCoach?: boolean;
+  activeDrawColor?: string;
 }
 
 export default function ClassroomBoard({
@@ -47,19 +49,47 @@ export default function ClassroomBoard({
   onDrawChange,
   className = '',
   boardScale = 1,
+  isCoach = false,
+  activeDrawColor = '#10b981',
 }: ClassroomBoardProps) {
+  // Dual Mode: Student private local canvas (arrows & square highlights)
+  const [localStudentArrows, setLocalStudentArrows] = useState<BoardArrow[]>([]);
+  const [localStudentHighlights, setLocalStudentHighlights] = useState<BoardHighlight[]>([]);
+
+  // Automatically clear student private drawings on new move
+  useEffect(() => {
+    if (!isCoach) {
+      setLocalStudentArrows([]);
+      setLocalStudentHighlights([]);
+    }
+  }, [fen, isCoach]);
+
+  const effectiveArrows = useMemo(() => {
+    if (isCoach) return arrows;
+    return [...arrows, ...localStudentArrows];
+  }, [isCoach, arrows, localStudentArrows]);
+
+  const effectiveHighlights = useMemo(() => {
+    if (isCoach) return highlights;
+    return [...highlights, ...localStudentHighlights];
+  }, [isCoach, highlights, localStudentHighlights]);
+
   // Convert canonical arrows to v5 Arrow objects and legacy tuples
   const v5Arrows = useMemo(() => {
-    return arrows.map((a) => ({
+    return effectiveArrows.map((a) => ({
       startSquare: a.from,
       endSquare: a.to,
-      color: a.color || 'rgba(234, 88, 12, 0.8)',
+      color: a.color || (isCoach ? activeDrawColor : 'rgba(139, 92, 246, 0.85)'),
     }));
-  }, [arrows]);
+  }, [effectiveArrows, isCoach, activeDrawColor]);
 
   const renderedArrows = useMemo<[string, string, string][]>(() => {
-    return arrows.map((a) => [a.from, a.to, a.color || 'rgba(234, 88, 12, 0.8)']);
-  }, [arrows]);
+    return effectiveArrows.map((a) => [
+      a.from,
+      a.to,
+      a.color || (isCoach ? activeDrawColor : 'rgba(139, 92, 246, 0.85)'),
+    ]);
+  }, [effectiveArrows, isCoach, activeDrawColor]);
 
   // State for interactive pawn promotion selector
   const [pendingPromotion, setPendingPromotion] = useState<{
@@ -71,10 +101,10 @@ export default function ClassroomBoard({
   // Convert highlights, check (Yellow) and checkmate (Red) to square styles
   const customSquareStyles = useMemo<Record<string, React.CSSProperties>>(() => {
     const styles: Record<string, React.CSSProperties> = {};
-    for (const h of highlights) {
+    for (const h of effectiveHighlights) {
       styles[h.square] = {
-        backgroundColor: h.color || 'rgba(234, 179, 8, 0.45)',
-        boxShadow: `inset 0 0 14px 2px ${h.color || 'rgba(234, 179, 8, 0.4)'}`,
+        backgroundColor: h.color || (isCoach ? 'rgba(16, 185, 129, 0.45)' : 'rgba(139, 92, 246, 0.45)'),
+        boxShadow: `inset 0 0 14px 2px ${h.color || (isCoach ? 'rgba(16, 185, 129, 0.4)' : 'rgba(139, 92, 246, 0.4)')}`,
       };
     }
 
@@ -227,24 +257,40 @@ export default function ClassroomBoard({
   const canDragPiece = useCallback(
     (args: any) => {
       if (!isDraggable) return false;
-      if (!allowedColor || allowedColor === 'both') return true;
       const pt: string =
         args?.piece?.pieceType ||
         args?.pieceType ||
         (typeof args?.piece === 'string' ? args.piece : '') ||
         (typeof args === 'string' ? args : '');
+
+      const isWhitePiece = pt.startsWith('w') || pt.startsWith('W');
+      const isBlackPiece = pt.startsWith('b') || pt.startsWith('B');
+
+      // Strict turn enforcement: piece must match the active sideToMove in FEN
+      if (!allowIllegalMoves) {
+        const sideToMove = (fen.split(' ')[1] as 'w' | 'b') || 'w';
+        if (sideToMove === 'w' && !isWhitePiece) return false;
+        if (sideToMove === 'b' && !isBlackPiece) return false;
+      }
+
       if (allowedColor === 'white') {
-        return pt.startsWith('w') || pt.startsWith('W');
+        return isWhitePiece;
       }
       if (allowedColor === 'black') {
-        return pt.startsWith('b') || pt.startsWith('B');
+        return isBlackPiece;
       }
-      return false;
+      return true;
     },
-    [isDraggable, allowedColor]
+    [isDraggable, allowedColor, fen, allowIllegalMoves]
   );
 
   const maxBoardDimension = Math.round(620 * (boardScale || 1));
+
+  const currentSideToMove = (fen.split(' ')[1] as 'w' | 'b') || 'w';
+  const isMyTurn =
+    allowedColor === 'both' ||
+    (allowedColor === 'white' && currentSideToMove === 'w') ||
+    (allowedColor === 'black' && currentSideToMove === 'b');
 
   return (
     <div className={`relative flex items-center justify-center select-none w-full h-full min-h-0 ${className}`}>
@@ -261,6 +307,17 @@ export default function ClassroomBoard({
         <div className="absolute top-3 left-3 z-20 px-3 py-1 bg-slate-900/90 backdrop-blur-md text-white font-extrabold text-xs rounded-xl shadow-lg border border-slate-750 flex items-center gap-1.5 animate-in fade-in">
           <span>{allowedColor === 'white' ? '⚪' : '⚫'}</span>
           <span>{allowedColor === 'white' ? 'You play White' : 'You play Black'}</span>
+        </div>
+      )}
+
+      {/* Turn Indicator Banner */}
+      {!isLocked && (
+        <div className="absolute top-3 right-3 z-20 px-2.5 py-1 bg-slate-900/90 backdrop-blur-md text-xs font-extrabold rounded-xl border border-slate-750 shadow-lg flex items-center gap-1.5">
+          <span className={`w-2 h-2 rounded-full ${isMyTurn ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+          <span className={isMyTurn ? 'text-emerald-300' : 'text-slate-400'}>
+            {currentSideToMove === 'w' ? '⚪ White\'s Turn' : '⚫ Black\'s Turn'}
+            {allowedColor !== 'both' && (isMyTurn ? ' (Your Turn)' : ' (Opponent)')}
+          </span>
         </div>
       )}
 
@@ -283,6 +340,57 @@ export default function ClassroomBoard({
           onPieceDrop={handlePieceDrop}
           arrows={v5Arrows}
           customArrows={renderedArrows}
+          customArrowColor={isCoach ? activeDrawColor : 'rgba(139, 92, 246, 0.85)'}
+          arrowColor={isCoach ? activeDrawColor : 'rgba(139, 92, 246, 0.85)'}
+          onArrowsChange={(newArrows: any) => {
+            let parsed: BoardArrow[] = [];
+            const defaultColor = isCoach ? activeDrawColor : 'rgba(139, 92, 246, 0.85)';
+            if (Array.isArray(newArrows)) {
+              parsed = newArrows.map((a: any) => {
+                if (Array.isArray(a)) {
+                  return { from: a[0], to: a[1], color: a[2] || defaultColor };
+                }
+                return {
+                  from: a.startSquare || a.from,
+                  to: a.endSquare || a.to,
+                  color: a.color || defaultColor,
+                };
+              });
+            }
+            if (isCoach) {
+              onDrawChange?.(parsed, highlights);
+            } else {
+              const coachKeys = new Set(arrows.map((ca) => `${ca.from}-${ca.to}`));
+              const studentOnly = parsed.filter((pa) => !coachKeys.has(`${pa.from}-${pa.to}`));
+              setLocalStudentArrows(studentOnly);
+            }
+          }}
+          onSquareRightClick={(square: string) => {
+            if (!square) return;
+            const highlightColor = isCoach
+              ? (activeDrawColor === '#ef4444'
+                  ? 'rgba(239, 68, 68, 0.5)'
+                  : activeDrawColor === '#3b82f6'
+                  ? 'rgba(59, 130, 246, 0.5)'
+                  : activeDrawColor === '#f59e0b'
+                  ? 'rgba(245, 158, 11, 0.5)'
+                  : 'rgba(16, 185, 129, 0.5)')
+              : 'rgba(139, 92, 246, 0.5)';
+
+            if (isCoach) {
+              const exists = highlights.some((h) => h.square === square);
+              const newHighlights = exists
+                ? highlights.filter((h) => h.square !== square)
+                : [...highlights, { square, color: highlightColor }];
+              onDrawChange?.(arrows, newHighlights);
+            } else {
+              setLocalStudentHighlights((prev) => {
+                const exists = prev.some((h) => h.square === square);
+                if (exists) return prev.filter((h) => h.square !== square);
+                return [...prev, { square, color: highlightColor }];
+              });
+            }
+          }}
           squareStyles={customSquareStyles}
           customSquareStyles={customSquareStyles}
           showCoordinates={showCoords}
@@ -360,6 +468,27 @@ export default function ClassroomBoard({
                 Cancel
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Student Private Calculation Canvas Indicator & Clear Button */}
+        {!isCoach && (localStudentArrows.length > 0 || localStudentHighlights.length > 0) && (
+          <div className="absolute bottom-3 right-3 z-20 px-2.5 py-1 bg-purple-950/90 backdrop-blur-md text-purple-200 border border-purple-700/60 rounded-xl shadow-lg flex items-center gap-2 text-[11px] font-bold animate-in fade-in">
+            <span className="flex items-center gap-1">
+              <span>✏️</span>
+              <span>My Private Notes ({localStudentArrows.length + localStudentHighlights.length})</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setLocalStudentArrows([]);
+                setLocalStudentHighlights([]);
+              }}
+              className="px-1.5 py-0.5 rounded bg-purple-800/80 hover:bg-purple-700 text-white text-[10px] cursor-pointer"
+              title="Clear my private calculation drawings"
+            >
+              Clear
+            </button>
           </div>
         )}
       </div>

@@ -84,8 +84,11 @@ export function classroomReducer(
     action.type !== 'CHAT_MESSAGE' &&
     action.type !== 'PRIVATE_CHAT_MESSAGE' &&
     action.type !== 'STUDENT_RESPONSE' &&
+    action.type !== 'RESPONSE_EVALUATED' &&
+    action.type !== 'TOGGLE_REVEAL_RESPONSES' &&
     action.type !== 'REACTION' &&
-    action.type !== 'PERMISSIONS_CHANGED'
+    action.type !== 'PERMISSIONS_CHANGED' &&
+    action.type !== 'COACH_QUESTION'
   ) {
     if (action.version && action.version < state.version) {
       return state;
@@ -235,12 +238,24 @@ export function classroomReducer(
         status: 'ended',
         isLive: false,
         updatedAt: action.endedAt,
+        sessionSummary: {
+          reviewNotes: action.reviewNotes,
+          actualDurationMinutes: action.actualDurationMinutes,
+          endedAt: action.endedAt,
+          attendanceRecords: action.attendanceRecords,
+        },
       };
 
     case 'COACH_QUESTION':
       return {
         ...state,
         activeQuestion: action.question,
+      };
+
+    case 'TOGGLE_REVEAL_RESPONSES':
+      return {
+        ...state,
+        areResponsesRevealed: action.areResponsesRevealed,
       };
 
     default:

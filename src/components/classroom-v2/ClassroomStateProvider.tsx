@@ -39,6 +39,7 @@ import {
   getUserAllowedColor,
   parseBoardControllers,
 } from '@/lib/classroom-v2/permissions';
+import { playChessSound } from '@/utils/chessAudio';
 import {
   mutateClassroomMoveAction,
   mutateClassroomUndoAction,
@@ -62,6 +63,7 @@ import {
   mutateClassroomSendChatAction,
   mutateClassroomCreateBookmarkAction,
   mutateClassroomRaiseHandAction,
+  mutateClassroomLowerStudentHandAction,
   getCanonicalClassroomSnapshotAction,
   getClassroomChatHistoryAction,
   endClassroomSessionAction,
@@ -109,9 +111,15 @@ export interface ClassroomContextValue {
   onRevealQuiz: () => Promise<boolean>;
   onSubmitQuizAnswer: (quizId: string, selectedOptionIndex: number) => Promise<boolean>;
   onSubmitResponse: (prompt: string, response: string) => Promise<boolean>;
+  /** Whether student responses are revealed to the class */
+  areResponsesRevealed: boolean;
+  onToggleRevealResponses: (reveal: boolean) => Promise<boolean>;
+  onEvaluateResponse: (responseId: string, status: 'correct' | 'incorrect' | 'pending') => Promise<boolean>;
   onSendMessage: (message: string, isPrivate: boolean, recipientId?: string) => Promise<boolean>;
   onCreateBookmark: (fen: string, moveIndex: number, note: string) => Promise<boolean>;
   onToggleRaiseHand: (raised: boolean) => Promise<boolean>;
+  onCoachLowerHand: (targetStudentId: string) => Promise<boolean>;
+  onCoachLowerAllHands: () => Promise<boolean>;
   onSendReaction: (emoji: string) => Promise<boolean>;
   /** Coach broadcasts a question prompt to all students */
   onAskQuestion: (question: CoachQuestion) => Promise<boolean>;
@@ -147,6 +155,11 @@ export function ClassroomStateProvider({
   const [snapshot, setSnapshot] = useState<ClassroomSnapshot>(initialSnapshot);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [responses, setResponses] = useState<StudentResponseItem[]>([]);
+  const [areResponsesRevealed, setAreResponsesRevealed] = useState<boolean>(initialSnapshot.areResponsesRevealed || false);
+  const areResponsesRevealedRef = useRef(initialSnapshot.areResponsesRevealed || false);
+  useEffect(() => {
+    areResponsesRevealedRef.current = areResponsesRevealed;
+  }, [areResponsesRevealed]);
   const [bookmarks, setBookmarks] = useState<ClassroomBookmark[]>([]);
   const [reactions, setReactions] = useState<Array<{ id: string; emoji: string; userName: string }>>([]);
   const [hasRaisedHand, setHasRaisedHand] = useState(false);
@@ -283,6 +296,13 @@ export function ClassroomStateProvider({
         // Apply reducer for canonical board/puzzle/quiz states immediately — never drop moves!
         setSnapshot((current) => classroomReducer(current, payload));
 
+        if (payload.type === 'MOVE_PLAYED' && payload.move?.playedBy !== userId) {
+          const san = payload.move?.san || '';
+          const isCapture = san.includes('x');
+          const isCheck = san.includes('+') || san.includes('#');
+          playChessSound(isCheck ? 'check' : isCapture ? 'capture' : 'move');
+        }
+
         // Gap detection: If incoming version skips local version, reconcile canonical state in background
         if (payload.version && payload.version > snapshotRef.current.version + 1) {
           console.warn('[Realtime Gap] Received version', payload.version, 'while at', snapshotRef.current.version, '- Reconciling canonical snapshot in background');
@@ -304,13 +324,36 @@ export function ClassroomStateProvider({
             { id: `rx_${Date.now()}_${Math.random()}`, emoji: payload.emoji, userName: payload.userName },
           ]);
         } else if (payload.type === 'STUDENT_RESPONSE') {
-          // Blind response mode: coach sees all responses, students see only their own
-          const isForMe = isCoach || payload.response?.studentId === userId;
+          // If responses are revealed to class, or if coach, or if author student: accept it
+          const isForMe = isCoach || areResponsesRevealedRef.current || payload.response?.studentId === userId;
           if (isForMe && payload.response) {
             setResponses((prev) => {
               if (prev.some((r) => r.id === payload.response.id)) return prev;
               return [payload.response, ...prev];
             });
+          }
+        } else if (payload.type === 'RESPONSE_EVALUATED') {
+          setResponses((prev) =>
+            prev.map((r) => {
+              if (r.id === payload.responseId) {
+                return { ...r, status: payload.status, coachFeedback: payload.coachFeedback };
+              }
+              return r;
+            })
+          );
+          if (role === 'student' && payload.status === 'correct') {
+            try { playChessSound('capture'); } catch {}
+          }
+        } else if (payload.type === 'TOGGLE_REVEAL_RESPONSES') {
+          const revealed = Boolean(payload.areResponsesRevealed);
+          setAreResponsesRevealed(revealed);
+          areResponsesRevealedRef.current = revealed;
+          setSnapshot((current) => ({
+            ...current,
+            areResponsesRevealed: revealed,
+          }));
+          if (payload.allResponses && Array.isArray(payload.allResponses)) {
+            setResponses(payload.allResponses);
           }
         } else if (payload.type === 'BOOKMARK_CREATED') {
           setBookmarks((prev) => [payload.bookmark, ...prev]);
@@ -328,24 +371,32 @@ export function ClassroomStateProvider({
         } else if (payload.type === 'RAISE_HAND_CHANGED') {
           setRaisedHandUserIds((prev) => {
             const next = new Set(prev);
-            if (payload.raised) next.add(payload.studentId);
-            else next.delete(payload.studentId);
+            if (payload.raised) {
+              if (!prev.has(payload.studentId) && isCoach && payload.studentId !== userId) {
+                playChessSound('hand');
+              }
+              next.add(payload.studentId);
+            } else {
+              next.delete(payload.studentId);
+            }
             return next;
           });
           if (payload.studentId === userId) {
             setHasRaisedHand(payload.raised);
           }
         } else if (payload.type === 'CLASS_ENDED') {
+          playChessSound('fanfare');
           setSnapshot((prev) => ({
             ...prev,
             status: 'ended',
             isLive: false,
+            sessionSummary: {
+              reviewNotes: payload.reviewNotes,
+              actualDurationMinutes: payload.actualDurationMinutes,
+              endedAt: payload.endedAt,
+              attendanceRecords: payload.attendanceRecords,
+            },
           }));
-          setTimeout(() => {
-            if (!isCoach) {
-              router.push('/dashboard/student/classes');
-            }
-          }, 3000);
         }
       });
 
@@ -490,6 +541,7 @@ export function ClassroomStateProvider({
 
       list.push({
         userId: s.userId,
+        studentProfileId: s.studentProfileId,
         firstName: s.firstName || 'Student',
         lastName: s.lastName || '',
         role: 'student',
@@ -582,6 +634,30 @@ export function ClassroomStateProvider({
           highlights: [],
         },
       }));
+
+      // Instant client-side WebSocket broadcast (<30ms peer sync)
+      try {
+        activeChannelRef.current?.send({
+          type: 'broadcast',
+          event: 'MOVE_PLAYED',
+          payload: {
+            sessionId,
+            eventId: mutationId,
+            type: 'MOVE_PLAYED',
+            move: newMoveData,
+            fen: validation.newFen!,
+            currentMoveIndex: previousSnapshot.board.moves.length,
+            version: expectedVersion + 1,
+            timestamp: new Date().toISOString(),
+          },
+        });
+      } catch (err) {
+        console.warn('[onMakeMove Direct Broadcast Notice]', err);
+      }
+
+      // Local player move sound
+      const moveSan = validation.san || '';
+      playChessSound(moveSan.includes('+') || moveSan.includes('#') ? 'check' : moveSan.includes('x') ? 'capture' : 'move');
 
       // Server-Authoritative Persist & Broadcast
       const res = await mutateClassroomMoveAction(
@@ -882,6 +958,68 @@ export function ClassroomStateProvider({
     [sessionId, classId, userId, userName]
   );
 
+  const onEvaluateResponse = useCallback(
+    async (responseId: string, status: 'correct' | 'incorrect' | 'pending'): Promise<boolean> => {
+      // 1. Optimistic update
+      setResponses((prev) =>
+        prev.map((r) => (r.id === responseId ? { ...r, status } : r))
+      );
+
+      // 2. Direct broadcast over Realtime
+      try {
+        activeChannelRef.current?.send({
+          type: 'broadcast',
+          event: 'RESPONSE_EVALUATED',
+          payload: {
+            type: 'RESPONSE_EVALUATED',
+            sessionId,
+            responseId,
+            status,
+            version: snapshotRef.current.version,
+            timestamp: new Date().toISOString(),
+          },
+        });
+      } catch (err) {
+        console.warn('[onEvaluateResponse Broadcast Error]', err);
+      }
+
+      return true;
+    },
+    [sessionId]
+  );
+
+  const onToggleRevealResponses = useCallback(
+    async (reveal: boolean): Promise<boolean> => {
+      // 1. Optimistic update
+      setAreResponsesRevealed(reveal);
+      setSnapshot((current) => ({
+        ...current,
+        areResponsesRevealed: reveal,
+      }));
+
+      // 2. Direct broadcast to all students with full list of responses
+      try {
+        activeChannelRef.current?.send({
+          type: 'broadcast',
+          event: 'TOGGLE_REVEAL_RESPONSES',
+          payload: {
+            type: 'TOGGLE_REVEAL_RESPONSES',
+            sessionId,
+            areResponsesRevealed: reveal,
+            allResponses: reveal ? responses : undefined,
+            version: snapshotRef.current.version,
+            timestamp: new Date().toISOString(),
+          },
+        });
+      } catch (err) {
+        console.warn('[onToggleRevealResponses Broadcast Error]', err);
+      }
+
+      return true;
+    },
+    [sessionId, responses]
+  );
+
   const onSendMessage = useCallback(
     async (message: string, isPrivate: boolean, recipientId?: string): Promise<boolean> => {
       // 1. Optimistically append message locally (0ms)
@@ -930,10 +1068,97 @@ export function ClassroomStateProvider({
 
   const onToggleRaiseHand = useCallback(
     async (raised: boolean): Promise<boolean> => {
+      // 1. Optimistic local state update (0ms)
+      setHasRaisedHand(raised);
+      setRaisedHandUserIds((prev) => {
+        const next = new Set(prev);
+        if (raised) next.add(userId);
+        else next.delete(userId);
+        return next;
+      });
+
+      // 2. Direct realtime peer broadcast (<30ms)
+      try {
+        activeChannelRef.current?.send({
+          type: 'broadcast',
+          event: 'RAISE_HAND_CHANGED',
+          payload: {
+            type: 'RAISE_HAND_CHANGED',
+            studentId: userId,
+            studentName: userName,
+            raised,
+            timestamp: new Date().toISOString(),
+          },
+        });
+      } catch (err) {
+        console.warn('[onToggleRaiseHand broadcast error]', err);
+      }
+
+      // 3. Persist to server
       const res = await mutateClassroomRaiseHandAction(sessionId, raised);
       return res.success;
     },
-    [sessionId]
+    [sessionId, userId, userName]
+  );
+
+  const onCoachLowerHand = useCallback(
+    async (targetStudentId: string): Promise<boolean> => {
+      if (!isCoach) return false;
+
+      // 1. Optimistic local update
+      setRaisedHandUserIds((prev) => {
+        const next = new Set(prev);
+        next.delete(targetStudentId);
+        return next;
+      });
+
+      // 2. Broadcast to all peers immediately
+      try {
+        activeChannelRef.current?.send({
+          type: 'broadcast',
+          event: 'RAISE_HAND_CHANGED',
+          payload: {
+            type: 'RAISE_HAND_CHANGED',
+            studentId: targetStudentId,
+            raised: false,
+            timestamp: new Date().toISOString(),
+          },
+        });
+      } catch (err) {
+        console.warn('[onCoachLowerHand broadcast error]', err);
+      }
+
+      // 3. Persist via server action
+      const res = await mutateClassroomLowerStudentHandAction(sessionId, targetStudentId);
+      return res.success;
+    },
+    [sessionId, isCoach]
+  );
+
+  const onCoachLowerAllHands = useCallback(
+    async (): Promise<boolean> => {
+      if (!isCoach) return false;
+      const ids = Array.from(raisedHandUserIds);
+      setRaisedHandUserIds(new Set());
+
+      for (const studentId of ids) {
+        try {
+          activeChannelRef.current?.send({
+            type: 'broadcast',
+            event: 'RAISE_HAND_CHANGED',
+            payload: {
+              type: 'RAISE_HAND_CHANGED',
+              studentId,
+              raised: false,
+              timestamp: new Date().toISOString(),
+            },
+          });
+        } catch {}
+        mutateClassroomLowerStudentHandAction(sessionId, studentId).catch(() => {});
+      }
+      return true;
+    },
+    [sessionId, isCoach, raisedHandUserIds]
   );
 
   const isCoachOnline = participants.some((p) => (p.role === 'coach' || p.role === 'admin') && p.isOnline);
@@ -1043,9 +1268,14 @@ export function ClassroomStateProvider({
       onRevealQuiz,
       onSubmitQuizAnswer,
       onSubmitResponse,
+      areResponsesRevealed,
+      onToggleRevealResponses,
+      onEvaluateResponse,
       onSendMessage,
       onCreateBookmark,
       onToggleRaiseHand,
+      onCoachLowerHand,
+      onCoachLowerAllHands,
       onSendReaction,
       onAskQuestion,
       onEndClass,
@@ -1063,6 +1293,7 @@ export function ClassroomStateProvider({
       participants,
       messages,
       responses,
+      areResponsesRevealed,
       bookmarks,
       hasRaisedHand,
       isCoachReconnecting,
@@ -1090,9 +1321,13 @@ export function ClassroomStateProvider({
       onRevealQuiz,
       onSubmitQuizAnswer,
       onSubmitResponse,
+      onToggleRevealResponses,
+      onEvaluateResponse,
       onSendMessage,
       onCreateBookmark,
       onToggleRaiseHand,
+      onCoachLowerHand,
+      onCoachLowerAllHands,
       onSendReaction,
       onAskQuestion,
       onEndClass,
