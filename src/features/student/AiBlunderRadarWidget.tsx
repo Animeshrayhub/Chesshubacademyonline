@@ -91,14 +91,18 @@ export default function AiBlunderRadarWidget({
                   />
                 </div>
 
-                <div className="flex items-center justify-between text-[10px] text-slate-400">
+                <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1">
                   <span>{motif.missedCount} missed recently</span>
                   <button
                     type="button"
-                    onClick={() => onStartRetry?.(motif.name)}
-                    className="text-amber-400 hover:text-amber-300 font-semibold underline underline-offset-2"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onStartRetry?.(motif.name);
+                    }}
+                    className="px-2 py-0.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 hover:text-amber-200 font-bold border border-amber-500/30 transition-all flex items-center gap-1"
                   >
-                    Retry →
+                    <span>Fix Weakness</span>
+                    <span>➔</span>
                   </button>
                 </div>
               </div>

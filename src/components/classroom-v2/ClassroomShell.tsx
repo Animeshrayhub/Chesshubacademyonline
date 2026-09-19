@@ -331,6 +331,24 @@ export default function ClassroomShell({
     });
   }, [participants]);
 
+  // Auto-redirect student to Completed Classes when session ends (Requirement 5)
+  const [studentExitCountdown, setStudentExitCountdown] = useState(5);
+  useEffect(() => {
+    if (snapshot.status === 'ended' && !isCoach) {
+      const timer = setInterval(() => {
+        setStudentExitCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            window.location.href = '/dashboard/student/classes';
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [snapshot.status, isCoach]);
+
   // Calculate live elapsed session timer from snapshot.startedAt with sanity check
   useEffect(() => {
     const startMs = snapshot.startedAt ? new Date(snapshot.startedAt).getTime() : localMountTimeRef.current;
@@ -590,13 +608,23 @@ export default function ClassroomShell({
               </p>
             </div>
 
+            {/* Auto-redirect Countdown Notice for Students */}
+            {!isCoach && (
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-2.5 text-center">
+                <span className="text-xs text-amber-300 font-bold flex items-center justify-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                  Returning automatically to Completed Classes in {studentExitCountdown}s...
+                </span>
+              </div>
+            )}
+
             {/* Action CTAs */}
-            <div className="flex items-center justify-center gap-3 pt-2">
+            <div className="flex items-center justify-center gap-3 pt-1">
               <a
                 href={isCoach ? '/dashboard/coach/classes' : '/dashboard/student/classes'}
                 className="w-full text-center px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-black shadow-xl shadow-blue-600/30 transition-all flex items-center justify-center gap-2"
               >
-                <span>Return to Dashboard</span>
+                <span>{isCoach ? 'Return to Coach Dashboard' : 'Go to Completed Classes Now'}</span>
                 <span>→</span>
               </a>
             </div>

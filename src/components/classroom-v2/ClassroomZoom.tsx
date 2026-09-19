@@ -73,7 +73,7 @@ export default function ClassroomZoom({
         : `https://${newMeetUrlInput.trim()}`;
       const res = await updateClassAction(classId, {
         videoProvider: 'GOOGLE_MEET',
-        zoomJoinUrl: formatted,
+        googleMeetUri: formatted,
       });
       if (res.success) {
         setCurrentMeetingUrl(formatted);

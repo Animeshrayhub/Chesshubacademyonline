@@ -4,6 +4,7 @@ import { createZoomMeeting, syncClassRecordingToDrive } from '../zoom';
 import { createClassMeeting, type VideoProvider } from '../video';
 import {
   BaseError,
+  ValidationError,
   DatabaseError,
   NotFoundError,
   InternalServerError,
@@ -24,6 +25,9 @@ export interface DbClass {
   class_type: ClassType;
   coach_id: string; // coach_profiles.id
   status: ClassStatus;
+  meeting_provider?: 'ZOOM' | 'GOOGLE_MEET' | null;
+  google_meet_space_id?: string | null;
+  google_meet_uri?: string | null;
   zoom_meeting_id: string | null;
   zoom_start_url: string | null;
   zoom_join_url: string | null;
@@ -58,9 +62,12 @@ export interface CreateClassInput {
   classType: ClassType;
   status?: ClassStatus;
   videoProvider?: VideoProvider;
+  meetingProvider?: 'ZOOM' | 'GOOGLE_MEET';
   customUrl?: string;
   zoomJoinUrl?: string;
   zoomStartUrl?: string;
+  googleMeetUri?: string;
+  googleMeetSpaceId?: string;
   recordingUrl?: string;
   studentUserIds?: string[]; // multiple students mapping
 }
@@ -85,9 +92,12 @@ export interface UpdateClassInput {
   classType?: ClassType;
   status?: ClassStatus;
   videoProvider?: VideoProvider;
+  meetingProvider?: 'ZOOM' | 'GOOGLE_MEET';
   customUrl?: string;
   zoomJoinUrl?: string;
   zoomStartUrl?: string;
+  googleMeetUri?: string;
+  googleMeetSpaceId?: string;
   recordingUrl?: string;
   coachUserId?: string;
   studentUserIds?: string[]; // update list
@@ -243,37 +253,79 @@ export async function createClass(data: CreateClassInput): Promise<Result<DbClas
       coachProfileId = fallbackProf?.id || '00000000-0000-0000-0000-000000000000';
     }
 
-    // Generate Meeting details (Zoom by default, Google Meet / Custom if link provided)
-    const videoRes = await createClassMeeting(
-      undefined,
-      `${data.classType} Chess Class`,
-      data.scheduledStart,
-      data.durationMinutes,
-      data.videoProvider || 'ZOOM',
-      data.zoomJoinUrl || data.customUrl
-    );
+    // 1. Capacity Limits Enforcement (Requirement 3)
+    const studentCount = data.studentUserIds ? data.studentUserIds.length : 0;
+    if (data.classType === 'PRIVATE' && studentCount !== 1) {
+      return {
+        success: false,
+        error: new ValidationError(`PRIVATE class requires exactly 1 student, but ${studentCount} provided.`),
+      };
+    }
+    if (data.classType === 'BUDDY' && studentCount !== 2) {
+      return {
+        success: false,
+        error: new ValidationError(`BUDDY class requires exactly 2 students, but ${studentCount} provided.`),
+      };
+    }
+    if (data.classType === 'GROUP' && (studentCount < 1 || studentCount > 5)) {
+      return {
+        success: false,
+        error: new ValidationError(`GROUP class allows between 1 and 5 students, but ${studentCount} provided.`),
+      };
+    }
 
-    const videoData = videoRes.data || {
-      meetingId: `1234567890`,
-      joinUrl: `https://zoom.us/j/1234567890`,
-      startUrl: `https://zoom.us/j/1234567890`,
-      provider: 'ZOOM' as VideoProvider,
-    };
+    // 2. Video Provider & Isolated Meeting Setup (Requirements 7 & 9)
+    const isGoogleMeet =
+      data.meetingProvider === 'GOOGLE_MEET' ||
+      data.videoProvider === 'GOOGLE_MEET' ||
+      Boolean(data.googleMeetUri && data.googleMeetUri.includes('meet.google.com')) ||
+      Boolean(data.customUrl && data.customUrl.includes('meet.google.com'));
 
-    const finalJoinUrl = data.zoomJoinUrl || videoData.joinUrl;
-    const finalStartUrl = data.zoomStartUrl || videoData.startUrl;
-    const finalMeetingId = videoData.meetingId;
+    const finalMeetingProvider: 'ZOOM' | 'GOOGLE_MEET' = isGoogleMeet ? 'GOOGLE_MEET' : 'ZOOM';
+    let finalGoogleMeetUri: string | null = null;
+    let finalGoogleMeetSpaceId: string | null = null;
+    let finalZoomMeetingId: string | null = null;
+    let finalZoomJoinUrl: string | null = null;
+    let finalZoomStartUrl: string | null = null;
 
-    // Insert class with meeting details
+    if (isGoogleMeet) {
+      finalGoogleMeetUri = data.googleMeetUri || (data.customUrl?.includes('meet.google.com') ? data.customUrl : null);
+      finalGoogleMeetSpaceId = data.googleMeetSpaceId || null;
+    } else {
+      const videoRes = await createClassMeeting(
+        undefined,
+        `${data.classType} Chess Class`,
+        data.scheduledStart,
+        data.durationMinutes,
+        'ZOOM',
+        data.zoomJoinUrl
+      );
+
+      const videoData = videoRes.data || {
+        meetingId: `1234567890`,
+        joinUrl: `https://zoom.us/j/1234567890`,
+        startUrl: `https://zoom.us/j/1234567890`,
+        provider: 'ZOOM' as VideoProvider,
+      };
+
+      finalZoomJoinUrl = data.zoomJoinUrl || videoData.joinUrl;
+      finalZoomStartUrl = data.zoomStartUrl || videoData.startUrl;
+      finalZoomMeetingId = videoData.meetingId;
+    }
+
+    // Insert class with strict isolated meeting details
     const insertPayload: Record<string, unknown> = {
       coach_id: coachProfileId,
       scheduled_start: data.scheduledStart,
       duration_minutes: data.durationMinutes,
       class_type: data.classType,
       status: data.status ?? 'SCHEDULED',
-      zoom_meeting_id: videoData.meetingId,
-      zoom_join_url: finalJoinUrl,
-      zoom_start_url: finalStartUrl,
+      meeting_provider: finalMeetingProvider,
+      google_meet_uri: finalGoogleMeetUri,
+      google_meet_space_id: finalGoogleMeetSpaceId,
+      zoom_meeting_id: finalZoomMeetingId,
+      zoom_join_url: finalZoomJoinUrl,
+      zoom_start_url: finalZoomStartUrl,
     };
 
     const { data: inserted, error } = await admin
@@ -542,34 +594,74 @@ export async function updateClass(id: string, data: UpdateClassInput): Promise<R
     if (data.classType !== undefined) updates.class_type = data.classType;
     if (data.status !== undefined) updates.status = data.status;
 
-    // Handle Video Provider switching if requested
-    if (data.videoProvider) {
-      const safeId = id.replace(/[^a-zA-Z0-9]/g, '');
-      if (data.videoProvider === 'JITSI') {
-        const defaultServer = process.env.NEXT_PUBLIC_JITSI_SERVER || 'https://meet.jit.si';
-        const jitsiUrl = `${defaultServer}/ChessHub_Class_${safeId}`;
-        updates.zoom_join_url = jitsiUrl;
-        updates.zoom_start_url = jitsiUrl;
-        updates.zoom_meeting_id = `jitsi_${safeId}`;
-      } else if (data.videoProvider === 'GOOGLE_MEET') {
-        const rawUrl = (data.customUrl || data.zoomJoinUrl || '').trim();
-        if (rawUrl) {
-          const meetUrl = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
-          updates.zoom_join_url = meetUrl;
-          updates.zoom_start_url = meetUrl;
-          updates.zoom_meeting_id = `meet_${safeId}`;
-        }
+    // Capacity Limits Enforcement on update (Requirement 3)
+    if (data.studentUserIds !== undefined || data.classType !== undefined) {
+      let targetType = data.classType;
+      if (!targetType) {
+        const { data: cur } = await admin.from('classes').select('class_type').eq('id', id).single();
+        targetType = cur?.class_type;
+      }
+
+      let studentCount: number;
+      if (data.studentUserIds !== undefined) {
+        studentCount = data.studentUserIds.length;
+      } else {
+        const { count } = await admin
+          .from('class_students')
+          .select('id', { count: 'exact', head: true })
+          .eq('class_id', id)
+          .is('archived_at', null);
+        studentCount = count || 0;
+      }
+
+      if (targetType === 'PRIVATE' && studentCount !== 1) {
+        return { success: false, error: new ValidationError(`PRIVATE class requires exactly 1 student, but ${studentCount} provided.`) };
+      }
+      if (targetType === 'BUDDY' && studentCount !== 2) {
+        return { success: false, error: new ValidationError(`BUDDY class requires exactly 2 students, but ${studentCount} provided.`) };
+      }
+      if (targetType === 'GROUP' && (studentCount < 1 || studentCount > 5)) {
+        return { success: false, error: new ValidationError(`GROUP class allows between 1 and 5 students, but ${studentCount} provided.`) };
       }
     }
 
-    if (data.zoomJoinUrl !== undefined) {
-      updates.zoom_join_url = data.zoomJoinUrl;
-      if (data.zoomJoinUrl.includes('meet.google.com') && !updates.zoom_meeting_id) {
-        const safeId = id.replace(/[^a-zA-Z0-9]/g, '');
-        updates.zoom_meeting_id = `meet_${safeId}`;
+    // Video Provider & Isolated Meeting Setup (Requirements 7 & 9)
+    const isGoogleMeet =
+      data.meetingProvider === 'GOOGLE_MEET' ||
+      data.videoProvider === 'GOOGLE_MEET' ||
+      Boolean(data.googleMeetUri && data.googleMeetUri.includes('meet.google.com')) ||
+      Boolean(data.customUrl && data.customUrl.includes('meet.google.com'));
+
+    const isExplicitZoom =
+      data.meetingProvider === 'ZOOM' ||
+      data.videoProvider === 'ZOOM';
+
+    if (isGoogleMeet) {
+      updates.meeting_provider = 'GOOGLE_MEET';
+      if (data.googleMeetUri !== undefined) {
+        updates.google_meet_uri = data.googleMeetUri;
+      } else if (data.customUrl && data.customUrl.includes('meet.google.com')) {
+        updates.google_meet_uri = data.customUrl;
       }
+      if (data.googleMeetSpaceId !== undefined) {
+        updates.google_meet_space_id = data.googleMeetSpaceId;
+      }
+      // Never store Google Meet links or IDs in Zoom fields
+      updates.zoom_meeting_id = null;
+      updates.zoom_join_url = null;
+      updates.zoom_start_url = null;
+    } else if (isExplicitZoom) {
+      updates.meeting_provider = 'ZOOM';
+      updates.google_meet_space_id = null;
+      updates.google_meet_uri = null;
+      if (data.zoomJoinUrl !== undefined) updates.zoom_join_url = data.zoomJoinUrl;
+      if (data.zoomStartUrl !== undefined) updates.zoom_start_url = data.zoomStartUrl;
+    } else {
+      if (data.googleMeetUri !== undefined) updates.google_meet_uri = data.googleMeetUri;
+      if (data.googleMeetSpaceId !== undefined) updates.google_meet_space_id = data.googleMeetSpaceId;
+      if (data.zoomJoinUrl !== undefined) updates.zoom_join_url = data.zoomJoinUrl;
+      if (data.zoomStartUrl !== undefined) updates.zoom_start_url = data.zoomStartUrl;
     }
-    if (data.zoomStartUrl !== undefined) updates.zoom_start_url = data.zoomStartUrl;
 
     if (data.coachUserId !== undefined) {
       const { data: coachProfile } = await admin

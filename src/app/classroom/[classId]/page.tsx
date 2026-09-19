@@ -7,6 +7,7 @@ import { getCanonicalClassroomSnapshot } from '@/lib/classroom-v2/server';
 import { ClassroomStateProvider } from '@/components/classroom-v2/ClassroomStateProvider';
 import ClassroomShell from '@/components/classroom-v2/ClassroomShell';
 import ClassroomWaitingRoom from '@/components/classroom-v2/ClassroomWaitingRoom';
+import ClassCompletedView from '@/components/classroom-v2/ClassCompletedView';
 
 export const dynamic = 'force-dynamic';
 
@@ -201,6 +202,48 @@ export default async function ClassroomPage({ params }: { params: { classId: str
     );
   }
 
+  // 4a. Check if class is COMPLETED or RECORDING_AVAILABLE (Authoritative DB check)
+  if (cls.status === 'COMPLETED' || cls.status === 'RECORDING_AVAILABLE') {
+    let reportNotes: string | null = null;
+    const { data: report } = await admin
+      .from('class_reports')
+      .select('topics_covered, coach_notes')
+      .eq('class_id', params.classId)
+      .maybeSingle();
+
+    if (report) {
+      reportNotes = report.topics_covered || report.coach_notes || null;
+    }
+
+    let attendanceStatus: string | null = null;
+    let feedback: string | null = null;
+    if (role === 'student') {
+      const { data: cs } = await admin
+        .from('class_students')
+        .select('attendance_status, notes')
+        .eq('class_id', params.classId)
+        .or(`student_id.eq.${user.id}`)
+        .maybeSingle();
+
+      attendanceStatus = cs?.attendance_status || 'COMPLETED';
+      feedback = cs?.notes || null;
+    }
+
+    return (
+      <ClassCompletedView
+        classId={params.classId}
+        className={cls.title || cls.topic || cls.name || 'Live Chess Classroom'}
+        coachName={coachName}
+        scheduledStart={cls.scheduled_start}
+        durationMinutes={cls.duration_minutes || 60}
+        reportNotes={reportNotes}
+        attendanceStatus={attendanceStatus}
+        feedback={feedback}
+        role={role}
+      />
+    );
+  }
+
   // 4b. Check Admin Early Start policy for Coach
   if (role === 'coach' && cls.status === 'SCHEDULED') {
     try {
@@ -257,17 +300,19 @@ export default async function ClassroomPage({ params }: { params: { classId: str
     }
   }
 
-  // 5. Detect Video Provider & Provision meeting link only if missing
-  const rawJoinUrl = (cls.zoom_join_url || '').trim();
-  const videoProvider: 'ZOOM' | 'GOOGLE_MEET' | 'JITSI' | 'CUSTOM' = rawJoinUrl.includes('meet.google.com')
-    ? 'GOOGLE_MEET'
-    : rawJoinUrl.includes('jit.si')
-    ? 'JITSI'
-    : rawJoinUrl.includes('zoom.us') || (cls.zoom_meeting_id && !cls.zoom_meeting_id.startsWith('meet_'))
-    ? 'ZOOM'
-    : (cls.video_provider as any) || (rawJoinUrl ? 'CUSTOM' : 'ZOOM');
+  // 5. Detect Video Provider & Isolate Zoom from Google Meet completely
+  const isGoogleMeet =
+    cls.meeting_provider === 'GOOGLE_MEET' ||
+    Boolean(cls.google_meet_uri && cls.google_meet_uri.includes('meet.google.com'));
 
-  if (!rawJoinUrl) {
+  const videoProvider: 'ZOOM' | 'GOOGLE_MEET' | 'JITSI' | 'CUSTOM' = isGoogleMeet
+    ? 'GOOGLE_MEET'
+    : cls.zoom_join_url?.includes('jit.si')
+    ? 'JITSI'
+    : 'ZOOM';
+
+  // Only auto-provision Zoom meeting if ZOOM is selected and zoom_join_url is missing
+  if (videoProvider === 'ZOOM' && !cls.zoom_join_url) {
     try {
       const { createClassMeeting } = await import('@/lib/video');
       const videoRes = await createClassMeeting(
@@ -285,9 +330,13 @@ export default async function ClassroomPage({ params }: { params: { classId: str
     } catch (videoErr) {
       console.warn('Failed to provision Zoom meeting:', videoErr);
     }
-  } else if (videoProvider === 'GOOGLE_MEET' && !cls.zoom_meeting_id) {
-    cls.zoom_meeting_id = `meet_${params.classId.replace(/[^a-zA-Z0-9]/g, '')}`;
   }
+
+  // Purely isolated meeting URLs (Never cross-pollinate Zoom and Meet)
+  const activeMeetingUrl = isGoogleMeet
+    ? (cls.google_meet_uri || '')
+    : (cls.zoom_join_url || '');
+  const activeZoomMeetingId = isGoogleMeet ? '' : (cls.zoom_meeting_id || '');
 
   const mappedStudents = students.map((s) => ({
     studentProfileId: s.studentProfileId || s.id || '',
@@ -313,7 +362,7 @@ export default async function ClassroomPage({ params }: { params: { classId: str
         coachName={coachName}
         scheduledStart={cls.scheduled_start}
         durationMinutes={cls.duration_minutes}
-        meetingUrl={rawJoinUrl}
+        meetingUrl={activeMeetingUrl}
       />
     );
   }
@@ -342,13 +391,13 @@ export default async function ClassroomPage({ params }: { params: { classId: str
       <ClassroomShell
         classId={params.classId}
         sessionId={effectiveSessionId}
-        zoomMeetingId={cls.zoom_meeting_id || ''}
+        zoomMeetingId={activeZoomMeetingId}
         zoomPasscode="chesshub"
         coachName={coachName}
         scheduledStart={cls.scheduled_start}
         durationMinutes={cls.duration_minutes || 60}
         videoProvider={videoProvider}
-        meetingUrl={cls.zoom_join_url || ''}
+        meetingUrl={activeMeetingUrl}
       />
     </ClassroomStateProvider>
   );

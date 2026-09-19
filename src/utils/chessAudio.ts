@@ -180,6 +180,8 @@ export function playChessSound(type: 'move' | 'capture' | 'check' | 'castle' | '
 }
 
 let coachVoiceEnabled = true;
+let lastSpokenTimestamp = 0;
+const DEFAULT_MIN_SPEECH_INTERVAL_MS = 10000; // 10 seconds minimum cooldown between voice lines
 
 export function setCoachVoiceEnabled(enabled: boolean) {
   coachVoiceEnabled = enabled;
@@ -198,9 +200,35 @@ export function stopCoachVoice() {
   }
 }
 
-export function speakCoachAdvice(text: string, options?: { pitch?: number; rate?: number; force?: boolean }) {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-  if (!coachVoiceEnabled && !options?.force) return;
+export function resetVoiceCooldown() {
+  lastSpokenTimestamp = 0;
+}
+
+export function speakCoachAdvice(
+  text: string,
+  options?: {
+    pitch?: number;
+    rate?: number;
+    force?: boolean;
+    minIntervalMs?: number;
+    fallbackSfx?: 'move' | 'capture' | 'check' | 'fanfare';
+  }
+): boolean {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return false;
+  if (!coachVoiceEnabled && !options?.force) return false;
+
+  const now = Date.now();
+  const minInterval = options?.minIntervalMs ?? DEFAULT_MIN_SPEECH_INTERVAL_MS;
+
+  // Enforce intelligent cooldown unless force is true
+  if (!options?.force && now - lastSpokenTimestamp < minInterval) {
+    if (options?.fallbackSfx) {
+      try {
+        playChessSound(options.fallbackSfx);
+      } catch {}
+    }
+    return false;
+  }
 
   try {
     // Strip emojis and symbols for crystal clear speech synthesis
@@ -210,7 +238,7 @@ export function speakCoachAdvice(text: string, options?: { pitch?: number; rate?
       .replace(/\s+/g, ' ')
       .trim();
 
-    if (!cleanText) return;
+    if (!cleanText) return false;
 
     window.speechSynthesis.cancel();
 
@@ -230,7 +258,16 @@ export function speakCoachAdvice(text: string, options?: { pitch?: number; rate?
     }
 
     window.speechSynthesis.speak(utterance);
+    lastSpokenTimestamp = Date.now();
+    return true;
   } catch (err) {
     console.warn('[speakCoachAdvice] Speech synthesis failed:', err);
+    if (options?.fallbackSfx) {
+      try {
+        playChessSound(options.fallbackSfx);
+      } catch {}
+    }
+    return false;
   }
 }
+

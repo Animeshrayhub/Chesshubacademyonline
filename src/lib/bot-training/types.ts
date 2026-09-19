@@ -45,8 +45,26 @@ export interface StudentBotProfile {
   win_streak: number;
   highest_win_streak: number;
   puzzles_solved: number;
+  training_points?: number;
+  highest_unlocked_level?: number;
+  solved_quiz_ids?: string[];
   created_at: string;
   updated_at: string;
+}
+
+export interface BotLeaderboardEntry {
+  studentId: string;
+  name: string;
+  avatarUrl?: string;
+  rating: number;
+  unlockedLevel: number;
+  trainingPoints: number;
+  gamesPlayed: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  winRate: number;
+  rank: number;
 }
 
 export interface BotGameRecord {

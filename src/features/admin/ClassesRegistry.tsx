@@ -87,7 +87,8 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
     durationMinutes: 60,
     classType: 'GROUP' as ClassType,
     status: 'SCHEDULED' as ClassStatus,
-    videoProvider: 'GOOGLE_MEET' as VideoProvider,
+    videoProvider: 'ZOOM' as VideoProvider,
+    googleMeetUri: '',
     zoomJoinUrl: '',
     zoomStartUrl: '',
     recordingUrl: '',
@@ -113,7 +114,7 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
 
   const openQuickMeetModal = (cls: AdminClassRow) => {
     setMeetModalClass(cls);
-    setQuickMeetUrl(cls.zoom_join_url || '');
+    setQuickMeetUrl(cls.google_meet_uri || '');
     setIsMeetModalOpen(true);
   };
 
@@ -125,7 +126,7 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
       const url = quickMeetUrl.trim();
       const res = await updateClassAction(meetModalClass.id, {
         videoProvider: 'GOOGLE_MEET',
-        zoomJoinUrl: url,
+        googleMeetUri: url,
       });
       if (res.success) {
         setIsMeetModalOpen(false);
@@ -176,7 +177,8 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
       durationMinutes: 60,
       classType: 'GROUP',
       status: 'SCHEDULED',
-      videoProvider: 'GOOGLE_MEET',
+      videoProvider: 'ZOOM',
+      googleMeetUri: '',
       zoomJoinUrl: '',
       zoomStartUrl: '',
       recordingUrl: '',
@@ -206,12 +208,9 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
         (cls.coach?.id && c.profile?.id === cls.coach.id) ||
         (c.first_name === cls.coach?.first_name && c.last_name === cls.coach?.last_name)
     );
-    const joinUrl = cls.zoom_join_url ?? '';
-    const detectedProvider: VideoProvider = joinUrl.includes('jit.si')
-      ? 'JITSI'
-      : joinUrl.includes('meet.google.com')
-      ? 'GOOGLE_MEET'
-      : cls.video_provider || (joinUrl ? 'CUSTOM' : 'JITSI');
+    const isGoogleMeet =
+      cls.meeting_provider === 'GOOGLE_MEET' ||
+      Boolean(cls.google_meet_uri && cls.google_meet_uri.includes('meet.google.com'));
 
     setFormData({
       coachUserId: coachUser?.id ?? '',
@@ -219,9 +218,10 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
       durationMinutes: cls.duration_minutes,
       classType: cls.class_type,
       status: cls.status,
-      videoProvider: detectedProvider,
-      zoomJoinUrl: joinUrl,
-      zoomStartUrl: cls.zoom_start_url ?? '',
+      videoProvider: isGoogleMeet ? 'GOOGLE_MEET' : 'ZOOM',
+      googleMeetUri: cls.google_meet_uri ?? '',
+      zoomJoinUrl: !isGoogleMeet ? (cls.zoom_join_url ?? '') : '',
+      zoomStartUrl: !isGoogleMeet ? (cls.zoom_start_url ?? '') : '',
       recordingUrl: cls.recording_url ?? '',
       studentUserIds: cls.students ? cls.students.map((s) => s.id) : [],
     });
@@ -312,17 +312,17 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
       return;
     }
 
-    if (!formData.zoomJoinUrl || !formData.zoomJoinUrl.trim()) {
-      setFormError('A Google Meet link (e.g., https://meet.google.com/xxx-yyyy-zzz) is required before this class can be scheduled.');
+    const studentCount = formData.studentUserIds.length;
+    if (formData.classType === 'PRIVATE' && studentCount !== 1) {
+      setFormError(`PRIVATE classes require exactly 1 student (${studentCount} currently selected).`);
       return;
     }
-
-    const studentCount = formData.studentUserIds.length;
-    const maxAllowed = CAPACITY_LIMITS[formData.classType] || 5;
-    if (studentCount > maxAllowed && !allowCapacityOverride) {
-      setFormError(
-        `Selected learners (${studentCount}) exceed standard capacity for ${formData.classType} (${maxAllowed}). Please check "Allow admin capacity override" to proceed or remove learners.`
-      );
+    if (formData.classType === 'BUDDY' && studentCount !== 2) {
+      setFormError(`BUDDY classes require exactly 2 students (${studentCount} currently selected).`);
+      return;
+    }
+    if (formData.classType === 'GROUP' && (studentCount < 1 || studentCount > 5)) {
+      setFormError(`GROUP classes require between 1 and 5 students (${studentCount} currently selected).`);
       return;
     }
 
@@ -334,15 +334,18 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
     setIsSubmitting(true);
 
     try {
+      const isGoogleMeet = formData.videoProvider === 'GOOGLE_MEET';
       const payload: CreateClassInput = {
         coachUserId: formData.coachUserId,
         scheduledStart: new Date(formData.scheduledStart).toISOString(),
         durationMinutes: formData.durationMinutes,
         classType: formData.classType,
         status: formData.status,
-        videoProvider: formData.videoProvider,
-        zoomJoinUrl: formData.zoomJoinUrl || undefined,
-        zoomStartUrl: formData.zoomStartUrl || undefined,
+        videoProvider: isGoogleMeet ? 'GOOGLE_MEET' : 'ZOOM',
+        meetingProvider: isGoogleMeet ? 'GOOGLE_MEET' : 'ZOOM',
+        googleMeetUri: isGoogleMeet ? (formData.googleMeetUri?.trim() || undefined) : undefined,
+        zoomJoinUrl: !isGoogleMeet ? (formData.zoomJoinUrl?.trim() || undefined) : undefined,
+        zoomStartUrl: !isGoogleMeet ? (formData.zoomStartUrl?.trim() || undefined) : undefined,
         recordingUrl: formData.recordingUrl || undefined,
         studentUserIds: formData.studentUserIds,
       };
@@ -1203,23 +1206,39 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
 
             {/* Admin Custom Meeting URLs */}
             <div className="space-y-3">
-              <div>
-                <Input
-                  id="zoom-join-url"
-                  label={formData.videoProvider === 'JITSI' ? 'Jitsi Room Link (Auto-generated if empty)' : formData.videoProvider === 'ZOOM' ? 'Zoom Join Link (Auto-generated via Zoom API if empty)' : 'Google Meet / Custom Meeting Link'}
-                  placeholder={formData.videoProvider === 'JITSI' ? 'Auto-generated Jitsi Link' : formData.videoProvider === 'ZOOM' ? 'https://zoom.us/j/...' : 'https://meet.google.com/xyz-abc-def'}
-                  value={formData.zoomJoinUrl}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    const detected = val.includes('meet.google.com')
-                      ? 'GOOGLE_MEET'
-                      : val.includes('jit.si')
-                      ? 'JITSI'
-                      : formData.videoProvider;
-                    setFormData((p) => ({ ...p, zoomJoinUrl: val, videoProvider: detected }));
-                  }}
-                />
-              </div>
+              {formData.videoProvider === 'GOOGLE_MEET' ? (
+                <div>
+                  <Input
+                    id="google-meet-uri"
+                    label="Google Meet Space Link (Optional — auto-generated or custom)"
+                    placeholder="https://meet.google.com/xyz-abc-def"
+                    value={formData.googleMeetUri}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFormData((p) => ({ ...p, googleMeetUri: val }));
+                    }}
+                  />
+                  <p className="text-[10px] text-text-secondary mt-1">
+                    💡 If left blank, Coach can generate a Google Meet space with 1-click on their dashboard or upon starting.
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <Input
+                    id="zoom-join-url"
+                    label="Zoom Join Link (Optional — auto-provisioned via Zoom API if empty)"
+                    placeholder="https://zoom.us/j/..."
+                    value={formData.zoomJoinUrl}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFormData((p) => ({ ...p, zoomJoinUrl: val }));
+                    }}
+                  />
+                  <p className="text-[10px] text-text-secondary mt-1">
+                    💡 If left blank, Zoom meeting ID and join link will be created automatically.
+                  </p>
+                </div>
+              )}
 
               {/* Class Video Recording URL Input */}
               <div className="pt-2 border-t border-border/60">

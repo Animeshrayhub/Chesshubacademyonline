@@ -93,32 +93,164 @@ export async function endClassAction(id: string) {
 
 export async function startClassAction(id: string) {
   try {
-    const { createSupabaseAdmin } = await import('@/lib/supabase/admin');
-    const admin = createSupabaseAdmin();
-    const { data: cls } = await admin
-      .from('classes')
-      .select('id, zoom_join_url, status')
-      .eq('id', id)
-      .maybeSingle();
-
-    if (!cls?.zoom_join_url || !cls.zoom_join_url.trim()) {
+    const { getCurrentUser } = await import('@/lib/supabase/auth');
+    const user = await getCurrentUser();
+    if (!user || (user.role !== 'COACH' && user.role !== 'ADMIN')) {
       return {
         success: false,
-        error: { message: 'Cannot start class: A Google Meet link has not been assigned by Admin yet. Please assign a Google Meet link in Admin Classes Registry before starting.' }
+        error: { message: 'Unauthorized: Only an assigned coach or administrator can start this class.' },
       };
     }
 
-    const { getCurrentUser } = await import('@/lib/supabase/auth');
-    const user = await getCurrentUser();
-    const role = user?.role || 'COACH';
-    await classesService.getOrCreateActiveLiveSession(id, user?.id || '', role);
-    const result = await classesService.setClassStatus(id, 'LIVE');
-    if (result && result.success) {
-      revalidatePath('/dashboard/coach/classes');
-      revalidatePath('/dashboard/student/classes');
-      revalidatePath('/dashboard/admin/classes');
+    const { createSupabaseAdmin } = await import('@/lib/supabase/admin');
+    const admin = createSupabaseAdmin();
+
+    const { data: cls, error: clsErr } = await admin
+      .from('classes')
+      .select('id, coach_id, status, scheduled_start, duration_minutes, class_type, meeting_provider, zoom_meeting_id, zoom_join_url, google_meet_space_id, google_meet_uri')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (clsErr || !cls) {
+      return { success: false, error: { message: 'Class session not found.' } };
     }
-    return serializeResult(result);
+
+    if (user.role === 'COACH') {
+      let isAssigned = cls.coach_id === user.id;
+      if (!isAssigned) {
+        const { data: cp } = await admin
+          .from('coach_profiles')
+          .select('id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        if (cp && cls.coach_id === cp.id) isAssigned = true;
+      }
+      if (!isAssigned) {
+        return { success: false, error: { message: 'You are not assigned to coach this class.' } };
+      }
+    }
+
+    if (cls.status === 'COMPLETED') {
+      return { success: false, error: { message: 'This class has already concluded.' } };
+    }
+    if (cls.status === 'CANCELLED') {
+      return { success: false, error: { message: 'This class has been cancelled.' } };
+    }
+
+    // Check early start policy
+    if (user.role === 'COACH' && cls.scheduled_start) {
+      try {
+        const { getSystemConfig } = await import('@/utils/systemConfig');
+        const sysConfig = await getSystemConfig();
+        const earlyStartAllowed = sysConfig.CLASSROOM_EARLY_START_ALLOWED !== 'false';
+        const earlyStartMins = parseInt(sysConfig.CLASSROOM_EARLY_START_MINUTES || '30', 10);
+        const scheduledTime = new Date(cls.scheduled_start).getTime();
+        const earliestAllowedTime = scheduledTime - earlyStartMins * 60 * 1000;
+        if (!earlyStartAllowed && Date.now() < scheduledTime) {
+          return {
+            success: false,
+            error: { message: 'Early start is restricted by academy policy. Please wait until scheduled start time.' },
+          };
+        }
+        if (Date.now() < earliestAllowedTime) {
+          return {
+            success: false,
+            error: { message: `Class cannot be started earlier than ${earlyStartMins} minutes before scheduled start.` },
+          };
+        }
+      } catch (e) {
+        console.warn('[startClassAction] Early start check note:', e);
+      }
+    }
+
+    const provider = cls.meeting_provider === 'GOOGLE_MEET' ? 'GOOGLE_MEET' : 'ZOOM';
+    let activeZoomUrl = cls.zoom_join_url;
+    let activeMeetUri = cls.google_meet_uri;
+
+    // Auto-provision Google Meet if needed
+    if (provider === 'GOOGLE_MEET' && !activeMeetUri) {
+      try {
+        const { createGoogleMeetForClassAction } = await import('@/actions/googleMeet');
+        const meetRes = await createGoogleMeetForClassAction(id);
+        if (meetRes.success && meetRes.data?.meetingUri) {
+          activeMeetUri = meetRes.data.meetingUri;
+        }
+      } catch (meetErr) {
+        console.warn('[startClassAction] Google Meet auto-provision note:', meetErr);
+      }
+    } else if (provider === 'ZOOM' && !activeZoomUrl) {
+      try {
+        const { createClassMeeting } = await import('@/lib/video');
+        const videoRes = await createClassMeeting(
+          id,
+          cls.class_type,
+          cls.scheduled_start,
+          cls.duration_minutes,
+          'ZOOM'
+        );
+        if (videoRes.success && videoRes.data) {
+          activeZoomUrl = videoRes.data.joinUrl;
+          await admin.from('classes').update({
+            zoom_meeting_id: videoRes.data.meetingId,
+            zoom_join_url: videoRes.data.joinUrl,
+            zoom_start_url: videoRes.data.startUrl,
+          }).eq('id', id);
+        }
+      } catch (zoomErr) {
+        console.warn('[startClassAction] Zoom auto-provision note:', zoomErr);
+      }
+    }
+
+    // Activate/create authoritative live_session
+    const sessionRes = await classesService.getOrCreateActiveLiveSession(id, user.id, user.role.toLowerCase());
+    const sessionId = sessionRes.success && sessionRes.data?.sessionId ? sessionRes.data.sessionId : id;
+
+    // Atomically transition class status to LIVE
+    await admin
+      .from('classes')
+      .update({ status: 'LIVE', updated_at: new Date().toISOString() })
+      .eq('id', id);
+
+    // Broadcast CLASS_STARTED in real time across channels
+    try {
+      await admin.channel(`waiting-room:${id}`).send({
+        type: 'broadcast',
+        event: 'CLASS_STARTED',
+        payload: {
+          classId: id,
+          sessionId,
+          status: 'LIVE',
+          meetingProvider: provider,
+          zoomJoinUrl: provider === 'ZOOM' ? activeZoomUrl : null,
+          googleMeetUri: provider === 'GOOGLE_MEET' ? activeMeetUri : null,
+        },
+      });
+
+      await admin.channel('student-classes-realtime').send({
+        type: 'broadcast',
+        event: 'CLASS_STARTED',
+        payload: { classId: id, status: 'LIVE' },
+      });
+    } catch (bErr) {
+      console.warn('[startClassAction broadcast notice]:', bErr);
+    }
+
+    revalidatePath('/dashboard/coach/classes');
+    revalidatePath('/dashboard/student/classes');
+    revalidatePath('/dashboard/admin/classes');
+    revalidatePath(`/classroom/${id}`);
+
+    return {
+      success: true,
+      data: {
+        classId: id,
+        sessionId,
+        status: 'LIVE',
+        meetingProvider: provider,
+        zoomJoinUrl: provider === 'ZOOM' ? activeZoomUrl : null,
+        googleMeetUri: provider === 'GOOGLE_MEET' ? activeMeetUri : null,
+      },
+    };
   } catch (err: any) {
     return {
       success: false,

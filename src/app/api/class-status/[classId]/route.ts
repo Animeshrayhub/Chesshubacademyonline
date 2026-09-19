@@ -3,8 +3,11 @@ import { createSupabaseAdmin } from '@/lib/supabase/admin';
 
 /**
  * GET /api/class-status/[classId]
- * Returns the current status of a class.
- * Used by the student classroom view to poll for class completion and auto-redirect.
+ * Returns the authoritative database status of a class.
+ * Provider-specific response format according to Architecture Specification:
+ * - meetingProvider: 'ZOOM' | 'GOOGLE_MEET'
+ * - zoomJoinUrl: string | null (only if ZOOM)
+ * - googleMeetUri: string | null (only if GOOGLE_MEET)
  */
 export async function GET(
   _req: Request,
@@ -14,7 +17,7 @@ export async function GET(
     const admin = createSupabaseAdmin();
     const { data: cls, error } = await admin
       .from('classes')
-      .select('status, zoom_join_url')
+      .select('status, meeting_provider, zoom_join_url, google_meet_uri')
       .eq('id', params.classId)
       .maybeSingle();
 
@@ -31,10 +34,16 @@ export async function GET(
 
     const isLive = cls.status === 'LIVE' || cls.status === 'IN_PROGRESS' || Boolean(activeSession);
 
+    const isGoogleMeet =
+      cls.meeting_provider === 'GOOGLE_MEET' ||
+      Boolean(cls.google_meet_uri && cls.google_meet_uri.includes('meet.google.com'));
+
     return NextResponse.json({
       status: cls.status,
       isLive,
-      meetingUrl: cls.zoom_join_url || '',
+      meetingProvider: isGoogleMeet ? 'GOOGLE_MEET' : 'ZOOM',
+      zoomJoinUrl: isGoogleMeet ? null : (cls.zoom_join_url || null),
+      googleMeetUri: isGoogleMeet ? (cls.google_meet_uri || null) : null,
     });
   } catch {
     return NextResponse.json({ status: 'ERROR', isLive: false }, { status: 500 });

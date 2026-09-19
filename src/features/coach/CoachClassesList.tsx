@@ -4,6 +4,12 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import CoachClassCompletionModal from './CoachClassCompletionModal';
+import {
+  getCoachGoogleMeetStatusAction,
+  disconnectCoachGoogleMeetAction,
+  createGoogleMeetForClassAction,
+  type CoachGoogleStatusResult,
+} from '@/actions/googleMeet';
 
 export interface ClassData {
   id: string;
@@ -13,6 +19,9 @@ export interface ClassData {
   status: string;
   zoom_join_url?: string;
   zoom_start_url?: string;
+  meeting_provider?: 'ZOOM' | 'GOOGLE_MEET' | null;
+  google_meet_space_id?: string | null;
+  google_meet_uri?: string | null;
   studentNames: string[];
   coachLoginTime?: string | null;
   country?: string;
@@ -37,6 +46,152 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
   useEffect(() => {
     setClassList(initialClasses || []);
   }, [initialClasses]);
+
+  // Google Meet integration state
+  const [googleStatus, setGoogleStatus] = useState<CoachGoogleStatusResult | null>(null);
+  const [isLoadingGoogleStatus, setIsLoadingGoogleStatus] = useState(true);
+  const [isDisconnectingGoogle, setIsDisconnectingGoogle] = useState(false);
+  const [creatingMeetClassId, setCreatingMeetClassId] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function checkStatus() {
+      try {
+        const res = await getCoachGoogleMeetStatusAction();
+        if (isMounted && res.success && res.data) {
+          setGoogleStatus(res.data);
+        }
+      } catch (err) {
+        console.warn('Failed to load Google Meet status:', err);
+      } finally {
+        if (isMounted) setIsLoadingGoogleStatus(false);
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('google_connected') === 'success') {
+        setActionMessage({
+          type: 'success',
+          text: 'Google Meet connected successfully! You can now create Google Meet spaces for your classes.',
+        });
+        window.history.replaceState({}, '', window.location.pathname);
+      } else if (urlParams.get('error')) {
+        setActionMessage({
+          type: 'error',
+          text: `Google connection failed: ${decodeURIComponent(urlParams.get('error') || '')}`,
+        });
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }
+
+    checkStatus();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleDisconnectGoogle = async () => {
+    if (
+      !confirm(
+        'Are you sure you want to disconnect your Google Meet account? Existing Google Meet class links will remain active, but you will need to reconnect to generate new Google Meet spaces.'
+      )
+    ) {
+      return;
+    }
+    setIsDisconnectingGoogle(true);
+    try {
+      const res = await disconnectCoachGoogleMeetAction();
+      if (res.success) {
+        setGoogleStatus({ isConnected: false, email: null, updatedAt: null });
+        setActionMessage({ type: 'success', text: 'Google Meet account successfully disconnected.' });
+      } else {
+        setActionMessage({ type: 'error', text: res.error?.message || 'Failed to disconnect Google Meet.' });
+      }
+    } catch (e: any) {
+      setActionMessage({ type: 'error', text: e?.message || 'Failed to disconnect Google Meet.' });
+    } finally {
+      setIsDisconnectingGoogle(false);
+    }
+  };
+
+  const handleCreateGoogleMeet = async (classId: string) => {
+    if (!googleStatus?.isConnected) {
+      if (
+        confirm(
+          'You need to connect your Google account before generating a Google Meet space. Would you like to connect now?'
+        )
+      ) {
+        window.location.href = '/api/auth/google';
+      }
+      return;
+    }
+
+    setCreatingMeetClassId(classId);
+    setActionMessage(null);
+    try {
+      const res = await createGoogleMeetForClassAction(classId);
+      if (res.success && res.data) {
+        setClassList((prev) =>
+          prev.map((c) =>
+            c.id === classId
+              ? {
+                  ...c,
+                  meeting_provider: 'GOOGLE_MEET',
+                  google_meet_space_id: res.data!.spaceId,
+                  google_meet_uri: res.data!.meetingUri,
+                }
+              : c
+          )
+        );
+        setActionMessage({
+          type: 'success',
+          text: `Google Meet space created! Meeting link: ${res.data.meetingUri}`,
+        });
+        router.refresh();
+      } else {
+        setActionMessage({
+          type: 'error',
+          text: res.error?.message || 'Failed to create Google Meet space.',
+        });
+      }
+    } catch (err: any) {
+      setActionMessage({
+        type: 'error',
+        text: err?.message || 'An error occurred while creating Google Meet space.',
+      });
+    } finally {
+      setCreatingMeetClassId(null);
+    }
+  };
+
+  // Explicit START CLASS action with server-side transition & real-time broadcast (Requirement 4)
+  const [startingClassId, setStartingClassId] = useState<string | null>(null);
+
+  const handleStartClass = async (classId: string) => {
+    setStartingClassId(classId);
+    setActionMessage(null);
+    try {
+      const { startClassAction } = await import('@/actions/classes');
+      const res = await startClassAction(classId);
+      if (res.success) {
+        router.push(`/classroom/${classId}`);
+      } else {
+        setActionMessage({
+          type: 'error',
+          text: res.error?.message || 'Failed to start class session.',
+        });
+        setStartingClassId(null);
+      }
+    } catch (err: any) {
+      setActionMessage({
+        type: 'error',
+        text: err?.message || 'Failed to start class session.',
+      });
+      setStartingClassId(null);
+    }
+  };
 
   const [activeTab, setActiveTab] = useState<TabType>('UPCOMING');
   // Default: show TODAY'S CLASSES ONLY (Local browser date)
@@ -260,6 +415,87 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
   return (
     <div className="space-y-4 font-sans text-slate-800">
       {/* ═══════════════════════════════════════════════════════════════════
+          ACTION / NOTIFICATION BANNER
+      ═══════════════════════════════════════════════════════════════════ */}
+      {actionMessage && (
+        <div
+          className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-between gap-3 shadow-sm transition-all ${
+            actionMessage.type === 'success'
+              ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+              : 'bg-rose-50 border-rose-300 text-rose-900'
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            <span className="text-base">{actionMessage.type === 'success' ? '✅' : '⚠️'}</span>
+            <span>{actionMessage.text}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActionMessage(null)}
+            className="text-slate-400 hover:text-slate-600 font-extrabold text-sm px-2 py-0.5"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          GOOGLE MEET INTEGRATION BANNER
+      ═══════════════════════════════════════════════════════════════════ */}
+      {!isLoadingGoogleStatus && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center text-xl shrink-0">
+              📹
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black text-slate-800 tracking-wide uppercase">
+                  Google Meet Integration
+                </span>
+                {googleStatus?.isConnected ? (
+                  <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded-full border border-emerald-300 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    Connected
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-bold rounded-full border border-amber-300">
+                    Not Connected
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {googleStatus?.isConnected
+                  ? `Connected Google Account: ${googleStatus.email || 'Active'}. You can generate Google Meet spaces for your classes.`
+                  : 'Connect your Google account to automatically create live Google Meet spaces for your coaching sessions.'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+            {googleStatus?.isConnected ? (
+              <button
+                type="button"
+                onClick={handleDisconnectGoogle}
+                disabled={isDisconnectingGoogle}
+                className="px-3 py-1.5 text-xs font-bold text-slate-600 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-xl transition-all disabled:opacity-50"
+              >
+                {isDisconnectingGoogle ? 'Disconnecting...' : 'Disconnect Account'}
+              </button>
+            ) : (
+              <a
+                href="/api/auth/google"
+                className="px-4 py-2 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-800 hover:to-indigo-800 text-white text-xs font-extrabold rounded-xl shadow transition-all flex items-center gap-1.5"
+              >
+                <span>🔗</span>
+                <span>Connect Google Meet</span>
+              </a>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════
           TOP BAR — Tabs & Filter Controls
       ═══════════════════════════════════════════════════════════════════ */}
       <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm flex flex-col lg:flex-row items-center justify-between gap-3">
@@ -477,11 +713,20 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
 
                 {/* Middle Details */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <h4 className="text-sm font-bold text-slate-900 truncate tracking-tight">{titleLabel}</h4>
                     {isToday && (
                       <span className="px-2 py-0.5 bg-emerald-600 text-white text-[10px] font-extrabold rounded-md shadow-sm animate-bounce flex items-center gap-1">
                         <span>🟢</span> TODAY
+                      </span>
+                    )}
+                    {c.meeting_provider === 'GOOGLE_MEET' || (c.zoom_join_url && c.zoom_join_url.includes('meet.google.com')) ? (
+                      <span className="px-2 py-0.5 bg-teal-100 text-teal-800 text-[10px] font-extrabold rounded-md flex items-center gap-1 border border-teal-200">
+                        <span>📹</span> Google Meet
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-bold rounded-md flex items-center gap-1 border border-blue-200">
+                        <span>🔷</span> Zoom
                       </span>
                     )}
                     <button
@@ -563,14 +808,70 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
                       </button>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2">
-                      <Link
-                        href={`/classroom/${c.id}`}
-                        className="px-4 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs rounded-xl tracking-wider transition-all shadow-md flex items-center gap-1.5 group"
-                      >
-                        <span>📹</span>
-                        <span>JOIN CLASS</span>
-                      </Link>
+                    <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                      {/* Google Meet Action: Either direct Meet link button or Generate Meet button */}
+                      {c.meeting_provider === 'GOOGLE_MEET' || (c.zoom_join_url && c.zoom_join_url.includes('meet.google.com')) ? (
+                        <a
+                          href={c.google_meet_uri || c.zoom_join_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2.5 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-700 font-bold text-xs rounded-xl border border-teal-200 transition-all flex items-center gap-1 shadow-2xs"
+                          title="Open Google Meet Space in new tab"
+                        >
+                          <span>↗️</span>
+                          <span className="hidden xl:inline">Meet</span>
+                        </a>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleCreateGoogleMeet(c.id)}
+                          disabled={creatingMeetClassId === c.id}
+                          className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 disabled:opacity-50 font-extrabold text-xs rounded-xl transition-all flex items-center gap-1 shadow-2xs"
+                          title="Generate a Google Meet space for this class"
+                        >
+                          {creatingMeetClassId === c.id ? (
+                            <>
+                              <span className="animate-spin text-xs">⏳</span>
+                              <span>Generating...</span>
+                            </>
+                          ) : (
+                            <>
+                              <span>📹</span>
+                              <span>Create Meet</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+
+                      {c.status === 'SCHEDULED' ? (
+                        <button
+                          type="button"
+                          onClick={() => handleStartClass(c.id)}
+                          disabled={startingClassId === c.id}
+                          className="px-4 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs rounded-xl tracking-wider transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                          title="Start class session: transitions to LIVE, activates session, and notifies students in real time"
+                        >
+                          {startingClassId === c.id ? (
+                            <>
+                              <span className="animate-spin text-xs">⏳</span>
+                              <span>STARTING...</span>
+                            </>
+                          ) : (
+                            <>
+                              <span>▶</span>
+                              <span>START CLASS</span>
+                            </>
+                          )}
+                        </button>
+                      ) : (
+                        <Link
+                          href={`/classroom/${c.id}`}
+                          className="px-4 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs rounded-xl tracking-wider transition-all shadow-md flex items-center gap-1.5 group"
+                        >
+                          <span>🟢</span>
+                          <span>ENTER LIVE CLASS</span>
+                        </Link>
+                      )}
                       <button
                         type="button"
                         onClick={() => setCompletionClass(c)}

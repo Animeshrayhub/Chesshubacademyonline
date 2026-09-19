@@ -63,12 +63,24 @@ export default function ClassroomWaitingRoom({
         { event: 'UPDATE', schema: 'public', table: 'classes', filter: `id=eq.${classId}` },
         (payload: any) => {
           if (payload.new && (payload.new.status === 'LIVE' || payload.new.status === 'IN_PROGRESS')) {
-            handleSessionStarted(payload.new.zoom_join_url);
+            const url = payload.new.meeting_provider === 'GOOGLE_MEET'
+              ? payload.new.google_meet_uri
+              : payload.new.zoom_join_url;
+            handleSessionStarted(url);
+          } else if (payload.new && payload.new.status === 'COMPLETED') {
+            router.refresh();
           }
         }
       )
+      .on('broadcast', { event: 'CLASS_STARTED' }, (payload: any) => {
+        const url = payload?.payload?.meetingProvider === 'GOOGLE_MEET'
+          ? payload?.payload?.googleMeetUri
+          : payload?.payload?.zoomJoinUrl;
+        handleSessionStarted(url);
+      })
       .on('broadcast', { event: 'SESSION_STARTED' }, (payload: any) => {
-        handleSessionStarted(payload?.payload?.meetingUrl);
+        const url = payload?.payload?.googleMeetUri || payload?.payload?.zoomJoinUrl || payload?.payload?.meetingUrl;
+        handleSessionStarted(url);
       })
       .subscribe();
 
@@ -79,7 +91,10 @@ export default function ClassroomWaitingRoom({
         if (res.ok) {
           const data = await res.json();
           if (data.isLive) {
-            handleSessionStarted(data.meetingUrl);
+            const url = data.meetingProvider === 'GOOGLE_MEET' ? data.googleMeetUri : data.zoomJoinUrl;
+            handleSessionStarted(url);
+          } else if (data.status === 'COMPLETED') {
+            router.refresh();
           }
         }
       } catch {}

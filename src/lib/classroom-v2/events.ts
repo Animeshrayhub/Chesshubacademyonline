@@ -21,6 +21,7 @@ import { type RealtimeEventType } from './constants';
 
 export interface ClassroomRealtimeBaseEvent {
   sessionId: string;
+  classId?: string;
   eventId: string;
   version: number;
   timestamp: string;
@@ -117,6 +118,7 @@ export type ClassroomRealtimePayload =
     })
   | (ClassroomRealtimeBaseEvent & {
       type: 'CLASS_ENDED';
+      status?: 'COMPLETED';
       endedAt: string;
       reviewNotes?: string;
       actualDurationMinutes?: number;

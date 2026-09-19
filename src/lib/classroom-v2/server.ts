@@ -1536,10 +1536,10 @@ export async function endClassroomSession(
   const admin = createSupabaseAdmin();
   const endedAt = new Date().toISOString();
 
-  // 1. Fetch class details to compute actual duration and get Zoom meeting ID
+  // 1. Fetch class details to compute actual duration and get Zoom/Meet meeting ID
   const { data: cls } = await admin
     .from('classes')
-    .select('id, zoom_meeting_id')
+    .select('id, coach_id, meeting_provider, zoom_meeting_id, google_meet_space_id')
     .eq('id', classId)
     .maybeSingle();
 
@@ -1555,7 +1555,7 @@ export async function endClassroomSession(
   // 2. Mark live session ended in PostgreSQL
   await admin
     .from('live_sessions')
-    .update({ status: 'ended', ended_at: endedAt })
+    .update({ status: 'ended', ended_at: endedAt, updated_at: endedAt })
     .eq('id', sessionId);
 
   // 3. Mark class completed and persist real elapsed duration
@@ -1564,16 +1564,49 @@ export async function endClassroomSession(
     .update({
       status: 'COMPLETED',
       duration_minutes: actualDurationMinutes,
+      updated_at: endedAt,
     })
     .eq('id', classId);
 
-  // 4. Terminate Zoom meeting cloud session
-  if (cls?.zoom_meeting_id) {
+  // 4. Terminate Zoom meeting cloud session (only if Zoom)
+  if (cls?.meeting_provider !== 'GOOGLE_MEET' && cls?.zoom_meeting_id) {
     try {
       const { endZoomMeeting } = await import('../zoom');
       await endZoomMeeting(cls.zoom_meeting_id);
     } catch (zoomErr) {
       console.warn('[End Class] Zoom termination notice:', zoomErr);
+    }
+  }
+
+  // 4b. Terminate Google Meet conference if provider is GOOGLE_MEET
+  if (cls?.meeting_provider === 'GOOGLE_MEET' && cls?.google_meet_space_id) {
+    try {
+      // Resolve coach user ID for tokens
+      let tokenOwnerUserId = userId;
+      if (userRole === 'admin' && cls.coach_id && cls.coach_id !== userId) {
+        const { data: cp } = await admin
+          .from('coach_profiles')
+          .select('user_id')
+          .eq('id', cls.coach_id)
+          .maybeSingle();
+        tokenOwnerUserId = cp?.user_id || cls.coach_id;
+      }
+
+      const { data: tokenRecord } = await admin
+        .from('coach_google_tokens')
+        .select('encrypted_refresh_token, iv, auth_tag')
+        .eq('coach_id', tokenOwnerUserId)
+        .maybeSingle();
+
+      if (tokenRecord) {
+        const { decryptToken } = await import('@/lib/security/tokenEncryption');
+        const { refreshGoogleAccessToken, endGoogleMeetConference } = await import('@/lib/google/meet');
+        const refreshToken = decryptToken(tokenRecord.encrypted_refresh_token, tokenRecord.iv, tokenRecord.auth_tag);
+        const freshAccessToken = await refreshGoogleAccessToken(refreshToken);
+        await endGoogleMeetConference(cls.google_meet_space_id, freshAccessToken);
+      }
+    } catch (meetErr) {
+      console.warn('[End Class] Google Meet end conference notice (non-fatal):', meetErr);
     }
   }
 
@@ -1679,8 +1712,10 @@ export async function endClassroomSession(
   // 8. Broadcast global class end with session summary to all clients
   await broadcastToLiveSession(sessionId, {
     sessionId,
+    classId,
     eventId: `end_${Date.now()}`,
     type: 'CLASS_ENDED',
+    status: 'COMPLETED',
     endedAt,
     reviewNotes: notesToSave,
     actualDurationMinutes,
@@ -1688,6 +1723,22 @@ export async function endClassroomSession(
     version: 999999,
     timestamp: endedAt,
   });
+
+  // Also broadcast to waiting room and student dashboard
+  try {
+    await admin.channel(`waiting-room:${classId}`).send({
+      type: 'broadcast',
+      event: 'CLASS_ENDED',
+      payload: { classId, status: 'COMPLETED' },
+    });
+    await admin.channel('student-classes-realtime').send({
+      type: 'broadcast',
+      event: 'CLASS_ENDED',
+      payload: { classId, status: 'COMPLETED' },
+    });
+  } catch (err) {
+    console.warn('[Broadcast Waiting Room Notice]', err);
+  }
 
   return { success: true };
 }

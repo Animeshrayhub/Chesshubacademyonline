@@ -84,6 +84,12 @@ export default function StudentClassesList({ classes: initialClasses }: StudentC
           refreshClassData();
         }
       )
+      .on('broadcast', { event: 'CLASS_STARTED' }, () => {
+        refreshClassData();
+      })
+      .on('broadcast', { event: 'CLASS_ENDED' }, () => {
+        refreshClassData();
+      })
       .subscribe();
 
     const handleFocus = () => refreshClassData();

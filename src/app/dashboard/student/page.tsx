@@ -1,31 +1,11 @@
 import React from 'react';
-import Link from 'next/link';
-import PageHeader from '@/components/dashboard/ui/PageHeader';
-import StatCard from '@/components/dashboard/ui/StatCard';
-import QuickActionCard from '@/components/dashboard/ui/QuickActionCard';
-import ActivityFeed from '@/components/dashboard/ui/ActivityFeed';
-import DashboardTable from '@/components/dashboard/ui/DashboardTable';
 import { getStudentDashboardStats, getStudentHomework } from '@/lib/students';
 import { getStudentActivities } from '@/lib/activity';
 import { getCurrentUser } from '@/lib/supabase/auth';
-import type { StatCardData, QuickAction, ActivityItem, TableColumn } from '@/types/dashboard';
-
-import LichessTournamentsCard from '@/components/dashboard/ui/LichessTournamentsCard';
-import StudentGreeting from '@/components/dashboard/ui/StudentGreeting';
-import LichessSyncTime from '@/components/dashboard/ui/LichessSyncTime';
-import DashboardIcon from '@/components/dashboard/ui/DashboardIcon';
-import DailyStreakWidget from '@/components/dashboard/ui/DailyStreakWidget';
-import StudentBattleArena from '@/components/dashboard/ui/StudentBattleArena';
-import AcademyAnnouncementBanner from '@/components/dashboard/ui/AcademyAnnouncementBanner';
-import LichessTournamentManager from '@/components/dashboard/ui/LichessTournamentManager';
 import { getLatestPublishedAnnouncement } from '@/lib/announcements';
 import { getAcademyTournaments } from '@/lib/tournaments';
-import StudentXpBadge from '@/components/dashboard/ui/StudentXpBadge';
-import AiBlunderRadarWidget from '@/features/student/AiBlunderRadarWidget';
-import DailyPuzzleChallengeWidget from '@/features/student/DailyPuzzleChallengeWidget';
-import StudentReferralWidget from '@/features/student/StudentReferralWidget';
-import KidsPetCompanionCard from '@/features/student/KidsPetCompanionCard';
-import DailyLoginTrigger from '@/components/dashboard/ui/DailyLoginTrigger';
+import StudentDashboardClient from '@/features/student/StudentDashboardClient';
+import type { ActivityItem } from '@/types/dashboard';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,84 +43,31 @@ export default async function StudentOverviewPage() {
     lichess: null,
     nextClass: 'None',
     puzzleStats: null,
+    weakMotifs: [
+      { name: 'Pin Tactics', accuracy: 68, missedCount: 2, icon: '📌' },
+      { name: 'Knight Forks', accuracy: 72, missedCount: 3, icon: '🍴' },
+      { name: 'Back Rank Mate', accuracy: 75, missedCount: 1, icon: '🏰' },
+    ],
+    recentRecording: null,
+    liveClass: null,
+    botTierInfo: {
+      level: 1,
+      name: 'Level 1 — Pawn',
+      description: 'Beginner (400)',
+      rating: 400,
+      avatarIcon: '♟️',
+      trainingPoints: 0,
+      pointsToNext: 400,
+      nextLevelName: 'Level 2 — Knight',
+    },
+    dailyPuzzlesProgress: {
+      solvedToday: 0,
+      target: 3,
+    },
   };
 
-  const STATS_CARDS: StatCardData[] = [
-    {
-      label: 'Level Track',
-      value: stats.level,
-      iconKey: 'activity',
-      trend: 'neutral',
-      trendValue: 'Assigned course track',
-      colorScheme: 'blue',
-    },
-    {
-      label: 'Completed Classes',
-      value: `${stats.completedClasses || 0} Sessions`,
-      iconKey: 'video',
-      trend: 'up',
-      trendValue: `${stats.attendanceRate || 100}% Attendance Rate`,
-      colorScheme: 'purple',
-    },
-    {
-      label: 'Active Homework Tasks',
-      value: String(stats.activeAssignments),
-      iconKey: 'puzzle',
-      trend: 'neutral',
-      trendValue: 'Pending submissions',
-      colorScheme: 'gold',
-    },
-    {
-      label: 'Next Class',
-      value: stats.nextClass || 'None',
-      iconKey: 'calendarDays',
-      trend: 'neutral',
-      trendValue: 'Upcoming session',
-      colorScheme: 'green',
-    },
-  ];
-
-
-  const QUICK_ACTIONS: QuickAction[] = [
-    {
-      label: 'Enter Classroom',
-      description: 'Join live board session',
-      href: '/dashboard/student/classes',
-      iconKey: 'video',
-      colorScheme: 'blue',
-    },
-    {
-      label: 'Solve Daily Puzzles',
-      description: 'Complete tactical exercises',
-      href: '/dashboard/student/homework/puzzles',
-      iconKey: 'puzzle',
-      colorScheme: 'purple',
-    },
-    {
-      label: 'Play Bot Training',
-      description: 'Train with bots & adaptive puzzles',
-      href: '/dashboard/student/bot-training',
-      iconKey: 'puzzle',
-      colorScheme: 'gold',
-    },
-    {
-      label: 'Open Study Workbook',
-      description: 'Read curriculum chapters',
-      href: '/dashboard/student/homework/workbooks',
-      iconKey: 'bookOpen',
-      colorScheme: 'purple',
-    },
-    {
-      label: 'Recordings Library',
-      description: 'Review past session videos',
-      href: '/dashboard/student/recordings',
-      iconKey: 'playCircle',
-      colorScheme: 'green',
-    },
-  ];
-
   const rawActivities = activitiesRes.success && activitiesRes.data ? activitiesRes.data : [];
-  const ACTIVITIES: ActivityItem[] = rawActivities.map((act) => ({
+  const activities: ActivityItem[] = rawActivities.map((act) => ({
     id: act.id,
     type: (act.activityType.toLowerCase() === 'class' ? 'class' : act.activityType.toLowerCase() === 'homework' ? 'homework' : 'puzzle') as any,
     description: act.description,
@@ -148,282 +75,22 @@ export default async function StudentOverviewPage() {
     iconKey: act.iconKey as any,
   }));
 
-  const COLUMNS: TableColumn[] = [
-    { key: 'category', label: 'Curriculum Focus' },
-    { key: 'status', label: 'Progress Track' },
-  ];
-
   const assignments = homeworkRes.success && homeworkRes.data ? homeworkRes.data : [];
 
-  const ROWS = assignments.slice(0, 6).map((asgn: any) => ({
-    category: (
-      <div>
-        <span className="font-semibold text-text-primary text-xs block">{asgn.workbookTitle || 'Untitled Workbook'}</span>
-        <span className="text-[10px] text-text-secondary uppercase font-bold tracking-wide">{asgn.chapterTitle}</span>
-      </div>
-    ),
-    status: (
-      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${
-        asgn.status === 'reviewed'
-          ? 'bg-green-50 text-green-700 border-green-100'
-          : asgn.status === 'submitted'
-          ? 'bg-amber-50 text-amber-700 border-amber-100'
-          : 'bg-slate-50 text-slate-600 border-slate-100'
-      }`}>
-        {asgn.status}
-      </span>
-    ),
-  }));
-
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title={<StudentGreeting name={user?.firstName || 'Student'} />}
-        subtitle="Access scheduled live interactive classes, daily tactical assignments, and curriculum libraries."
-      />
-
-      {/* 🚀 PROMINENT TOP ENTER CLASSROOM HERO BANNER */}
-      <div className="relative overflow-hidden bg-gradient-to-r from-indigo-950 via-slate-900 to-purple-950 rounded-2xl p-6 border-2 border-indigo-500/40 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6 group hover:border-indigo-400 transition-all">
-        <div className="absolute -right-10 -bottom-10 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl group-hover:bg-indigo-500/20 transition-all pointer-events-none" />
-        <div className="space-y-1.5 z-10 text-center md:text-left">
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-extrabold rounded-full tracking-wide uppercase">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-            <span>Interactive Live Board</span>
-          </div>
-          <h2 className="text-xl md:text-2xl font-black text-white tracking-tight">
-            Ready to Join Your Live Session?
-          </h2>
-          <p className="text-xs md:text-sm text-slate-300 max-w-xl font-medium">
-            Connect directly with your GM/Coach, solve interactive puzzles on the live board, and practice moves in real-time.
-          </p>
-        </div>
-
-        <a
-          href="/dashboard/student/classes"
-          className="z-10 px-6 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white text-sm font-black rounded-xl shadow-lg shadow-emerald-900/50 hover:shadow-emerald-900/80 transform hover:-translate-y-0.5 transition-all flex items-center gap-2.5 whitespace-nowrap uppercase tracking-wider group"
-        >
-          <span className="text-base group-hover:scale-125 transition-transform">📹</span>
-          <span>ENTER CLASSROOM</span>
-          <span className="text-base group-hover:translate-x-1 transition-transform">➔</span>
-        </a>
-      </div>
-
-      {/* ☀️ Daily Login Streak & First-Login Celebration Trigger */}
-      <DailyLoginTrigger
-        isFirstLoginToday={stats.isFirstLoginToday}
-        streak={stats.streak ?? 1}
-        xpEarned={stats.loginBonusXp || 15}
-        shields={stats.shields ?? 0}
-        unlockedMilestone={stats.unlockedMilestone}
-        studentName={user?.firstName || 'Champion'}
-        equippedPet={stats.equippedPet || 'dragon'}
-        studentProfileId={user?.id || ''}
-      />
-
-      {/* 🦁 Kids Companion & Pet Avatar Card */}
-      <KidsPetCompanionCard
-        studentXp={stats.xp ?? 0}
-        studentName={user?.firstName || 'Champion'}
-        initialPetId={stats.equippedPet || 'dragon'}
-        initialGearId={stats.equippedGear || 'none'}
-        initialUnlockedGear={stats.unlockedGear || ['none']}
-      />
-
-      {/* 🎮 Kids Chess Playground Action Banner */}
-      <div className="relative overflow-hidden rounded-3xl border-2 border-amber-400/50 bg-gradient-to-r from-slate-950 via-indigo-950 to-amber-950/80 p-6 shadow-[0_0_35px_rgba(245,158,11,0.2)]">
-        {/* Glow ambient background accents */}
-        <div className="absolute -top-10 -right-10 w-40 h-40 bg-amber-500/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-purple-500/20 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-5">
-          <div className="flex items-center gap-4 text-left w-full md:w-auto">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500/30 to-purple-500/30 border-2 border-amber-400/60 flex items-center justify-center text-3xl shadow-[0_0_20px_rgba(245,158,11,0.4)] flex-shrink-0 animate-pulse">
-              🎮
-            </div>
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-lg font-black text-white tracking-wide">
-                  Kids Chess Playground & Hero Quests
-                </h3>
-                <span className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 text-[10px] font-black uppercase tracking-wider shadow">
-                  ★ Minigames Arcade
-                </span>
-                <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px] font-extrabold border border-indigo-500/30">
-                  Earn Real XP
-                </span>
-              </div>
-              <p className="text-xs text-slate-300 max-w-xl font-medium">
-                Conquer Knight’s Star Maze, race in the Pawn Sprint, and unlock Superhero Badges to earn XP for your Companion Gear!
-              </p>
-              <div className="flex items-center gap-3 pt-1 text-[11px] text-amber-300/90 font-bold flex-wrap">
-                <span>⭐ 4 Chapters</span>
-                <span>•</span>
-                <span>🎯 20 Interactive Levels</span>
-                <span>•</span>
-                <span>⚡ Real Academy XP</span>
-              </div>
-            </div>
-          </div>
-
-          <Link
-            href="/dashboard/student/playground"
-            className="w-full md:w-auto px-6 py-3 bg-gradient-to-r from-amber-400 via-yellow-400 to-orange-500 hover:from-amber-300 hover:via-yellow-300 hover:to-orange-400 text-slate-950 font-black text-xs md:text-sm rounded-2xl shadow-[0_0_25px_rgba(245,158,11,0.5)] transform hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center justify-center gap-2 whitespace-nowrap tracking-wide group"
-          >
-            <span>PLAY MINIGAMES</span>
-            <span className="text-base group-hover:translate-x-1 transition-transform">➔</span>
-          </Link>
-        </div>
-      </div>
-
-      {/* 📣 Broadcast Announcement Banner (Only rendered if published by Admin) */}
-      {activeAnnouncement && (
-        <AcademyAnnouncementBanner
-          title={activeAnnouncement.title}
-          message={activeAnnouncement.body}
-          date={activeAnnouncement.published_at ? new Date(activeAnnouncement.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : undefined}
-        />
-      )}
-
-      {/* 🧩 Pending Homework Action Card */}
-      {stats.activeAssignments > 0 && (
-        <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 rounded-2xl p-4 flex items-center justify-between gap-4 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-xl font-bold flex-shrink-0">
-              🧩
-            </div>
-            <div>
-              <h3 className="text-sm font-extrabold text-white">
-                {stats.activeAssignments} Pending Tactical Homework Assignment{stats.activeAssignments > 1 ? 's' : ''}
-              </h3>
-              <p className="text-xs text-slate-300 font-medium">
-                Complete your assigned tactics & chapters before your next class session.
-              </p>
-            </div>
-          </div>
-          <a
-            href="/dashboard/student/homework/puzzles"
-            className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl transition-all shadow-md whitespace-nowrap uppercase tracking-wider"
-          >
-            SOLVE NOW ➔
-          </a>
-        </div>
-      )}
-
-
-      {/* Lichess Rating Widget */}
-      {stats.lichess && (
-        <div className="bg-white rounded-2xl border border-border shadow-card p-6">
-          <div className="flex items-center justify-between mb-4 border-b border-border pb-3">
-            <div>
-              <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></span>
-                Lichess Player Profile
-              </h3>
-              <a
-                href={`https://lichess.org/@/${stats.lichess.username}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-primary font-semibold hover:underline"
-              >
-                @{stats.lichess.username}
-              </a>
-            </div>
-            <LichessSyncTime dateString={stats.lichess.syncedAt} />
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-            <div className="bg-slate-55 bg-slate-50 border border-border/80 p-3 rounded-xl text-center">
-              <span className="text-[10px] text-text-secondary uppercase font-semibold block">Tactics / Puzzle</span>
-              <span className="text-sm font-bold text-text-primary font-mono">{stats.lichess.ratings.puzzle}</span>
-            </div>
-            <div className="bg-slate-50 border border-border/80 p-3 rounded-xl text-center">
-              <span className="text-[10px] text-text-secondary uppercase font-semibold block">Rapid Rating</span>
-              <span className="text-sm font-bold text-text-primary font-mono">{stats.lichess.ratings.rapid}</span>
-            </div>
-            <div className="bg-slate-50 border border-border/80 p-3 rounded-xl text-center">
-              <span className="text-[10px] text-text-secondary uppercase font-semibold block">Blitz Rating</span>
-              <span className="text-sm font-bold text-text-primary font-mono">{stats.lichess.ratings.blitz}</span>
-            </div>
-            <div className="bg-slate-50 border border-border/80 p-3 rounded-xl text-center">
-              <span className="text-[10px] text-text-secondary uppercase font-semibold block">Classical</span>
-              <span className="text-sm font-bold text-text-primary font-mono">{stats.lichess.ratings.classical}</span>
-            </div>
-            <div className="bg-slate-50 border border-border/80 p-3 rounded-xl text-center col-span-2 sm:col-span-1">
-              <span className="text-[10px] text-text-secondary uppercase font-semibold block">Total Games</span>
-              <span className="text-sm font-bold text-text-primary font-mono">{stats.lichess.gamesCount}</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 🏆 Student Level XP Progress Badge */}
-      <StudentXpBadge
-        totalXp={stats.xp ?? 0}
-        streakDays={stats.streak ?? stats.puzzleStats?.streak ?? 0}
-        shields={stats.shields ?? 0}
-      />
-
-      {/* 🔥 Daily 3-Puzzle Challenge Streak */}
-      <DailyPuzzleChallengeWidget />
-
-      {/* KPI Stats */}
-      <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        {STATS_CARDS.map((stat, index) => (
-          <StatCard key={index} data={stat} />
-        ))}
-      </dl>
-
-      {/* 🎯 AI Tactical Blunder Radar & 🎁 Refer-a-Friend */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <AiBlunderRadarWidget />
-        <StudentReferralWidget />
-      </div>
-
-      {/* 🏆 Daily Streak Habit Tracker & ⚔️ 1v1 Speed Duel Arena Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <DailyStreakWidget
-          currentStreak={stats.streak ?? stats.puzzleStats?.streak ?? 0}
-          totalXp={stats.xp ?? 0}
-          shields={stats.shields ?? 0}
-          todaySolved={stats.todaySolved ?? false}
-          todayLoggedIn={stats.todayLoggedIn ?? true}
-          solvedDates={stats.solvedDates ?? []}
-          equippedPet={stats.equippedPet || 'dragon'}
-        />
-        <StudentBattleArena studentName={user?.firstName || 'Student'} />
-      </div>
-
-      {/* 🏆 Lichess Custom Tournament Join Manager */}
-      <LichessTournamentManager
-        initialTournaments={tournaments}
-        userRole={user?.role === 'ADMIN' ? 'admin' : user?.role === 'COACH' ? 'coach' : 'student'}
-      />
-
-      {/* Shortcuts */}
-      <div>
-        <h2 className="text-sm font-semibold text-text-primary mb-3">Study Center Shortcuts</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {QUICK_ACTIONS.map((action, index) => (
-            <QuickActionCard key={index} action={action} />
-          ))}
-        </div>
-      </div>
-
-      {/* Tables & Activities */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pb-2">
-        <div className="lg:col-span-2">
-          <DashboardTable
-            columns={COLUMNS}
-            rows={ROWS}
-            emptyTitle="No Assignments Yet"
-            emptyDescription="Your coach will assign workbooks and homework chapters to your account. Check back after your next class."
-            caption="Overview of active study tracks"
-          />
-        </div>
-        <div className="space-y-6">
-          <LichessTournamentsCard />
-          <ActivityFeed items={ACTIVITIES} />
-        </div>
-      </div>
-    </div>
+    <StudentDashboardClient
+      user={{
+        id: user?.id || '',
+        firstName: user?.firstName || 'Champion',
+        lastName: user?.lastName || '',
+        email: user?.email || '',
+        role: user?.role || 'STUDENT',
+      }}
+      stats={stats}
+      assignments={assignments}
+      activities={activities}
+      tournaments={tournaments || []}
+      activeAnnouncement={activeAnnouncement || null}
+    />
   );
 }

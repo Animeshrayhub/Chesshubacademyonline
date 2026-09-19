@@ -144,31 +144,89 @@ export function calculateRatingDelta(result: GameResult): number {
   return 0;
 }
 
-export function getUnlockedLevels(
-  rating: number,
-  coachUnlocked: number[] = [],
-  savedUnlocked: number[] = [],
-  beatenLevels: number[] = []
+// Points Economy configuration
+export const POINTS_CONFIG = {
+  QUEST_SOLVE: 25,
+  BOT_WIN: 75,
+  BOT_DRAW: 25,
+  BOT_LOSS_PENALTY: 15,
+} as const;
+
+// Level Unlock Thresholds (Level 1 is 0 pts free, every subsequent level requires +400 pts)
+export const BOT_UNLOCK_THRESHOLDS: Record<number, number> = {
+  1: 0,
+  2: 400,
+  3: 800,
+  4: 1200,
+  5: 1600,
+  6: 2000,
+  7: 2400,
+  8: 2800,
+  9: 3200,
+  10: 3600,
+};
+
+export function getRequiredPointsForLevel(level: number): number {
+  return BOT_UNLOCK_THRESHOLDS[level] ?? 0;
+}
+
+export function calculateTrainingPoints(
+  wins: number,
+  draws: number,
+  losses: number,
+  solvedQuizCount: number = 0
+): number {
+  const matchPoints = (wins * POINTS_CONFIG.BOT_WIN) + (draws * POINTS_CONFIG.BOT_DRAW) - (losses * POINTS_CONFIG.BOT_LOSS_PENALTY);
+  const quizPoints = solvedQuizCount * POINTS_CONFIG.QUEST_SOLVE;
+  return Math.max(0, matchPoints + quizPoints);
+}
+
+export function getUnlockedLevelsByPoints(
+  points: number,
+  highestLevelUnlocked: number = 1,
+  coachUnlocked: number[] = []
 ): number[] {
-  // Level 1 is foundational and always open
+  const unlocked = new Set<number>([1]); // Level 1 Novice Bot is always unlocked
+
+  // Points-based unlock (+400 pts per tier)
+  for (let lvl = 2; lvl <= 10; lvl++) {
+    const threshold = BOT_UNLOCK_THRESHOLDS[lvl];
+    if (points >= threshold) {
+      unlocked.add(lvl);
+    }
+  }
+
+  // Monotonic permanence: once a level was unlocked, it never relocks
+  for (let lvl = 1; lvl <= highestLevelUnlocked; lvl++) {
+    unlocked.add(lvl);
+  }
+
+  // Coach Master Key overrides
+  coachUnlocked.forEach((lvl) => {
+    if (lvl >= 1 && lvl <= 10) unlocked.add(lvl);
+  });
+
+  return Array.from(unlocked).sort((a, b) => a - b);
+}
+
+export function getCurrentLevelFromPoints(points: number, highestLevelUnlocked: number = 1): number {
+  let current = Math.max(1, highestLevelUnlocked);
+  for (let lvl = 1; lvl <= 10; lvl++) {
+    if (points >= BOT_UNLOCK_THRESHOLDS[lvl]) {
+      current = Math.max(current, lvl);
+    }
+  }
+  return current;
+}
+
+export function getUnlockedLevels(rating: number, coachUnlocked: number[] = []): number[] {
+  // Backwards-compatible bridge: delegates to Level 1 default with coach overrides
   const unlocked = new Set<number>([1]);
-  // 1. Point / Rating milestone unlock: achieving the bot rating unlocks that level!
   BOT_LEVELS.forEach((b) => {
     if (rating >= b.rating) {
       unlocked.add(b.level);
     }
   });
-  // 2. Previously saved unlocked levels in profile
-  savedUnlocked.forEach((lvl) => {
-    if (lvl >= 1 && lvl <= 10) unlocked.add(lvl);
-  });
-  // 3. Victory Progression: beating level L unlocks level L + 1
-  beatenLevels.forEach((lvl) => {
-    for (let l = 1; l <= Math.min(10, lvl + 1); l++) {
-      unlocked.add(l);
-    }
-  });
-  // 4. Coach Master Key override
   coachUnlocked.forEach((lvl) => {
     if (lvl >= 1 && lvl <= 10) unlocked.add(lvl);
   });
@@ -193,11 +251,21 @@ export async function getOrCreateStudentBotProfile(studentUserId: string): Promi
       .maybeSingle();
 
     if (!error && existing) {
-      const unlocked = getUnlockedLevels(existing.rating, existing.coach_unlocked_levels || [], existing.unlocked_levels || []);
+      const computedPoints = existing.training_points ?? calculateTrainingPoints(
+        existing.wins || 0,
+        existing.draws || 0,
+        existing.losses || 0,
+        Array.isArray(existing.solved_quiz_ids) ? existing.solved_quiz_ids.length : (existing.puzzles_solved || 0)
+      );
+      const highestUnlocked = existing.highest_unlocked_level ?? getCurrentLevelFromPoints(computedPoints, 1);
+      const unlocked = getUnlockedLevelsByPoints(computedPoints, highestUnlocked, existing.coach_unlocked_levels || []);
+
       return {
         ...existing,
+        training_points: computedPoints,
+        highest_unlocked_level: highestUnlocked,
         unlocked_levels: unlocked,
-        current_level: getCurrentLevelFromRating(existing.rating),
+        current_level: getCurrentLevelFromPoints(computedPoints, highestUnlocked),
       };
     }
   } catch (err) {}
@@ -217,6 +285,9 @@ export async function getOrCreateStudentBotProfile(studentUserId: string): Promi
     win_streak: 0,
     highest_win_streak: 0,
     puzzles_solved: 0,
+    training_points: 0,
+    highest_unlocked_level: 1,
+    solved_quiz_ids: [],
   };
 
   try {
@@ -247,6 +318,9 @@ export async function getOrCreateStudentBotProfile(studentUserId: string): Promi
     win_streak: 0,
     highest_win_streak: 0,
     puzzles_solved: 0,
+    training_points: 0,
+    highest_unlocked_level: 1,
+    solved_quiz_ids: [],
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
