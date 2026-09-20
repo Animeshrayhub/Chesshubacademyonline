@@ -209,6 +209,17 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
   const [selectedRosterClass, setSelectedRosterClass] = useState<ClassData | null>(null);
   const [completionClass, setCompletionClass] = useState<ClassData | null>(null);
 
+  // Unclosed sessions check for sticky top amber banner (Decision Q7)
+  const unclosedSessions = React.useMemo(() => {
+    const now = Date.now();
+    return classList.filter((c) => {
+      const isMarkedLive = c.status === 'LIVE' || c.status === 'IN_PROGRESS';
+      const schedEnd = new Date(c.schedule).getTime() + (c.duration_minutes || 45) * 60000;
+      const isPastDueUnreported = schedEnd < now && !c.reportSubmittedAt && c.status !== 'COMPLETED';
+      return isMarkedLive || isPastDueUnreported;
+    });
+  }, [classList]);
+
   // Extract student names list
   const allStudentNames = Array.from(
     new Set(classList.flatMap((c) => c.studentNames))
@@ -249,7 +260,7 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
   const matchesTab = (c: ClassData, tab: TabType) => {
     if (tab === 'ACTIVE') return c.status === 'LIVE' || c.status === 'IN_PROGRESS';
     if (tab === 'UPCOMING') return c.status === 'SCHEDULED';
-    if (tab === 'COMPLETED') return c.status === 'COMPLETED' || c.status === 'RECORDING_AVAILABLE';
+    if (tab === 'COMPLETED') return c.status === 'COMPLETED' || c.status === 'RECORDING_AVAILABLE' || c.status === 'CONCLUDED_PENDING_REPORT';
     return false;
   };
 
@@ -492,6 +503,35 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
               </a>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          STICKY AMBER ALERT BANNER — UNCLOSED / PENDING SESSIONS (Decision Q7)
+      ═══════════════════════════════════════════════════════════════════ */}
+      {unclosedSessions.length > 0 && (
+        <div className="bg-amber-50/95 border border-amber-300/80 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3 text-amber-900 animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 border border-amber-300 flex items-center justify-center text-lg shrink-0">
+              ⚠️
+            </div>
+            <div>
+              <span className="text-xs font-black uppercase tracking-wider block">
+                {unclosedSessions.length} Past Coaching Session{unclosedSessions.length > 1 ? 's' : ''} Awaiting Review
+              </span>
+              <p className="text-xs text-amber-800 mt-0.5">
+                Submit attendance and lesson review notes to wrap up and notify students.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCompletionClass(unclosedSessions[0])}
+            className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 shrink-0 hover:scale-105 active:scale-95 cursor-pointer"
+          >
+            <span>📝</span>
+            <span>Wrap Up Session ({unclosedSessions[0].studentNames[0] || 'Student'})</span>
+          </button>
         </div>
       )}
 

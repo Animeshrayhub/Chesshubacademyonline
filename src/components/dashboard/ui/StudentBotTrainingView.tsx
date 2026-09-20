@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import Link from 'next/link';
 import { Chess } from 'chess.js';
 import dynamic from 'next/dynamic';
 import DashboardIcon from './DashboardIcon';
@@ -19,6 +20,7 @@ import { playChessSound, setChessSoundEnabled, speakCoachAdvice, stopCoachVoice,
 import ChessCoachAvatar from './ChessCoachAvatar';
 import { computeBotMove, identifyOpeningFromMoves, safeExecuteMove, evaluatePosition } from '@/lib/bot-training/chessBotEngine';
 import { TACTICAL_QUIZ_QUESTIONS } from '@/lib/bot-training/tacticalQuizData';
+import TacticalQuestArena from './TacticalQuestArena';
 import { ALL_OPENING_ADVENTURES, FRIED_LIVER_ADVENTURE } from '@/lib/bot-training/openingTreeData';
 import {
   BOT_PERSONALITIES,
@@ -38,6 +40,13 @@ import {
   type BookMoveContinuation,
 } from '@/lib/bot-training/openingBookExplorer';
 import { BOT_SCOUT_DATA, type BotScoutIntel } from '@/lib/bot-training/botScoutData';
+import {
+  TROPHY_ACHIEVEMENTS,
+  type TrophyAchievement,
+  type AchievementCategory,
+  type AchievementRarity,
+  type AchievementContext,
+} from '@/lib/bot-training/trophyAchievementsData';
 import type {
   StudentColor,
   TimeControlOption,
@@ -204,6 +213,7 @@ export default function StudentBotTrainingView() {
   const [puzzles, setPuzzles] = useState<PersonalizedPuzzle[]>([]);
   const [badges, setBadges] = useState<StudentBadge[]>([]);
   const [recentGames, setRecentGames] = useState<BotGameRecord[]>([]);
+  const [livePeers, setLivePeers] = useState<any[] | null>(null);
 
   // Setup state
   const [selectedLevel, setSelectedLevel] = useState<number>(1);
@@ -445,8 +455,25 @@ ${formattedMoves || '1. e4'} ${game.result}`;
   const [chestQuizScore, setChestQuizScore] = useState<number>(0);
   const [chestQuizFinished, setChestQuizFinished] = useState<boolean>(false);
 
-  // Trophy Badges Category Filter
-  const [badgeCategoryFilter, setBadgeCategoryFilter] = useState<'all' | 'milestones' | 'tiers' | 'pieces' | 'secret'>('all');
+  // Trophy Badges Category & Filter States
+  const [badgeCategoryFilter, setBadgeCategoryFilter] = useState<AchievementCategory | 'all'>('all');
+  const [badgeSearchQuery, setBadgeSearchQuery] = useState<string>('');
+  const [badgeRarityFilter, setBadgeRarityFilter] = useState<AchievementRarity | 'all'>('all');
+  const [badgeStatusFilter, setBadgeStatusFilter] = useState<'all' | 'unlocked' | 'locked'>('all');
+
+  // Other Options & Advanced Match Rules
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState<boolean>(false);
+  const [hintAllowanceOption, setHintAllowanceOption] = useState<'3' | '5' | 'unlimited' | '0'>('3');
+  const [handicapOption, setHandicapOption] = useState<'equal' | 'pawn_odds' | 'knight_odds'>('equal');
+  const [takebackAllowed, setTakebackAllowed] = useState<boolean>(true);
+  const [botChatterOption, setBotChatterOption] = useState<'active' | 'quiet'>('active');
+  const [newlyUnlockedBotLevel, setNewlyUnlockedBotLevel] = useState<number | null>(null);
+
+  // Upgraded Leaderboard ("Lider Bora") State
+  const [leaderboardMetric, setLeaderboardMetric] = useState<'points' | 'rating' | 'streak' | 'boss' | 'badges'>('points');
+  const [leaderboardTimeframe, setLeaderboardTimeframe] = useState<'all_time' | 'weekly'>('all_time');
+  const [leaderboardSearch, setLeaderboardSearch] = useState<string>('');
+  const [comparisonPeer, setComparisonPeer] = useState<any | null>(null);
 
   // Daily Quests & Streak System State
   const [dailyBonusClaimed, setDailyBonusClaimed] = useState<boolean>(false);
@@ -627,6 +654,19 @@ ${formattedMoves || '1. e4'} ${game.result}`;
     fetchProfile();
   }, []);
 
+  useEffect(() => {
+    if (activeTab === 'leaderboard' && !livePeers) {
+      fetch('/api/leaderboard')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.entries?.rating) {
+            setLivePeers(data.entries.rating);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [activeTab, livePeers]);
+
   // Terminate Stockfish on unmount
   useEffect(() => {
     return () => {
@@ -688,9 +728,23 @@ ${formattedMoves || '1. e4'} ${game.result}`;
       console.warn('[handleStartGame] startBotGameAction exception:', e);
     }
 
+    // Calculate starting FEN based on practice handicap / piece odds
+    const resolvedColor = (gData?.color || selectedColor === 'random') ? (gData?.color || (Math.random() < 0.5 ? 'white' : 'black')) : selectedColor;
+    let customStartingFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    if (handicapOption === 'pawn_odds') {
+      // Remove opponent's f-pawn
+      customStartingFen = resolvedColor === 'white'
+        ? 'rnbqkbnr/ppppp1pp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
+        : 'rnbqkbnr/pppppppp/8/8/8/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1';
+    } else if (handicapOption === 'knight_odds') {
+      // Remove opponent's queen knight (b-knight)
+      customStartingFen = resolvedColor === 'white'
+        ? 'r1bqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
+        : 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/R1BQKBNR w KQkq - 0 1';
+    }
+
     // Local fallback ensures students can always start and play matches immediately
     if (!gData) {
-      const resolvedColor = selectedColor === 'random' ? (Math.random() < 0.5 ? 'white' : 'black') : selectedColor;
       const botCfg = BOT_LEVELS.find((b) => b.level === selectedLevel) || BOT_LEVELS[0];
       gData = {
         gameId: 'local-' + Date.now(),
@@ -698,10 +752,16 @@ ${formattedMoves || '1. e4'} ${game.result}`;
         botRating: botCfg.rating,
         color: resolvedColor,
         timeControl: selectedTimeControl,
-        initialFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        initialFen: customStartingFen,
         studentRatingBefore: profile?.rating || 400,
       };
+    } else if (handicapOption !== 'equal') {
+      gData.initialFen = customStartingFen;
     }
+
+    // Initialize hints allowance based on Match Rules
+    const initialHints = hintAllowanceOption === '3' ? 3 : hintAllowanceOption === '5' ? 5 : hintAllowanceOption === 'unlimited' ? 999 : 0;
+    setRemainingHints(initialHints);
 
     setActiveGameId(gData.gameId);
     setPlayerColor(gData.color);
@@ -716,9 +776,13 @@ ${formattedMoves || '1. e4'} ${game.result}`;
     spokenQuotesRef.current = [startGreeting];
     clearSpokenHistory();
     resetVoiceCooldown();
-    setBotDialogue(startGreeting);
-    if (voiceNarrationOn) {
-      speakCoachAdvice(startGreeting, { pitch: currentPersonality.pitch, rate: currentPersonality.rate, force: true });
+    if (botChatterOption === 'active') {
+      setBotDialogue(startGreeting);
+      if (voiceNarrationOn) {
+        speakCoachAdvice(startGreeting, { pitch: currentPersonality.pitch, rate: currentPersonality.rate, force: true });
+      }
+    } else {
+      setBotDialogue('');
     }
     setIsBotThinking(false);
     setBotHp(100);
@@ -742,6 +806,31 @@ ${formattedMoves || '1. e4'} ${game.result}`;
     }
 
     setIsStartingGame(false);
+  };
+
+  // Takeback / Undo Move Handler
+  const handleTakeback = () => {
+    if (!takebackAllowed || !inGame || gameStatus !== 'active' || isBotThinking) return;
+    const currentTurn = gameRef.current.turn() === 'w' ? 'white' : 'black';
+    if (currentTurn === playerColor) {
+      // It is player's turn; undo both bot's last move and player's move before it
+      if (gameRef.current.history().length >= 2) {
+        gameRef.current.undo();
+        gameRef.current.undo();
+      } else if (gameRef.current.history().length === 1) {
+        gameRef.current.undo();
+      }
+    } else {
+      // It is bot's turn; undo player's last move
+      if (gameRef.current.history().length >= 1) {
+        gameRef.current.undo();
+      }
+    }
+    const newFen = gameRef.current.fen();
+    setFen(newFen);
+    setMoveHistory(gameRef.current.history());
+    setCoachTipDialogue("Takeback applied! Take your time to calculate a stronger move.");
+    try { playChessSound('move'); } catch {}
   };
 
   // Stockfish Bot turn trigger
@@ -1469,6 +1558,16 @@ ${formattedMoves || '1. e4'} ${game.result}`;
     }
   };
 
+  // Points-based unlock: Level 2 at 400 pts, Level 3 at 800 pts, etc.
+  const userTrainingPoints = useMemo(() => {
+    return (profile as any)?.training_points ?? calculateTrainingPoints(
+      profile?.wins || 0,
+      profile?.draws || 0,
+      profile?.losses || 0,
+      profile?.puzzles_solved || 0
+    );
+  }, [profile?.wins, profile?.draws, profile?.losses, profile?.puzzles_solved, (profile as any)?.training_points]);
+
   const unlockedSet = useMemo(() => {
     // Only Level 1 Novice Bot is unlocked by default for beginners
     const set = new Set<number>([1]);
@@ -1477,27 +1576,28 @@ ${formattedMoves || '1. e4'} ${game.result}`;
       profile.unlocked_levels.forEach((lvl) => set.add(lvl));
     }
 
-    // Points-based unlock: Level 2 at 400 pts, Level 3 at 800 pts, etc.
-    const userPoints = (profile as any)?.training_points ?? calculateTrainingPoints(
-      profile?.wins || 0,
-      profile?.draws || 0,
-      profile?.losses || 0,
-      profile?.puzzles_solved || 0
-    );
-
+    // 1. Points-based unlock (+400 TP per tier)
     for (let lvl = 2; lvl <= 10; lvl++) {
       const threshold = BOT_UNLOCK_THRESHOLDS[lvl] ?? (lvl - 1) * 400;
-      if (userPoints >= threshold) {
+      if (userTrainingPoints >= threshold) {
         set.add(lvl);
       }
     }
 
-    // 1. Coach Master Key override
+    // 2. Student Rating Equivalent (if student rating matches or exceeds bot rating)
+    const studentRating = profile?.rating ?? 400;
+    BOT_LEVELS.forEach((b) => {
+      if (studentRating >= b.rating) {
+        set.add(b.level);
+      }
+    });
+
+    // 3. Coach Master Key override
     if (profile?.coach_unlocked_levels) {
       profile.coach_unlocked_levels.forEach((lvl) => set.add(lvl));
     }
 
-    // 2. Tactical Quiz Benchmark: 4+ correct answers unlocks levels 4-5, 7+ unlocks 6-7, 10 unlocks all
+    // 4. Tactical Quiz Benchmark: 4+ correct answers unlocks levels 4-5, 7+ unlocks 6-7, 10 unlocks all
     if (quizScore >= 4) {
       set.add(4);
       set.add(5);
@@ -1512,7 +1612,7 @@ ${formattedMoves || '1. e4'} ${game.result}`;
       set.add(10);
     }
 
-    // 3. Boss Knockout Progression: beating level L unlocks L+1
+    // 5. Boss Knockout Progression: beating level L unlocks L+1
     if (recentGames && recentGames.length > 0) {
       recentGames.forEach((g) => {
         if (g.result === 'win' && typeof g.bot_level === 'number') {
@@ -1524,7 +1624,30 @@ ${formattedMoves || '1. e4'} ${game.result}`;
     }
 
     return set;
-  }, [profile?.unlocked_levels, profile?.coach_unlocked_levels, (profile as any)?.training_points, profile?.wins, profile?.draws, profile?.losses, profile?.puzzles_solved, quizScore, recentGames]);
+  }, [profile?.unlocked_levels, profile?.coach_unlocked_levels, profile?.rating, userTrainingPoints, quizScore, recentGames]);
+
+  // Next Bot Unlock Progression Metrics
+  const nextLockedBot = useMemo(() => {
+    return BOT_LEVELS.find((b) => !unlockedSet.has(b.level)) || null;
+  }, [unlockedSet]);
+
+  const nextPointsThreshold = useMemo(() => {
+    if (!nextLockedBot) return 0;
+    return BOT_UNLOCK_THRESHOLDS[nextLockedBot.level] ?? (nextLockedBot.level - 1) * 400;
+  }, [nextLockedBot]);
+
+  const pointsToNextUnlock = useMemo(() => {
+    if (!nextLockedBot) return 0;
+    return Math.max(0, nextPointsThreshold - userTrainingPoints);
+  }, [nextLockedBot, nextPointsThreshold, userTrainingPoints]);
+
+  const nextUnlockProgressPct = useMemo(() => {
+    if (!nextLockedBot) return 100;
+    const prevThreshold = BOT_UNLOCK_THRESHOLDS[nextLockedBot.level - 1] ?? 0;
+    const range = Math.max(1, nextPointsThreshold - prevThreshold);
+    const currentInRange = Math.max(0, userTrainingPoints - prevThreshold);
+    return Math.min(100, Math.max(0, Math.round((currentInRange / range) * 100)));
+  }, [nextLockedBot, nextPointsThreshold, userTrainingPoints]);
 
   if (loadingProfile) {
     return (
@@ -1537,28 +1660,35 @@ ${formattedMoves || '1. e4'} ${game.result}`;
 
   return (
     <div className="space-y-4 pb-20">
-      {/* Sleek Micro-Grid HUD (Unified Top Bar) */}
-      <div className="bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-2xl p-2.5 shadow-xl">
-        <div className="grid grid-cols-1 lg:grid-cols-12 items-center gap-2.5">
-          {/* Col 1: Left Brand, Level & Rating (lg:col-span-4) */}
+      {/* 3D Master Gaming Console HUD (Unified Top Bar) */}
+      <div className="relative bg-gradient-to-r from-slate-900/95 via-slate-950/95 to-slate-900/95 backdrop-blur-xl border border-slate-800/90 rounded-2xl p-3 shadow-2xl overflow-hidden">
+        {/* Top Rim Light Reflection */}
+        <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-amber-400/40 to-transparent pointer-events-none" />
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 items-center gap-3">
+          {/* Col 1: Left Brand, Level, Points & Rating (lg:col-span-4) */}
           <div className="flex items-center justify-between lg:justify-start gap-2.5 lg:col-span-4">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center text-base shadow-md shadow-amber-500/20 shrink-0">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-b from-amber-400 to-amber-600 flex items-center justify-center text-lg shadow-lg shadow-amber-500/30 border-b-2 border-amber-700 shrink-0 transform transition-transform hover:scale-105 select-none">
                 ♟️
               </div>
               <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-sm font-black text-white tracking-tight">Bot Arena</span>
-                <span className="text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded-full">
+                <span className="text-sm font-black text-white tracking-wide drop-shadow-sm whitespace-nowrap">Bot Arena</span>
+                <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-lg shadow-sm whitespace-nowrap">
                   Lvl {profile?.current_level || 1}
                 </span>
-                <span className="text-[10px] font-black font-mono text-amber-400 bg-slate-950/80 border border-slate-800 px-2 py-0.5 rounded-lg shadow-inner">
-                  ⚡ {profile?.rating || 400}
+                <span className="text-[11px] font-black font-mono text-amber-400 bg-slate-950/90 border border-amber-500/30 px-2.5 py-0.5 rounded-lg shadow-inner flex items-center gap-1 whitespace-nowrap">
+                  <span>⚡</span>
+                  <span>{userTrainingPoints} TP</span>
+                </span>
+                <span className="text-[11px] font-bold font-mono text-slate-300 bg-slate-950/80 border border-slate-800 px-2 py-0.5 rounded-lg shadow-inner whitespace-nowrap" title="ChessHub Elo Rating">
+                  {profile?.rating || 400} Elo
                 </span>
               </div>
             </div>
 
             {/* Mobile Audio Quick Toggle */}
-            <div className="flex items-center gap-1 lg:hidden">
+            <div className="flex items-center gap-1.5 lg:hidden">
               <button
                 type="button"
                 onClick={() => {
@@ -1566,60 +1696,70 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                   setSoundOn(next);
                   setChessSoundEnabled(next);
                 }}
-                className="p-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs"
+                className={`p-1.5 rounded-xl border text-xs transition-all shadow-sm active:translate-y-0.5 ${
+                  soundOn
+                    ? 'bg-slate-950 border-slate-700 text-slate-200'
+                    : 'bg-rose-950/40 border-rose-500/40 text-rose-300'
+                }`}
               >
                 {soundOn ? '🔊' : '🔇'}
               </button>
             </div>
           </div>
 
-          {/* Col 2: Center Slim XP Mini-Meter (lg:col-span-4) */}
-          <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl px-3 py-1.5 space-y-1 lg:col-span-4">
-            <div className="flex items-center justify-between text-[10px] font-mono leading-none">
-              <span className="text-slate-400 font-semibold flex items-center gap-1">
-                <span>⭐ Tier {currentLevelNum}</span>
+          {/* Col 2: Center 3D Embossed XP Progress Tube (lg:col-span-4) */}
+          <div className="bg-slate-950/80 border border-slate-800/90 rounded-xl px-3.5 py-2 space-y-1.5 lg:col-span-4 shadow-inner">
+            <div className="flex items-center justify-between text-[10px] font-mono leading-none whitespace-nowrap">
+              <span className="text-slate-400 font-bold flex items-center gap-1">
+                <span className="text-amber-300">⭐ Tier {currentLevelNum}</span>
                 <span className="text-slate-600">➔</span>
-                <span className="text-amber-400 font-bold">Tier {Math.min(10, currentLevelNum + 1)}</span>
+                <span className="text-emerald-400 font-extrabold">Tier {Math.min(10, currentLevelNum + 1)}</span>
               </span>
-              <span className="font-extrabold text-amber-400">{xpInLevel}/{xpTarget} XP ({xpPercent}%)</span>
+              <span className="font-black text-amber-400">
+                {xpInLevel} / {xpTarget} XP <span className="text-slate-400">({xpPercent}%)</span>
+              </span>
             </div>
-            <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden">
+            {/* 3D Recessed Progress Tube */}
+            <div className="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden border border-slate-800/90 p-0.5 shadow-inner relative">
               <div
-                className="h-full bg-gradient-to-r from-amber-500 via-emerald-400 to-sky-400 rounded-full transition-all duration-700 shadow-sm shadow-amber-500/50"
-                style={{ width: `${xpPercent}%` }}
-              />
+                className="h-full bg-gradient-to-r from-amber-500 via-amber-400 to-emerald-400 rounded-full transition-all duration-700 shadow-md shadow-amber-500/50 relative overflow-hidden"
+                style={{ width: `${Math.max(4, xpPercent)}%` }}
+              >
+                {/* Gloss Reflection Highlight */}
+                <div className="absolute inset-x-0 top-0 h-[50%] bg-white/25 rounded-t-full" />
+              </div>
             </div>
           </div>
 
           {/* Col 3: Right Action Chips Grid (lg:col-span-4) */}
-          <div className="flex items-center flex-wrap gap-1.5 justify-end lg:col-span-4">
+          <div className="flex items-center flex-wrap gap-1.5 justify-end lg:col-span-4 whitespace-nowrap">
             {/* Puzzles Chip */}
-            <div className="flex items-center gap-1 bg-slate-950/80 border border-slate-800/80 rounded-lg px-2 py-1 text-[11px] font-bold text-sky-400 shadow-inner">
-              <span>🧩</span>
+            <div className="flex items-center gap-1.5 bg-slate-950/90 border border-slate-800/90 rounded-xl px-2.5 py-1 text-xs font-black text-sky-400 shadow-inner whitespace-nowrap">
+              <span className="text-sm">🧩</span>
               <span>{profile?.puzzles_solved || 0}</span>
             </div>
 
-            {/* Streak & Missions Chip */}
+            {/* Streak & Missions Chip (3D Pill) */}
             <button
               type="button"
               onClick={() => setShowMissionsModal(true)}
-              className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold border transition-all ${
+              className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-black border transition-all shadow-sm active:translate-y-0.5 ${
                 allCompleted && !dailyBonusClaimed
-                  ? 'bg-amber-500/20 border-amber-500 text-amber-300 animate-pulse ring-1 ring-amber-500'
-                  : 'bg-slate-950/80 border-slate-800 hover:border-amber-500/50 text-slate-300'
+                  ? 'bg-amber-500/20 border-amber-500 text-amber-300 animate-pulse ring-2 ring-amber-400/50'
+                  : 'bg-slate-950/90 border-slate-800 hover:border-amber-500/50 text-slate-300'
               }`}
               title="Daily Training Missions"
             >
-              <span>🔥</span>
+              <span className="text-sm">🔥</span>
               <span>{streakCount}d</span>
-              <span className={`text-[9px] font-mono px-1 rounded ${
+              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
                 allCompleted ? 'bg-emerald-500/20 text-emerald-300 font-black' : 'bg-slate-800 text-amber-400'
               }`}>
                 {completedMissionsCount}/3
               </span>
             </button>
 
-            {/* AI Voice Toggle */}
+            {/* AI Voice Toggle (3D tactile button) */}
             <button
               type="button"
               onClick={() => {
@@ -1633,17 +1773,17 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                 }
               }}
               title={voiceNarrationOn ? 'AI Coach Voice is ON' : 'AI Coach Voice is Muted'}
-              className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] font-bold transition-all ${
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-xs font-black transition-all shadow-sm active:translate-y-0.5 ${
                 voiceNarrationOn
-                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
-                  : 'bg-slate-950/80 border-slate-800 text-slate-500'
+                  ? 'bg-gradient-to-b from-amber-500/20 to-amber-950/40 border-amber-500/50 text-amber-300 ring-1 ring-amber-400/40'
+                  : 'bg-slate-950/80 border-slate-800 text-slate-500 hover:text-slate-300'
               }`}
             >
               <span>{voiceNarrationOn ? '🗣️' : '🔇'}</span>
-              <span className="text-[9px] uppercase font-mono">{voiceNarrationOn ? 'Voice' : 'Off'}</span>
+              <span className="text-[10px] uppercase font-mono">{voiceNarrationOn ? 'Voice' : 'Off'}</span>
             </button>
 
-            {/* Sound Toggle (Desktop) */}
+            {/* Sound Toggle (Desktop, 3D tactile button) */}
             <button
               type="button"
               onClick={() => {
@@ -1652,7 +1792,7 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                 setChessSoundEnabled(next);
               }}
               title={soundOn ? 'SFX ON' : 'SFX Muted'}
-              className={`hidden sm:flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] font-bold transition-all ${
+              className={`hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-xl border text-xs font-black transition-all shadow-sm active:translate-y-0.5 ${
                 soundOn
                   ? 'bg-slate-950/80 border-slate-800 text-slate-300 hover:border-amber-500/50'
                   : 'bg-rose-950/30 border-rose-500/30 text-rose-400'
@@ -1666,10 +1806,10 @@ ${formattedMoves || '1. e4'} ${game.result}`;
               <button
                 type="button"
                 onClick={() => setShowDevDiagnostics((d) => !d)}
-                className={`p-1 rounded-lg border text-xs ${
+                className={`p-1.5 rounded-xl border text-xs shadow-sm transition-all active:translate-y-0.5 ${
                   showDevDiagnostics
                     ? 'bg-amber-500/20 border-amber-500 text-amber-300'
-                    : 'bg-slate-950/80 border-slate-800 text-slate-500'
+                    : 'bg-slate-950/80 border-slate-800 text-slate-500 hover:text-slate-300'
                 }`}
                 title="Toggle Dev Diagnostics"
               >
@@ -1697,8 +1837,8 @@ ${formattedMoves || '1. e4'} ${game.result}`;
         </div>
       )}
 
-      {/* Sleek Segmented Tab Navigation Bar */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-1.5 shadow-lg overflow-x-auto no-scrollbar">
+      {/* 3D Segmented Console Tab Navigation Bar */}
+      <div className="bg-slate-900/90 border border-slate-800/90 rounded-2xl p-1.5 shadow-xl backdrop-blur-md overflow-x-auto no-scrollbar scroll-smooth">
         <div className="flex items-center gap-1.5 min-w-max">
           {[
             { id: 'play', label: 'Play Bot', icon: 'play' },
@@ -1709,7 +1849,7 @@ ${formattedMoves || '1. e4'} ${game.result}`;
             { id: 'rating', label: 'Rating Graph', icon: 'chartBar' },
             { id: 'weaknesses', label: 'Weaknesses', icon: 'target' },
             { id: 'plan', label: 'Puzzles', icon: 'sparkles' },
-            { id: 'badges', label: 'Badges', icon: 'trophy' },
+            { id: 'badges', label: 'Badges (105)', icon: 'award' },
           ].map((tab) => {
             const isActive = activeTab === tab.id;
             return (
@@ -1717,10 +1857,10 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl font-extrabold text-xs transition-all whitespace-nowrap ${
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl font-black text-xs transition-all whitespace-nowrap select-none ${
                   isActive
-                    ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-md shadow-amber-500/25 ring-1 ring-amber-400/50'
-                    : 'bg-slate-950/60 text-slate-400 hover:bg-slate-800/80 hover:text-white border border-transparent hover:border-slate-700/60'
+                    ? 'bg-gradient-to-b from-amber-400 to-amber-600 text-white shadow-lg shadow-amber-500/30 border-b-2 border-amber-700 ring-1 ring-amber-300/40 -translate-y-0.5'
+                    : 'bg-slate-950/70 text-slate-400 hover:bg-slate-800/90 hover:text-white border border-slate-800/80 shadow-sm active:translate-y-0.5'
                 }`}
               >
                 <DashboardIcon iconKey={tab.icon as any} className="w-3.5 h-3.5" />
@@ -1735,84 +1875,211 @@ ${formattedMoves || '1. e4'} ${game.result}`;
       {activeTab === 'play' && (
         <div className="space-y-6">
           {!inGame ? (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Level Selector */}
-              <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-black text-white flex items-center gap-2">
-                    <DashboardIcon iconKey="trophy" className="w-4 h-4 text-amber-400" />
-                    Select Bot Difficulty (10 Levels)
-                  </h2>
-                  <span className="text-[11px] font-bold text-slate-400">
-                    Selected: <strong className="text-amber-400">Level {selectedLevel}</strong>
-                  </span>
-                </div>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+              {/* Left Column: Level Selector & Scout Dossier (lg:col-span-7 xl:col-span-8) */}
+              <div className="lg:col-span-7 xl:col-span-8 space-y-5">
+                {/* 3D Bot Difficulty Selector & Bot Bar */}
+                <div className="bg-slate-900/95 border border-slate-800/90 rounded-2xl p-4 sm:p-5 shadow-2xl space-y-4 backdrop-blur-xl relative overflow-hidden">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-base shadow-md shadow-amber-500/10">
+                        🏆
+                      </div>
+                      <div>
+                        <h2 className="text-sm sm:text-base font-black text-white tracking-wide flex items-center gap-2">
+                          Select Bot Difficulty
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                            10 Tiers
+                          </span>
+                        </h2>
+                        <p className="text-[11px] text-slate-400">
+                          Earn points from matches and puzzles to unlock the next academy bot!
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 self-start sm:self-auto bg-slate-950/90 border border-amber-500/30 px-3 py-1 rounded-xl shadow-inner">
+                      <span className="text-[10px] uppercase font-bold text-slate-400">Selected:</span>
+                      <strong className="text-xs font-black text-amber-400">Level {selectedLevel}</strong>
+                    </div>
+                  </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
-                  {BOT_LEVELS.map((b) => {
-                    const isUnlocked = unlockedSet.has(b.level);
-                    const isCoachUnlocked = profile?.coach_unlocked_levels?.includes(b.level);
-                    const isSelected = selectedLevel === b.level;
-
-                    return (
-                      <div
-                        key={b.level}
-                        role="button"
-                        tabIndex={0}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          if (isUnlocked) {
-                            setSelectedLevel(b.level);
-                          } else {
-                            setGatekeeperLockedLevel(b.level);
-                          }
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            if (isUnlocked) setSelectedLevel(b.level);
-                            else setGatekeeperLockedLevel(b.level);
-                          }
-                        }}
-                        className={`relative rounded-xl border p-2.5 sm:p-3 cursor-pointer transition-all flex flex-col justify-between ${
-                          isSelected
-                            ? 'border-amber-500 bg-amber-500/10 shadow-lg shadow-amber-500/15 ring-2 ring-amber-500'
-                            : isUnlocked
-                            ? 'border-slate-800 bg-slate-950 hover:border-slate-700 hover:bg-slate-900/60'
-                            : 'border-slate-900 bg-slate-950/40 hover:border-amber-500/40 opacity-70'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-xl">{b.avatarIcon}</span>
-                          {isUnlocked ? (
-                            isCoachUnlocked ? (
-                              <span className="text-[9px] bg-emerald-500/20 text-emerald-300 font-bold px-1.5 py-0.5 rounded">
-                                🔓 Coach
-                              </span>
-                            ) : (
-                              <span className="text-[9px] bg-amber-500/20 text-amber-300 font-bold px-1.5 py-0.5 rounded">
-                                Lvl {b.level}
-                              </span>
-                            )
-                          ) : (
-                            <span className="text-[9px] bg-rose-500/20 text-rose-300 font-bold px-1.5 py-0.5 rounded border border-rose-500/30">
-                              🔒 Locked
-                            </span>
-                          )}
+                  {/* 3D Bot Progression & Next Unlock Bar ("Bot Bar") */}
+                  <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-amber-500/30 rounded-2xl p-3.5 sm:p-4 shadow-xl relative overflow-hidden">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-xl shrink-0 shadow-md shadow-amber-500/10">
+                          {nextLockedBot ? nextLockedBot.avatarIcon : '👑'}
                         </div>
-
-                        <div className="mt-2 space-y-0.5">
-                          <div className="font-extrabold text-xs text-white truncate">{b.name.replace(/Level \d+ — /, '')}</div>
-                          <div className="text-[10px] text-slate-400 font-mono">Rating: {b.rating}</div>
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs sm:text-sm font-black text-white">
+                              {nextLockedBot
+                                ? `Next Unlock: Level ${nextLockedBot.level} (${nextLockedBot.name.replace(/Level \d+ — /, '')})`
+                                : 'All 10 Academy Bots Unlocked!'}
+                            </span>
+                            {nextLockedBot && (
+                              <span className="text-[10px] font-mono font-black bg-amber-500/15 text-amber-300 px-2 py-0.5 rounded-md border border-amber-500/30">
+                                ⚡ {userTrainingPoints} / {nextPointsThreshold} TP
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-400">
+                            {nextLockedBot
+                              ? pointsToNextUnlock === 0
+                                ? '🎉 You have earned enough points! This bot is unlocked and ready to play!'
+                                : `Earn ${pointsToNextUnlock} more Training Points from matches or puzzles to unlock!`
+                              : 'You have mastered every bot in the ChessHub Academy Arena!'}
+                          </p>
                         </div>
                       </div>
-                    );
-                  })}
+
+                      {nextLockedBot && (
+                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                          <div className="text-right font-mono">
+                            <span className="text-xs font-black text-emerald-400">{nextUnlockProgressPct}%</span>
+                            <span className="text-[10px] text-slate-500 block">complete</span>
+                          </div>
+                          {pointsToNextUnlock === 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedLevel(nextLockedBot.level);
+                                setNewlyUnlockedBotLevel(nextLockedBot.level);
+                              }}
+                              className="px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-black text-xs uppercase rounded-xl shadow-lg shadow-emerald-500/25 animate-pulse border border-emerald-400/50 hover:brightness-110 active:translate-y-0.5"
+                            >
+                              Select Level {nextLockedBot.level} 🚀
+                            </button>
+                          ) : (
+                            <div className="text-[10px] font-black text-amber-400/90 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
+                              ⚡ {pointsToNextUnlock} TP Left
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 3D Progress Bar across all 10 bots */}
+                    <div className="mt-3 relative">
+                      <div className="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-slate-800/90 p-0.5 shadow-inner">
+                        <div
+                          className="h-full bg-gradient-to-r from-amber-500 via-amber-400 to-emerald-400 rounded-full transition-all duration-700 shadow-md shadow-amber-500/50"
+                          style={{ width: `${Math.min(100, Math.max(5, (unlockedSet.size / 10) * 100))}%` }}
+                        />
+                      </div>
+                      {/* 10 Level Tick Marks */}
+                      <div className="flex justify-between items-center px-1 mt-1 text-[9px] font-mono font-bold text-slate-500">
+                        {BOT_LEVELS.map((b) => {
+                          const isUnlocked = unlockedSet.has(b.level);
+                          return (
+                            <span
+                              key={b.level}
+                              className={`cursor-pointer transition-colors ${
+                                isUnlocked ? 'text-amber-400 font-black' : 'hover:text-slate-300'
+                              }`}
+                              onClick={() => {
+                                if (isUnlocked) setSelectedLevel(b.level);
+                                else setGatekeeperLockedLevel(b.level);
+                              }}
+                              title={`Lvl ${b.level}: ${b.name} (${isUnlocked ? 'Unlocked' : `${BOT_UNLOCK_THRESHOLDS[b.level]} TP`})`}
+                            >
+                              L{b.level}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 10 Bot Cards Grid (3D Collectible Style with Point Badges) */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 sm:gap-3">
+                    {BOT_LEVELS.map((b) => {
+                      const isUnlocked = unlockedSet.has(b.level);
+                      const isCoachUnlocked = profile?.coach_unlocked_levels?.includes(b.level);
+                      const isSelected = selectedLevel === b.level;
+                      const requiredPts = BOT_UNLOCK_THRESHOLDS[b.level] ?? (b.level - 1) * 400;
+                      const ptsDiff = Math.max(0, requiredPts - userTrainingPoints);
+                      const canUnlockNow = !isUnlocked && ptsDiff === 0;
+
+                      return (
+                        <div
+                          key={b.level}
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (isUnlocked || canUnlockNow) {
+                              setSelectedLevel(b.level);
+                            } else {
+                              setGatekeeperLockedLevel(b.level);
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (isUnlocked || canUnlockNow) setSelectedLevel(b.level);
+                              else setGatekeeperLockedLevel(b.level);
+                            }
+                          }}
+                          className={`relative rounded-2xl p-3 cursor-pointer transition-all duration-200 flex flex-col justify-between select-none ${
+                            isSelected
+                              ? 'border-2 border-amber-400 bg-gradient-to-b from-amber-500/25 via-slate-900 to-amber-950/40 shadow-xl shadow-amber-500/25 ring-2 ring-amber-400/80 -translate-y-1 scale-[1.02] border-b-4 border-b-amber-600'
+                              : canUnlockNow
+                              ? 'border-2 border-emerald-400/80 bg-emerald-950/30 hover:bg-emerald-950/50 -translate-y-0.5 shadow-lg shadow-emerald-500/20 border-b-4 border-b-emerald-600 animate-pulse'
+                              : isUnlocked
+                              ? 'border border-slate-800/90 bg-gradient-to-b from-slate-900/90 via-slate-950 to-slate-900/90 hover:border-amber-500/50 hover:bg-slate-850 hover:-translate-y-0.5 hover:shadow-lg border-b-4 border-b-slate-800'
+                              : 'border border-slate-900 bg-slate-950/50 opacity-70 hover:opacity-90 border-b-2 border-b-slate-900/80'
+                          }`}
+                        >
+                          {/* Card Top Pill */}
+                          <div className="flex items-center justify-between">
+                            <span className="text-2xl sm:text-3xl filter drop-shadow-md transform transition-transform group-hover:scale-110">
+                              {b.avatarIcon}
+                            </span>
+                            {isUnlocked ? (
+                              isCoachUnlocked ? (
+                                <span className="text-[9px] bg-emerald-500/20 text-emerald-300 font-black px-1.5 py-0.5 rounded-md border border-emerald-500/30">
+                                  🔓 Coach
+                                </span>
+                              ) : (
+                                <span className="text-[9px] bg-amber-500/20 text-amber-300 font-black px-1.5 py-0.5 rounded-md border border-amber-500/30">
+                                  Lvl {b.level}
+                                </span>
+                              )
+                            ) : canUnlockNow ? (
+                              <span className="text-[9px] bg-emerald-500/20 text-emerald-300 font-black px-1.5 py-0.5 rounded-md border border-emerald-500/40">
+                                🔓 Ready!
+                              </span>
+                            ) : (
+                              <span className="text-[9px] bg-slate-800 text-amber-300 font-mono font-black px-1.5 py-0.5 rounded-md border border-slate-700">
+                                ⚡ {requiredPts} TP
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Card Info */}
+                          <div className="mt-2.5 space-y-0.5">
+                            <div className="font-black text-xs text-white truncate drop-shadow-sm">
+                              {b.name.replace(/Level \d+ — /, '')}
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-mono font-bold flex items-center justify-between">
+                              <span>Rating: {b.rating}</span>
+                              {!isUnlocked && !canUnlockNow && (
+                                <span className="text-[9px] text-amber-400/80 font-mono">
+                                  -{ptsDiff} TP
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
 
-                {/* Bot Opening Repertoire Scout Card */}
+                {/* 3D Bot Opening Repertoire Scout Dossier Card */}
                 {(() => {
                   const botMatches = recentGames.filter((g) => g.bot_level === selectedLevel);
                   const botWins = botMatches.filter((g) => g.result === 'win').length;
@@ -1821,83 +2088,91 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                   const botWinPct = botMatches.length > 0 ? Math.round((botWins / botMatches.length) * 100) : null;
 
                   return (
-                    <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-3 shadow-inner">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-2.5">
-                        <div className="flex items-center gap-2.5">
-                          <span className="text-2xl">{currentBotScout.avatar}</span>
+                    <div className="bg-slate-900/95 border border-slate-800/90 rounded-2xl p-4 sm:p-5 space-y-4 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+                      {/* Top Intelligence Dossier Header */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-2xl bg-gradient-to-b from-slate-800 to-slate-950 border border-slate-700/80 shadow-md flex items-center justify-center text-3xl shrink-0">
+                            {currentBotScout.avatar}
+                          </div>
                           <div>
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-xs font-black text-white">{currentBotScout.name}</span>
-                              <span className="text-[10px] font-mono font-black text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                              <span className="text-sm font-black text-white tracking-wide">{currentBotScout.name}</span>
+                              <span className="text-[10px] font-mono font-black text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full shadow-inner">
                                 Rating {currentBotScout.rating}
                               </span>
-                              <span className="text-[10px] font-bold text-sky-400 bg-sky-500/10 border border-sky-500/20 px-2 py-0.5 rounded-full">
+                              <span className="text-[10px] font-bold text-sky-300 bg-sky-500/15 border border-sky-500/30 px-2 py-0.5 rounded-full">
                                 {currentBotScout.playstyleTag}
                               </span>
                             </div>
-                            <p className="text-[10px] text-slate-400 font-mono mt-0.5">
-                              Signature Trap: <strong className="text-amber-300 font-semibold">{currentBotScout.signatureTrap}</strong>
+                            <p className="text-[11px] text-slate-300 mt-1">
+                              Signature Trap: <strong className="text-amber-300 font-bold">{currentBotScout.signatureTrap}</strong>
                             </p>
                           </div>
                         </div>
 
-                        {/* Head-to-Head record */}
-                        <div className="flex items-center gap-2 shrink-0 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg text-xs font-mono">
+                        {/* 3D Digital LED H2H Scoreboard */}
+                        <div className="flex items-center gap-2 shrink-0 bg-slate-950/90 border border-slate-800 px-3.5 py-2 rounded-xl text-xs font-mono shadow-inner">
                           <span className="text-slate-400 text-[10px] uppercase font-bold">H2H:</span>
                           {botMatches.length > 0 ? (
                             <span className="font-black text-white">
-                              <span className="text-emerald-400">{botWins}W</span> - <span className="text-rose-400">{botLosses}L</span> - <span className="text-slate-400">{botDraws}D</span> ({botWinPct}%)
+                              <span className="text-emerald-400">{botWins}W</span> - <span className="text-rose-400">{botLosses}L</span> - <span className="text-slate-400">{botDraws}D</span>{' '}
+                              <span className="text-amber-400 font-bold">({botWinPct}%)</span>
                             </span>
                           ) : (
-                            <span className="text-[10px] text-slate-500 font-bold">No matches yet</span>
+                            <span className="text-[11px] text-slate-400 font-bold">No matches yet</span>
                           )}
                         </div>
                       </div>
 
-                      {/* Repertoire Grid */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-xs">
+                      {/* Repertoire Grid (White & Black) */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                         {/* Repertoire as White */}
-                        <div className="bg-slate-900/90 border border-slate-800/80 rounded-xl p-2.5 space-y-1">
-                          <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
-                            <span className="flex items-center gap-1 text-slate-200">
+                        <div className="bg-slate-950/80 border border-amber-500/20 rounded-xl p-3 space-y-1.5 shadow-inner">
+                          <div className="flex items-center justify-between text-[10px] font-bold uppercase">
+                            <span className="flex items-center gap-1 text-amber-300">
                               <span>♔</span> White Repertoire:
                             </span>
-                            <span className="font-mono text-amber-400">{currentBotScout.whiteRepertoire.frequency}</span>
+                            <span className="font-mono text-amber-400 bg-amber-500/15 px-1.5 py-0.5 rounded border border-amber-500/30">
+                              {currentBotScout.whiteRepertoire.frequency}
+                            </span>
                           </div>
-                          <div className="font-extrabold text-white text-[11px]">
+                          <div className="font-black text-white text-xs">
                             {currentBotScout.whiteRepertoire.primary}
                           </div>
-                          <p className="text-[10px] text-slate-400 leading-snug">
+                          <p className="text-[11px] text-slate-300 leading-snug">
                             {currentBotScout.whiteRepertoire.plan}
                           </p>
                         </div>
 
                         {/* Repertoire as Black */}
-                        <div className="bg-slate-900/90 border border-slate-800/80 rounded-xl p-2.5 space-y-1">
-                          <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
-                            <span className="flex items-center gap-1 text-slate-200">
+                        <div className="bg-slate-950/80 border border-emerald-500/20 rounded-xl p-3 space-y-1.5 shadow-inner">
+                          <div className="flex items-center justify-between text-[10px] font-bold uppercase">
+                            <span className="flex items-center gap-1 text-emerald-300">
                               <span>♚</span> Black Repertoire:
                             </span>
-                            <span className="font-mono text-emerald-400">vs 1.e4 & 1.d4</span>
+                            <span className="font-mono text-emerald-400 bg-emerald-500/15 px-1.5 py-0.5 rounded border border-emerald-500/30">
+                              vs 1.e4 & 1.d4
+                            </span>
                           </div>
-                          <div className="font-extrabold text-white text-[11px] truncate">
+                          <div className="font-black text-white text-xs truncate">
                             {currentBotScout.blackRepertoire.vsE4}
                           </div>
-                          <p className="text-[10px] text-slate-400 leading-snug">
+                          <p className="text-[11px] text-slate-300 leading-snug">
                             {currentBotScout.blackRepertoire.plan}
                           </p>
                         </div>
                       </div>
 
-                      {/* Coach Counter-Strategy & Weakness */}
-                      <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 flex items-start gap-2.5 text-xs text-amber-200">
-                        <span className="text-base leading-none mt-0.5 shrink-0">🛡️</span>
-                        <div className="space-y-0.5 leading-snug">
-                          <div className="font-extrabold text-amber-300 text-[11px]">
-                            Exploitable Weakness & Coach Counter-Strategy:
+                      {/* Coach Counter-Strategy & Weakness (Glowing 3D Banner) */}
+                      <div className="bg-gradient-to-r from-amber-500/15 via-amber-600/10 to-transparent border border-amber-500/40 rounded-xl p-3 flex items-start gap-2.5 text-xs text-amber-100 shadow-md">
+                        <span className="text-xl leading-none mt-0.5 shrink-0">🛡️</span>
+                        <div className="space-y-1 leading-snug">
+                          <div className="font-black text-amber-300 text-xs flex items-center gap-1.5">
+                            <span>Exploitable Weakness & Coach Counter-Strategy:</span>
                           </div>
-                          <div className="text-[10px] text-slate-300 font-medium">
-                            <strong className="text-rose-300 font-bold">{currentBotScout.weakness}</strong> — {currentBotScout.coachAdvice}
+                          <div className="text-[11px] text-slate-200">
+                            <strong className="text-rose-300 font-black">{currentBotScout.weakness}</strong> — {currentBotScout.coachAdvice}
                           </div>
                         </div>
                       </div>
@@ -1906,46 +2181,54 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                 })()}
               </div>
 
-              {/* Game Settings */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6 flex flex-col justify-between">
-                <div className="space-y-6">
-                  <h2 className="text-base font-bold text-white flex items-center gap-2">
-                    <DashboardIcon iconKey="settings" className="w-5 h-5 text-sky-400" />
-                    Match Settings
-                  </h2>
+              {/* Right Column: 3D Match Settings Panel (lg:col-span-5 xl:col-span-4) */}
+              <div className="lg:col-span-5 xl:col-span-4 bg-slate-900/95 border border-slate-800/90 rounded-2xl p-5 sm:p-6 shadow-2xl space-y-5 backdrop-blur-xl flex flex-col justify-between relative overflow-hidden">
+                <div className="space-y-5">
+                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+                    <h2 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
+                      <DashboardIcon iconKey="settings" className="w-5 h-5 text-sky-400" />
+                      Match Settings
+                    </h2>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Setup & Launch
+                    </span>
+                  </div>
 
-                  {/* Color Selector */}
+                  {/* 3D Color Selector (Choose Side) */}
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-300">Choose Side:</label>
+                    <label className="text-xs font-black text-slate-200">Choose Side:</label>
                     <div className="grid grid-cols-3 gap-2">
                       {[
-                        { id: 'white', label: '♔ White' },
-                        { id: 'black', label: '♚ Black' },
-                        { id: 'random', label: '🎲 Random' },
-                      ].map((c) => (
-                        <button
-                          key={c.id}
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setSelectedColor(c.id as any);
-                          }}
-                          className={`py-2 text-xs font-bold rounded-xl border transition-all ${
-                            selectedColor === c.id
-                              ? 'border-primary bg-primary/20 text-white'
-                              : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700'
-                          }`}
-                        >
-                          {c.label}
-                        </button>
-                      ))}
+                        { id: 'white', label: '♔ White', style: 'border-slate-300 bg-gradient-to-b from-slate-100 to-slate-200 text-slate-950 font-black shadow-md border-b-4 border-b-slate-400' },
+                        { id: 'black', label: '♚ Black', style: 'border-slate-700 bg-gradient-to-b from-slate-800 to-slate-950 text-white font-black shadow-md border-b-4 border-b-slate-950' },
+                        { id: 'random', label: '🎲 Random', style: 'border-amber-600 bg-gradient-to-b from-amber-500 to-amber-600 text-white font-black shadow-md border-b-4 border-b-amber-700' },
+                      ].map((c) => {
+                        const isSelected = selectedColor === c.id;
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setSelectedColor(c.id as any);
+                            }}
+                            className={`py-2.5 text-xs font-black rounded-xl border transition-all select-none active:translate-y-0.5 ${
+                              isSelected
+                                ? `${c.style} ring-2 ring-amber-400 scale-[1.02]`
+                                : 'border-slate-800 bg-slate-950/80 text-slate-400 hover:border-slate-700 hover:text-white border-b-2 border-b-slate-800'
+                            }`}
+                          >
+                            {c.label}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 
-                  {/* Time Control Selector */}
+                  {/* 3D Time Control Selector */}
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-300">Time Control:</label>
+                    <label className="text-xs font-black text-slate-200">Time Control:</label>
                     <div className="grid grid-cols-2 gap-2">
                       {[
                         { id: '10+0', label: '10+0 (Blitz)' },
@@ -1953,34 +2236,37 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                         { id: '15+10', label: '15+10 (Rapid)' },
                         { id: '5+0', label: '5+0 (Speed)' },
                         { id: 'unlimited', label: 'Unlimited ♾️' },
-                      ].map((tc) => (
-                        <button
-                          key={tc.id}
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setSelectedTimeControl(tc.id as any);
-                          }}
-                          className={`py-2 px-3 text-xs font-bold rounded-xl border transition-all ${
-                            selectedTimeControl === tc.id
-                              ? 'border-emerald-500 bg-emerald-500/20 text-white'
-                              : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700'
-                          }`}
-                        >
-                          {tc.label}
-                        </button>
-                      ))}
+                      ].map((tc) => {
+                        const isSelected = selectedTimeControl === tc.id;
+                        return (
+                          <button
+                            key={tc.id}
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setSelectedTimeControl(tc.id as any);
+                            }}
+                            className={`py-2 px-2.5 text-xs font-black rounded-xl border transition-all select-none active:translate-y-0.5 ${
+                              isSelected
+                                ? 'border-emerald-400 bg-gradient-to-b from-emerald-500/25 to-emerald-950/40 text-emerald-200 ring-2 ring-emerald-400/80 border-b-2 border-b-emerald-600 shadow-md shadow-emerald-500/20'
+                                : 'border-slate-800 bg-slate-950/80 text-slate-400 hover:border-slate-700 hover:text-white border-b-2 border-b-slate-800'
+                            }`}
+                          >
+                            {tc.label}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 
-                  {/* AI Bot Personality & Dialogue Soundboard Selector */}
+                  {/* 3D AI Bot Personality Selector */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                      <label className="text-xs font-black text-slate-200 flex items-center gap-1.5">
                         <span>🎭</span> AI Bot Personality:
                       </label>
-                      <span className="text-[10px] font-mono text-amber-400 font-extrabold bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/30">
+                      <span className="text-[10px] font-mono text-amber-400 font-black bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/30">
                         {currentPersonality.avatar} {currentPersonality.badge}
                       </span>
                     </div>
@@ -2003,10 +2289,10 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                                 speakCoachAdvice(sample, { pitch: p.pitch, rate: p.rate, force: true });
                               }
                             }}
-                            className={`p-2 rounded-xl border text-left transition-all relative overflow-hidden ${
+                            className={`p-2 rounded-xl border text-left transition-all relative overflow-hidden select-none active:translate-y-0.5 ${
                               isSelected
-                                ? 'border-amber-400 bg-amber-500/20 text-white ring-1 ring-amber-400/80 shadow-md shadow-amber-500/20'
-                                : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700 hover:text-white'
+                                ? 'border-amber-400 bg-gradient-to-b from-amber-500/20 to-amber-950/30 text-white ring-2 ring-amber-400/80 shadow-md shadow-amber-500/20 border-b-2 border-b-amber-600'
+                                : 'border-slate-800 bg-slate-950/80 text-slate-400 hover:border-slate-700 hover:text-white border-b-2 border-b-slate-800'
                             }`}
                           >
                             <div className="flex items-center gap-1.5 mb-0.5">
@@ -2020,8 +2306,8 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                     </div>
                   </div>
 
-                  {/* Boss Battle Mode Toggle */}
-                  <div className="flex items-center justify-between bg-slate-950 p-3 rounded-xl border border-slate-800">
+                  {/* 3D Boss Battle Mode Switch */}
+                  <div className="flex items-center justify-between bg-slate-950/90 p-3 rounded-xl border border-slate-800/90 shadow-inner">
                     <div>
                       <div className="text-xs font-black text-white flex items-center gap-1.5">
                         <span>⚔️</span> Boss Battle Mode
@@ -2035,9 +2321,9 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                         e.stopPropagation();
                         setBossBattleMode((prev) => !prev);
                       }}
-                      className={`px-3 py-1.5 text-xs font-black rounded-lg border transition-all ${
+                      className={`px-3 py-1.5 text-xs font-black rounded-lg border transition-all select-none active:translate-y-0.5 ${
                         bossBattleMode
-                          ? 'border-amber-500 bg-amber-500/20 text-amber-300'
+                          ? 'border-amber-400 bg-gradient-to-b from-amber-500 to-amber-600 text-white shadow-md shadow-amber-500/30 border-b-2 border-b-amber-700'
                           : 'border-slate-800 bg-slate-900 text-slate-500'
                       }`}
                     >
@@ -2045,9 +2331,9 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                     </button>
                   </div>
 
-                  {/* Board Theme Selector */}
+                  {/* 3D Board Theme Selector */}
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-300">Board Theme:</label>
+                    <label className="text-xs font-black text-slate-200">Board Theme:</label>
                     <div className="grid grid-cols-2 gap-2">
                       {BOARD_THEMES.map((theme) => (
                         <button
@@ -2058,10 +2344,10 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                             e.stopPropagation();
                             setSelectedThemeId(theme.id);
                           }}
-                          className={`py-2 px-2.5 text-xs font-bold rounded-xl border transition-all flex items-center justify-between ${
+                          className={`py-2 px-2.5 text-xs font-black rounded-xl border transition-all flex items-center justify-between select-none active:translate-y-0.5 ${
                             selectedThemeId === theme.id
-                              ? 'border-amber-500 bg-amber-500/20 text-white ring-1 ring-amber-500'
-                              : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700'
+                              ? 'border-amber-400 bg-gradient-to-b from-amber-500/20 to-amber-950/30 text-white ring-2 ring-amber-400/80 border-b-2 border-b-amber-600 shadow-md'
+                              : 'border-slate-800 bg-slate-950/80 text-slate-400 hover:border-slate-700 hover:text-white border-b-2 border-b-slate-800'
                           }`}
                         >
                           <span className="flex items-center gap-1.5">
@@ -2069,27 +2355,145 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                             <span className="text-[11px]">{theme.name}</span>
                           </span>
                           <span className="flex gap-0.5">
-                            <span className="w-2.5 h-2.5 rounded-sm border border-black/30" style={{ backgroundColor: theme.lightSquare }} />
-                            <span className="w-2.5 h-2.5 rounded-sm border border-black/30" style={{ backgroundColor: theme.darkSquare }} />
+                            <span className="w-2.5 h-2.5 rounded-sm border border-black/30 shadow-sm" style={{ backgroundColor: theme.lightSquare }} />
+                            <span className="w-2.5 h-2.5 rounded-sm border border-black/30 shadow-sm" style={{ backgroundColor: theme.darkSquare }} />
                           </span>
                         </button>
                       ))}
                     </div>
                   </div>
+
+                  {/* 3D Other Options / Advanced Match Rules Drawer */}
+                  <div className="space-y-2 border-t border-slate-800/80 pt-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowAdvancedOptions((prev) => !prev)}
+                      className="w-full flex items-center justify-between py-2 px-3 rounded-xl bg-slate-950/80 border border-slate-800 hover:border-amber-500/40 text-xs font-black text-slate-300 transition-all select-none shadow-sm active:translate-y-0.5"
+                    >
+                      <span className="flex items-center gap-2">
+                        <span>⚙️</span>
+                        <span>Other Options & Match Rules</span>
+                      </span>
+                      <span className="text-[10px] font-mono text-amber-400 font-extrabold bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                        {showAdvancedOptions ? '▲ Hide Options' : '▼ Expand Options'}
+                      </span>
+                    </button>
+
+                    {showAdvancedOptions && (
+                      <div className="space-y-3 bg-slate-950/95 border border-slate-800/90 rounded-xl p-3.5 animate-in fade-in zoom-in-95 duration-200 shadow-inner">
+                        {/* Hint Allowance */}
+                        <div className="space-y-1.5">
+                          <label className="text-[11px] font-bold text-slate-300 flex items-center justify-between">
+                            <span>💡 Coach Hint Allowance:</span>
+                            <span className="text-amber-400 font-mono text-[10px]">
+                              {hintAllowanceOption === '3' ? '3 Hints (Standard)' : hintAllowanceOption === '5' ? '5 Hints (Guided)' : hintAllowanceOption === 'unlimited' ? 'Unlimited ♾️' : '0 Hints (Hardcore)'}
+                            </span>
+                          </label>
+                          <div className="grid grid-cols-4 gap-1.5">
+                            {[
+                              { id: '3', label: '3 Hints' },
+                              { id: '5', label: '5 Hints' },
+                              { id: 'unlimited', label: 'Unlimited ♾️' },
+                              { id: '0', label: '0 (Hardcore)' },
+                            ].map((opt) => (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                onClick={() => setHintAllowanceOption(opt.id as any)}
+                                className={`py-1 text-[10px] font-bold rounded-lg border transition-all ${
+                                  hintAllowanceOption === opt.id
+                                    ? 'border-amber-400 bg-amber-500/20 text-white font-black shadow-sm'
+                                    : 'border-slate-800 bg-slate-900 text-slate-400 hover:text-white'
+                                }`}
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Piece Odds / Handicap */}
+                        <div className="space-y-1.5">
+                          <label className="text-[11px] font-bold text-slate-300 flex items-center justify-between">
+                            <span>⚖️ Practice Handicap / Odds:</span>
+                            <span className="text-emerald-400 font-mono text-[10px]">
+                              {handicapOption === 'equal' ? 'Equal Material' : handicapOption === 'pawn_odds' ? '+Pawn Odds' : '+Knight Odds'}
+                            </span>
+                          </label>
+                          <div className="grid grid-cols-3 gap-1.5">
+                            {[
+                              { id: 'equal', label: 'Equal (Normal)' },
+                              { id: 'pawn_odds', label: '+Pawn Odds' },
+                              { id: 'knight_odds', label: '+Knight Odds' },
+                            ].map((opt) => (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                onClick={() => setHandicapOption(opt.id as any)}
+                                className={`py-1 text-[10px] font-bold rounded-lg border transition-all ${
+                                  handicapOption === opt.id
+                                    ? 'border-emerald-400 bg-emerald-500/20 text-white font-black shadow-sm'
+                                    : 'border-slate-800 bg-slate-900 text-slate-400 hover:text-white'
+                                }`}
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Takebacks & Bot Banter */}
+                        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-800/80">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400">Takebacks / Undo:</label>
+                            <button
+                              type="button"
+                              onClick={() => setTakebackAllowed((v) => !v)}
+                              className={`w-full py-1 text-[10px] font-bold rounded-lg border transition-all ${
+                                takebackAllowed
+                                  ? 'border-sky-500/50 bg-sky-500/20 text-sky-300 font-black'
+                                  : 'border-slate-800 bg-slate-900 text-slate-400'
+                              }`}
+                            >
+                              {takebackAllowed ? 'Allowed (Friendly)' : 'Strict (Tournament)'}
+                            </button>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400">Bot In-Game Chat:</label>
+                            <button
+                              type="button"
+                              onClick={() => setBotChatterOption((c) => c === 'active' ? 'quiet' : 'active')}
+                              className={`w-full py-1 text-[10px] font-bold rounded-lg border transition-all ${
+                                botChatterOption === 'active'
+                                  ? 'border-amber-500/50 bg-amber-500/20 text-amber-300 font-black'
+                                  : 'border-slate-800 bg-slate-900 text-slate-400'
+                              }`}
+                            >
+                              {botChatterOption === 'active' ? 'Active (💬 Fun)' : 'Quiet (🤫 Muted)'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <Button
-                  type="button"
-                  onClick={(e: any) => {
-                    e?.preventDefault?.();
-                    e?.stopPropagation?.();
-                    handleStartGame();
-                  }}
-                  loading={isStartingGame}
-                  className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 font-black text-sm uppercase tracking-wider shadow-lg shadow-amber-500/25 hover:from-amber-600 hover:to-amber-700"
-                >
-                  🚀 START MATCH
-                </Button>
+                {/* 3D Giant High-Impact START MATCH Button */}
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={(e: any) => {
+                      e?.preventDefault?.();
+                      e?.stopPropagation?.();
+                      handleStartGame();
+                    }}
+                    disabled={isStartingGame}
+                    className="w-full py-4 px-6 text-sm sm:text-base font-black uppercase tracking-widest text-white bg-gradient-to-r from-amber-500 via-amber-400 to-amber-600 border-b-4 border-amber-700 rounded-2xl shadow-xl shadow-amber-500/40 hover:brightness-110 active:border-b-0 active:translate-y-1 transition-all flex items-center justify-center gap-3 cursor-pointer group disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <span className="text-xl group-hover:scale-125 transition-transform duration-200">🚀</span>
+                    <span>{isStartingGame ? 'LAUNCHING ARENA...' : 'START MATCH'}</span>
+                  </button>
+                </div>
               </div>
             </div>
           ) : (
@@ -2588,6 +2992,29 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                     </button>
                   </div>
 
+                    {/* Takeback / Undo Move Button (Match Rules) */}
+                    <div className="flex items-center justify-between bg-slate-950/80 border border-slate-800 rounded-xl p-3">
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-base">↩️</span>
+                        <div>
+                          <div className="font-extrabold text-white text-xs">Takeback / Undo</div>
+                          <div className="text-[10px] text-slate-400 font-medium">
+                            {takebackAllowed ? 'Revert last move & calculate anew' : 'Strict Tournament Mode (Off)'}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={!takebackAllowed || moveHistory.length === 0 || isBotThinking || gameStatus !== 'active'}
+                        onClick={handleTakeback}
+                        className="px-3 py-1.5 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 text-xs font-black transition-all disabled:opacity-40 cursor-pointer select-none active:translate-y-0.5"
+                        title={takebackAllowed ? 'Take back last move' : 'Takebacks disabled'}
+                      >
+                        {takebackAllowed ? 'Undo Move ↩️' : 'Strict 🔒'}
+                      </button>
+                    </div>
+
                   {/* Thinking Status */}
                   {isBotThinking && (
                     <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-xs text-amber-300 font-bold flex items-center gap-2 animate-pulse">
@@ -2659,204 +3086,18 @@ ${formattedMoves || '1. e4'} ${game.result}`;
         </div>
       )}
 
-      {/* TAB: TACTICAL QUESTS (10 INTERACTIVE QUESTIONS) */}
-      {activeTab === 'quests' && (() => {
-        const currentQuest = TACTICAL_QUIZ_QUESTIONS[activeQuizIndex] || TACTICAL_QUIZ_QUESTIONS[0];
-
-        return (
-          <div className="space-y-6">
-            {/* Header banner */}
-            <div className="bg-gradient-to-r from-amber-950/40 via-slate-900 to-slate-900 border border-amber-500/30 rounded-2xl p-6 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl">⚡</span>
-                  <h2 className="text-lg font-black text-white">Interactive Tactical Quests (10 Challenges)</h2>
-                </div>
-                <p className="text-xs text-slate-400">
-                  Master opening traps, pins, forks, smothered mates, and tactical defense with instant coach feedback.
-                </p>
-              </div>
-              <div className="flex items-center gap-3 bg-slate-950 border border-slate-800 px-4 py-2.5 rounded-xl">
-                <div className="text-right">
-                  <div className="text-xs text-slate-400 font-bold">Quest Score</div>
-                  <div className="text-base font-black text-amber-400">{quizScore} / {TACTICAL_QUIZ_QUESTIONS.length} Solved</div>
-                </div>
-                <div className="text-2xl">🏆</div>
-              </div>
-            </div>
-
-            {/* Question Card & Board Preview */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Question & Interactive Options */}
-              <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">{currentQuest.icon}</span>
-                    <div>
-                      <div className="text-[10px] text-amber-400 font-black uppercase tracking-wider">{currentQuest.theme}</div>
-                      <h3 className="text-base font-extrabold text-white">{currentQuest.title}</h3>
-                    </div>
-                  </div>
-                  <span className="text-xs font-mono font-bold bg-slate-950 border border-slate-800 px-2.5 py-1 rounded-lg text-slate-300">
-                    Quest {activeQuizIndex + 1} of {TACTICAL_QUIZ_QUESTIONS.length}
-                  </span>
-                </div>
-
-                <div className="text-sm font-medium text-slate-200 leading-relaxed bg-slate-950/60 p-4 rounded-xl border border-slate-800/80">
-                  {currentQuest.question}
-                </div>
-
-                {/* 4 Multiple Choice Options */}
-                <div className="space-y-3">
-                  {currentQuest.options.map((opt, idx) => {
-                    const isSelected = quizSelectedOption === idx;
-                    let btnStyle = 'border-slate-800 bg-slate-950 hover:border-slate-700 text-slate-300';
-                    if (quizAnswerSubmitted) {
-                      if (opt.isCorrect) {
-                        btnStyle = 'border-emerald-500 bg-emerald-500/20 text-emerald-200 shadow-md shadow-emerald-500/10 ring-1 ring-emerald-500';
-                      } else if (isSelected && !opt.isCorrect) {
-                        btnStyle = 'border-rose-500 bg-rose-500/20 text-rose-200 ring-1 ring-rose-500';
-                      } else {
-                        btnStyle = 'border-slate-900 bg-slate-950/40 text-slate-500 opacity-60';
-                      }
-                    } else if (isSelected) {
-                      btnStyle = 'border-amber-500 bg-amber-500/15 text-white ring-1 ring-amber-500';
-                    }
-
-                    return (
-                      <button
-                        key={idx}
-                        type="button"
-                        disabled={quizAnswerSubmitted}
-                        onClick={() => setQuizSelectedOption(idx)}
-                        className={`w-full text-left p-4 rounded-xl border transition-all flex items-start gap-3 text-xs font-semibold ${btnStyle}`}
-                      >
-                        <span className="w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center font-bold text-[11px] shrink-0 text-slate-300 mt-0.5">
-                          {String.fromCharCode(65 + idx)}
-                        </span>
-                        <span className="flex-1 leading-snug">{opt.text}</span>
-                        {quizAnswerSubmitted && opt.isCorrect && <span className="text-emerald-400 font-black text-sm">✅</span>}
-                        {quizAnswerSubmitted && isSelected && !opt.isCorrect && <span className="text-rose-400 font-black text-sm">❌</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Action button & Instant feedback */}
-                <div className="space-y-4 pt-2">
-                  {!quizAnswerSubmitted ? (
-                    <Button
-                      disabled={quizSelectedOption === null}
-                      onClick={() => {
-                        if (quizSelectedOption === null) return;
-                        setQuizAnswerSubmitted(true);
-                        const isCorrect = currentQuest.options[quizSelectedOption].isCorrect;
-                        if (isCorrect) {
-                          setQuizScore((s) => s + 1);
-                          try { playChessSound('quiz_correct'); } catch {}
-                        } else {
-                          try { playChessSound('quiz_wrong'); } catch {}
-                        }
-                      }}
-                      className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 font-black text-xs uppercase tracking-wider"
-                    >
-                      Confirm Answer 🚀
-                    </Button>
-                  ) : (
-                    <div className="space-y-4">
-                      <div className={`p-4 rounded-xl border text-xs leading-relaxed ${
-                        currentQuest.options[quizSelectedOption!].isCorrect
-                          ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
-                          : 'bg-rose-950/40 border-rose-500/40 text-rose-200'
-                      }`}>
-                        <div className="font-black text-sm mb-1 flex items-center gap-1.5">
-                          <span>{currentQuest.options[quizSelectedOption!].isCorrect ? '🎉 EXCELLENT!' : '❌ NOT QUITE!'}</span>
-                        </div>
-                        <div>{currentQuest.options[quizSelectedOption!].explanation}</div>
-                        <div className="mt-2 text-[11px] font-bold text-amber-300 flex items-center justify-between gap-2 bg-slate-950/60 p-2.5 rounded-lg border border-amber-500/20">
-                          <div className="flex items-center gap-1.5">
-                            <span>💡 Coach Tip:</span>
-                            <span>{currentQuest.coachTip}</span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => speakCoachAdvice(`${currentQuest.options[quizSelectedOption!].explanation}. Coach tip: ${currentQuest.coachTip}`, { force: true })}
-                            className="px-2 py-0.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-[10px] font-bold border border-amber-500/40 shrink-0 flex items-center gap-1"
-                            title="Listen to Coach Voice"
-                          >
-                            <span>🗣️</span>
-                            <span>Listen</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-3">
-                        <Button
-                          onClick={() => {
-                            const nextIdx = (activeQuizIndex + 1) % TACTICAL_QUIZ_QUESTIONS.length;
-                            setActiveQuizIndex(nextIdx);
-                            setQuizSelectedOption(null);
-                            setQuizAnswerSubmitted(false);
-                          }}
-                          className="w-full py-3 bg-primary text-white font-extrabold text-xs uppercase"
-                        >
-                          {activeQuizIndex + 1 < TACTICAL_QUIZ_QUESTIONS.length ? 'Next Quest ➡️' : '🔁 Start Over'}
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Mini Board & Quest Navigator */}
-              <div className="space-y-4 flex flex-col justify-between">
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
-                  <div className="font-extrabold text-xs text-white flex items-center justify-between">
-                    <span>Position Preview</span>
-                    <span className="text-[10px] text-amber-400 font-mono">+{currentQuest.xpReward} XP</span>
-                  </div>
-
-                  <div className="w-full max-w-[280px] aspect-square mx-auto rounded-xl overflow-hidden border border-slate-800 shadow-lg">
-                    <ChessboardComponent
-                      position={currentQuest.fen}
-                      arePiecesDraggable={false}
-                      boardOrientation="white"
-                      customBoardStyle={{ borderRadius: '8px' }}
-                      customDarkSquareStyle={{ backgroundColor: '#b58863' }}
-                      customLightSquareStyle={{ backgroundColor: '#f0d9b5' }}
-                      customPieces={customChessPieces}
-                    />
-                  </div>
-                </div>
-
-                {/* 10 Quest Quick Jumper */}
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
-                  <div className="font-extrabold text-xs text-white">All 10 Quests</div>
-                  <div className="grid grid-cols-5 gap-2">
-                    {TACTICAL_QUIZ_QUESTIONS.map((q, idx) => (
-                      <button
-                        key={q.id}
-                        onClick={() => {
-                          setActiveQuizIndex(idx);
-                          setQuizSelectedOption(null);
-                          setQuizAnswerSubmitted(false);
-                        }}
-                        className={`py-2 text-xs font-black rounded-lg border transition-all ${
-                          activeQuizIndex === idx
-                            ? 'border-amber-500 bg-amber-500/20 text-amber-300 ring-1 ring-amber-500'
-                            : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700 hover:text-white'
-                        }`}
-                      >
-                        Q{idx + 1}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {/* TAB: TACTICAL QUESTS (10 INTERACTIVE CHALLENGES) */}
+      {activeTab === 'quests' && (
+        <TacticalQuestArena
+          voiceEnabled={voiceNarrationOn}
+          soundEnabled={soundOn}
+          onXpEarned={(xp) => {
+            setProfile((prev) =>
+              prev ? { ...prev, training_points: (prev.training_points || 0) + xp } : null
+            );
+          }}
+        />
+      )}
 
       {/* TAB: OPENING TREE ADVENTURE */}
       {activeTab === 'openings' && (() => {
@@ -3160,165 +3401,600 @@ ${formattedMoves || '1. e4'} ${game.result}`;
         );
       })()}
 
-      {/* TAB: ACADEMY LEADERBOARD */}
+      {/* TAB: ACADEMY LEADERBOARD ("Lider Bora") */}
       {activeTab === 'leaderboard' && (() => {
         const studentRating = profile?.rating || 400;
         const maxBotBeaten = Math.max(...Array.from(unlockedSet), 1);
 
         const rawPeers = [
-          { name: 'Aarav Sharma', rating: 1420, streak: 14, bossLevel: 7, badges: 12, avatar: '👑', isYou: false },
-          { name: 'Ananya Roy', rating: 1280, streak: 11, bossLevel: 6, badges: 9, avatar: '🎖️', isYou: false },
-          { name: 'Vihaan Patel', rating: 1150, streak: 8, bossLevel: 5, badges: 8, avatar: '🏅', isYou: false },
-          { name: 'You (Current Student)', rating: studentRating, streak: streakCount, bossLevel: maxBotBeaten, badges: badges.length, avatar: '🛡️', isYou: true },
-          { name: 'Rohan Gupta', rating: 780, streak: 5, bossLevel: 3, badges: 6, avatar: '♟️', isYou: false },
-          { name: 'Sara Khan', rating: 650, streak: 4, bossLevel: 2, badges: 4, avatar: '♞', isYou: false },
-          { name: 'Kabir Verma', rating: 520, streak: 2, bossLevel: 1, badges: 3, avatar: '♝', isYou: false },
+          {
+            name: 'Aarav Sharma',
+            rating: 1420,
+            points: 2840,
+            weeklyPoints: 520,
+            streak: 14,
+            bossLevel: 7,
+            badges: 12,
+            avatar: '👑',
+            title: 'Grandmaster Slayer',
+            winRate: 82,
+            rankDelta: '+2',
+            isYou: false,
+          },
+          {
+            name: 'Ananya Roy',
+            rating: 1280,
+            points: 2310,
+            weeklyPoints: 410,
+            streak: 11,
+            bossLevel: 6,
+            badges: 9,
+            avatar: '🎖️',
+            title: 'Tactics Prodigy',
+            winRate: 75,
+            rankDelta: '+1',
+            isYou: false,
+          },
+          {
+            name: 'Vihaan Patel',
+            rating: 1150,
+            points: 1890,
+            weeklyPoints: 340,
+            streak: 8,
+            bossLevel: 5,
+            badges: 8,
+            avatar: '🏅',
+            title: 'Endgame Master',
+            winRate: 69,
+            rankDelta: '0',
+            isYou: false,
+          },
+          {
+            name: 'You (Current Student)',
+            rating: studentRating,
+            points: userTrainingPoints,
+            weeklyPoints: Math.min(userTrainingPoints, 290),
+            streak: streakCount,
+            bossLevel: maxBotBeaten,
+            badges: badges.length,
+            avatar: '🛡️',
+            title: maxBotBeaten >= 6 ? 'Arena Conqueror' : maxBotBeaten >= 3 ? 'Knight Hunter' : 'Aspiring Master',
+            winRate: Math.round(((profile?.wins || 0) / Math.max(1, profile?.games_played || 0)) * 100) || 50,
+            rankDelta: '+1',
+            isYou: true,
+          },
+          {
+            name: 'Rohan Gupta',
+            rating: 780,
+            points: 1120,
+            weeklyPoints: 210,
+            streak: 5,
+            bossLevel: 3,
+            badges: 6,
+            avatar: '♟️',
+            title: 'Opening Explorer',
+            winRate: 58,
+            rankDelta: '-1',
+            isYou: false,
+          },
+          {
+            name: 'Sara Khan',
+            rating: 650,
+            points: 840,
+            weeklyPoints: 175,
+            streak: 4,
+            bossLevel: 2,
+            badges: 4,
+            avatar: '♞',
+            title: 'Tactical Striker',
+            winRate: 52,
+            rankDelta: '0',
+            isYou: false,
+          },
+          {
+            name: 'Kabir Verma',
+            rating: 520,
+            points: 560,
+            weeklyPoints: 120,
+            streak: 2,
+            bossLevel: 1,
+            badges: 3,
+            avatar: '♝',
+            title: 'Rising Challenger',
+            winRate: 46,
+            rankDelta: '-1',
+            isYou: false,
+          },
+          {
+            name: 'Meera Nair',
+            rating: 490,
+            points: 440,
+            weeklyPoints: 95,
+            streak: 3,
+            bossLevel: 1,
+            badges: 3,
+            avatar: '⚔️',
+            title: 'Puzzle Solver',
+            winRate: 48,
+            rankDelta: '+3',
+            isYou: false,
+          },
         ];
 
-        const PEERS = rawPeers
-          .sort((a, b) => b.rating - a.rating)
-          .map((p, idx) => ({ ...p, rank: idx + 1 }));
+        // Base peers list from server or enhanced mock data
+        const basePeers = (livePeers && livePeers.length > 0)
+          ? livePeers.map((p, idx) => ({
+              name: p.name,
+              rating: p.rating,
+              points: (p as any).training_points ?? p.rating * 2,
+              weeklyPoints: Math.round(((p as any).training_points ?? p.rating * 2) * 0.25),
+              streak: p.streak || 1,
+              bossLevel: p.botLevel || 1,
+              badges: p.badges || Math.max(1, Math.floor(p.rating / 100)),
+              avatar: p.avatar || '🛡️',
+              title: (p as any).title || 'Academy Scholar',
+              winRate: (p as any).winRate || 60,
+              rankDelta: idx === 0 ? '+2' : idx === 1 ? '+1' : '0',
+              isYou: p.isYou || false,
+            }))
+          : rawPeers;
 
-        const yourEntry = PEERS.find((p) => p.isYou) || PEERS[0];
+        // Sort peers dynamically by selected leaderboard metric
+        const sortedPeers = [...basePeers].sort((a, b) => {
+          if (leaderboardMetric === 'points') {
+            const valA = leaderboardTimeframe === 'weekly' ? a.weeklyPoints : a.points;
+            const valB = leaderboardTimeframe === 'weekly' ? b.weeklyPoints : b.points;
+            return valB - valA;
+          }
+          if (leaderboardMetric === 'rating') return b.rating - a.rating;
+          if (leaderboardMetric === 'streak') return b.streak - a.streak;
+          if (leaderboardMetric === 'boss') return b.bossLevel - a.bossLevel;
+          if (leaderboardMetric === 'badges') return b.badges - a.badges;
+          return 0;
+        }).map((p, idx) => ({ ...p, rank: idx + 1 }));
+
+        // Filter by search query
+        const filteredPeers = sortedPeers.filter(
+          (p) =>
+            p.name.toLowerCase().includes(leaderboardSearch.toLowerCase()) ||
+            p.title.toLowerCase().includes(leaderboardSearch.toLowerCase())
+        );
+
+        const yourEntry = sortedPeers.find((p) => p.isYou) || sortedPeers[0];
+        const peerAhead = sortedPeers.find((p) => p.rank === yourEntry.rank - 1);
+        const pointsDiffAhead = peerAhead
+          ? (leaderboardMetric === 'points'
+              ? (leaderboardTimeframe === 'weekly' ? peerAhead.weeklyPoints - yourEntry.weeklyPoints : peerAhead.points - yourEntry.points)
+              : peerAhead.rating - yourEntry.rating)
+          : 0;
+
+        const topThree = [sortedPeers[1], sortedPeers[0], sortedPeers[2]].filter(Boolean);
 
         return (
           <div className="space-y-6">
-            {/* Leaderboard Header */}
-            <div className="bg-gradient-to-r from-slate-900 via-amber-950/30 to-slate-900 border border-amber-500/30 rounded-2xl p-6 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-              <div className="space-y-1">
+            {/* Leaderboard Header Banner */}
+            <div className="bg-gradient-to-r from-slate-900 via-amber-950/40 to-slate-900 border-2 border-amber-500/40 rounded-3xl p-6 shadow-2xl flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5 relative overflow-hidden">
+              {/* Background ambient glow */}
+              <div className="absolute top-0 right-1/4 w-80 h-32 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+
+              <div className="space-y-1.5 relative z-10">
                 <div className="flex items-center gap-2">
-                  <span className="text-2xl">🏆</span>
-                  <span className="text-xs font-black uppercase tracking-wider text-amber-400">
+                  <span className="text-2xl animate-bounce">🏆</span>
+                  <span className="text-xs font-black uppercase tracking-wider text-amber-400 bg-amber-500/15 px-2.5 py-0.5 rounded-full border border-amber-500/30">
                     ChessHub Academy Standings
                   </span>
+                  <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/15 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                    ● Live Season
+                  </span>
                 </div>
-                <h2 className="text-xl font-extrabold text-white">Student Training Leaderboard</h2>
-                <p className="text-xs text-slate-300">
-                  Compete with fellow academy peers across training ratings, daily streak flames, and boss knockouts!
+                <h2 className="text-2xl font-black text-white tracking-tight">Student Training Leaderboard</h2>
+                <p className="text-xs text-slate-300 max-w-xl">
+                  Compete with fellow academy peers across Training Points, Elo rating, daily streaks, and bot conquests!
                 </p>
               </div>
 
-              {/* Your Rank Card */}
-              <div className="bg-slate-950/90 border border-amber-500/40 rounded-2xl p-4 flex items-center gap-4 shrink-0 shadow-lg">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center font-black text-xl text-white">
-                  #{yourEntry.rank}
-                </div>
-                <div>
-                  <div className="text-[10px] text-slate-400 font-bold uppercase">Your Standing</div>
-                  <div className="text-sm font-black text-white">Student (You)</div>
-                  <div className="text-[11px] text-amber-400 font-bold">
-                    {studentRating} Rating • Rank #{yourEntry.rank} • {streakCount}d Streak 🔥
+              <div className="flex items-center gap-3 w-full lg:w-auto justify-between lg:justify-end relative z-10">
+                {/* Your Live Standing Card */}
+                <div className="bg-slate-950/90 border border-amber-500/40 rounded-2xl p-3 sm:p-4 flex items-center gap-3 shadow-xl">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center font-black text-lg text-white shadow-lg shadow-amber-500/30 border border-amber-400/50">
+                    #{yourEntry.rank}
+                  </div>
+                  <div className="space-y-0.5">
+                    <div className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider flex items-center gap-1">
+                      <span>Your Rank</span>
+                      <span className="text-emerald-400 font-black">{yourEntry.rankDelta}</span>
+                    </div>
+                    <div className="text-xs font-black text-white">Student (You)</div>
+                    <div className="text-[10px] font-mono text-amber-400 font-bold">
+                      {leaderboardMetric === 'points'
+                        ? `${yourEntry.points} TP`
+                        : leaderboardMetric === 'rating'
+                        ? `${yourEntry.rating} Elo`
+                        : leaderboardMetric === 'streak'
+                        ? `🔥 ${yourEntry.streak}d`
+                        : `Lvl ${yourEntry.bossLevel} Bot`}
+                    </div>
                   </div>
                 </div>
+
+                <Link
+                  href="/dashboard/student/leaderboard"
+                  className="px-4 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-500/25 flex items-center gap-1.5 shrink-0 active:translate-y-0.5"
+                >
+                  <span className="hidden sm:inline">Full Leaderboard Hub</span>
+                  <span className="sm:hidden">Full Hub</span>
+                  <span>➔</span>
+                </Link>
               </div>
             </div>
 
-            {/* Top 3 Podium */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
-              {/* 2nd Place */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-center flex flex-col items-center justify-between space-y-3 order-2 sm:order-1">
-                <span className="text-3xl">🥈</span>
-                <div className="w-14 h-14 rounded-full bg-slate-800 flex items-center justify-center text-2xl border-2 border-slate-400/50">
-                  {PEERS[1].avatar}
+            {/* Overtake Challenge Notification Bar (if not rank #1) */}
+            {peerAhead && pointsDiffAhead > 0 && (
+              <div className="bg-gradient-to-r from-amber-500/15 via-slate-900 to-amber-500/15 border border-amber-500/30 rounded-2xl p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md">
+                <div className="flex items-center gap-3 text-xs">
+                  <span className="text-xl animate-pulse">⚡</span>
+                  <div>
+                    <span className="text-slate-300 font-bold">Next Milestone: </span>
+                    <span className="text-white font-black">
+                      Need <strong className="text-amber-400 font-mono">+{pointsDiffAhead} {leaderboardMetric === 'points' ? 'TP' : 'pts'}</strong> to overtake #{peerAhead.rank} {peerAhead.name}!
+                    </span>
+                    <p className="text-[10px] text-slate-400">
+                      Win your next bot battle to earn +75 TP or solve puzzle quests to climb!
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <div className="font-extrabold text-sm text-white">{PEERS[1].name}</div>
-                  <div className="text-xs font-black text-slate-300 mt-0.5">{PEERS[1].rating} Rating</div>
-                  <div className="text-[10px] text-slate-400">🔥 {PEERS[1].streak}-day streak</div>
-                </div>
-                <span className="text-[10px] font-black uppercase tracking-wider bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full">
-                  Rank #2 (Silver)
-                </span>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('play')}
+                  className="px-4 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs uppercase rounded-xl shadow-md shadow-amber-500/20 active:translate-y-0.5 transition-all shrink-0 cursor-pointer"
+                >
+                  Battle Bot (+75 TP) ⚔️
+                </button>
+              </div>
+            )}
+
+            {/* Metric Selector Tabs & Timeframe Bar */}
+            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3 shadow-xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+              {/* Metric Buttons */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+                {[
+                  { id: 'points', label: '⚡ Training Points', icon: '⚡' },
+                  { id: 'rating', label: '⭐ Elo Rating', icon: '⭐' },
+                  { id: 'streak', label: '🔥 Daily Streak', icon: '🔥' },
+                  { id: 'boss', label: '👑 Bots Conquered', icon: '👑' },
+                  { id: 'badges', label: '🏆 Badges', icon: '🏆' },
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setLeaderboardMetric(m.id as any)}
+                    className={`py-1.5 px-3 rounded-xl text-xs font-black transition-all whitespace-nowrap active:translate-y-0.5 cursor-pointer ${
+                      leaderboardMetric === m.id
+                        ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/25 border-b-2 border-amber-700'
+                        : 'bg-slate-950/80 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
               </div>
 
-              {/* 1st Place */}
-              <div className="bg-gradient-to-b from-slate-900 to-amber-950/40 border-2 border-amber-500/60 rounded-2xl p-6 text-center flex flex-col items-center justify-between space-y-3 order-1 sm:order-2 shadow-xl shadow-amber-500/10">
-                <span className="text-4xl animate-bounce">👑</span>
-                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center text-3xl shadow-lg border-2 border-amber-400">
-                  {PEERS[0].avatar}
+              {/* Timeframe Toggle & Search */}
+              <div className="flex items-center gap-2">
+                {/* Timeframe Switch */}
+                <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setLeaderboardTimeframe('all_time')}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all ${
+                      leaderboardTimeframe === 'all_time'
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                  >
+                    All-Time
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLeaderboardTimeframe('weekly')}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all ${
+                      leaderboardTimeframe === 'weekly'
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                  >
+                    Weekly ⚡
+                  </button>
                 </div>
-                <div>
-                  <div className="font-black text-base text-white">{PEERS[0].name}</div>
-                  <div className="text-sm font-black text-amber-400 mt-0.5">{PEERS[0].rating} Rating</div>
-                  <div className="text-[10px] text-amber-200">🔥 {PEERS[0].streak}-day streak • Defeated Lvl {PEERS[0].bossLevel}</div>
-                </div>
-                <span className="text-[10px] font-black uppercase tracking-wider bg-amber-500 text-slate-950 px-3 py-1 rounded-full shadow-md shadow-amber-500/30">
-                  🥇 Academy Champion
-                </span>
-              </div>
 
-              {/* 3rd Place */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-center flex flex-col items-center justify-between space-y-3 order-3">
-                <span className="text-3xl">🥉</span>
-                <div className="w-14 h-14 rounded-full bg-slate-800 flex items-center justify-center text-2xl border-2 border-amber-700/50">
-                  {PEERS[2].avatar}
+                {/* Search Input */}
+                <div className="relative flex-1 md:w-48">
+                  <input
+                    type="text"
+                    value={leaderboardSearch}
+                    onChange={(e) => setLeaderboardSearch(e.target.value)}
+                    placeholder="Search students..."
+                    className="w-full py-1.5 pl-7 pr-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
+                  />
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-500">🔍</span>
                 </div>
-                <div>
-                  <div className="font-extrabold text-sm text-white">{PEERS[2].name}</div>
-                  <div className="text-xs font-black text-slate-300 mt-0.5">{PEERS[2].rating} Rating</div>
-                  <div className="text-[10px] text-slate-400">🔥 {PEERS[2].streak}-day streak</div>
-                </div>
-                <span className="text-[10px] font-black uppercase tracking-wider bg-slate-800 text-amber-400 px-2.5 py-1 rounded-full">
-                  Rank #3 (Bronze)
-                </span>
               </div>
             </div>
 
-            {/* Standings Table */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-              <h3 className="text-sm font-extrabold text-white">Full Student Academy Roster</h3>
+            {/* 3D GRAND CHAMPIONS PODIUM (TOP 3) */}
+            {topThree.length >= 3 && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 items-end">
+                {/* 2nd Place: Silver Prodigy (Left) */}
+                <div className="bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 border-2 border-slate-400/40 rounded-3xl p-5 text-center flex flex-col items-center justify-between space-y-3 shadow-xl relative order-2 sm:order-1 hover:scale-[1.02] transition-transform">
+                  <div className="text-3xl filter drop-shadow">🥈</div>
+                  <div className="relative">
+                    <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center text-3xl border-4 border-slate-400/60 shadow-lg shadow-slate-400/20">
+                      {topThree[0].avatar}
+                    </div>
+                    <span className="absolute -bottom-1 -right-1 bg-slate-800 text-slate-300 font-mono text-[9px] font-black px-1.5 py-0.5 rounded-full border border-slate-600">
+                      #2
+                    </span>
+                  </div>
+
+                  <div>
+                    <div className="font-black text-sm text-white flex items-center justify-center gap-1">
+                      <span>{topThree[0].name}</span>
+                      {topThree[0].isYou && (
+                        <span className="text-[8px] bg-amber-500/20 text-amber-300 px-1 py-0.2 rounded font-black uppercase">
+                          YOU
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[10px] font-bold text-slate-400">{topThree[0].title}</div>
+                    <div className="text-base font-black font-mono text-slate-200 mt-1">
+                      {leaderboardMetric === 'points'
+                        ? `${topThree[0].points} TP`
+                        : leaderboardMetric === 'rating'
+                        ? `${topThree[0].rating} Elo`
+                        : leaderboardMetric === 'streak'
+                        ? `🔥 ${topThree[0].streak}d`
+                        : `Lvl ${topThree[0].bossLevel}`}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setComparisonPeer(topThree[0])}
+                    className="w-full py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer"
+                  >
+                    Compare Stats 📊
+                  </button>
+                </div>
+
+                {/* 1st Place: Gold Academy Champion (Center, Elevated) */}
+                <div className="bg-gradient-to-b from-slate-900 via-amber-950/50 to-slate-900 border-2 border-amber-400/80 rounded-3xl p-6 text-center flex flex-col items-center justify-between space-y-3.5 shadow-2xl shadow-amber-500/20 relative order-1 sm:order-2 sm:-translate-y-2 hover:scale-[1.03] transition-transform">
+                  {/* Glowing Aura Ring */}
+                  <div className="absolute -top-12 left-1/2 -translate-x-1/2 w-48 h-48 bg-amber-500/15 rounded-full blur-2xl pointer-events-none" />
+
+                  <div className="text-4xl animate-bounce filter drop-shadow-md">👑</div>
+                  <div className="relative">
+                    <div className="w-20 h-20 rounded-full bg-gradient-to-br from-amber-400 via-amber-500 to-amber-700 flex items-center justify-center text-4xl shadow-xl shadow-amber-500/40 border-4 border-amber-300">
+                      {topThree[1].avatar}
+                    </div>
+                    <span className="absolute -bottom-1 -right-1 bg-amber-500 text-slate-950 font-mono text-[10px] font-black px-2 py-0.5 rounded-full border border-amber-300 shadow-md">
+                      #1
+                    </span>
+                  </div>
+
+                  <div>
+                    <div className="font-black text-base text-white flex items-center justify-center gap-1.5">
+                      <span>{topThree[1].name}</span>
+                      {topThree[1].isYou && (
+                        <span className="text-[9px] bg-amber-500 text-slate-950 px-1.5 py-0.5 rounded font-black uppercase shadow-sm">
+                          YOU
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] font-bold text-amber-300">{topThree[1].title}</div>
+                    <div className="text-xl font-black font-mono text-amber-400 mt-1 drop-shadow-sm">
+                      {leaderboardMetric === 'points'
+                        ? `${topThree[1].points} TP`
+                        : leaderboardMetric === 'rating'
+                        ? `${topThree[1].rating} Elo`
+                        : leaderboardMetric === 'streak'
+                        ? `🔥 ${topThree[1].streak}d`
+                        : `Lvl ${topThree[1].bossLevel}`}
+                    </div>
+                    <div className="text-[10px] text-amber-200/80 font-mono">
+                      🔥 {topThree[1].streak}d streak · {topThree[1].badges} Badges
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setComparisonPeer(topThree[1])}
+                    className="w-full py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black uppercase tracking-wider shadow-md shadow-amber-500/30 transition-all cursor-pointer"
+                  >
+                    Compare Stats 📊
+                  </button>
+                </div>
+
+                {/* 3rd Place: Bronze Tactician (Right) */}
+                <div className="bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 border-2 border-amber-800/50 rounded-3xl p-5 text-center flex flex-col items-center justify-between space-y-3 shadow-xl relative order-3 hover:scale-[1.02] transition-transform">
+                  <div className="text-3xl filter drop-shadow">🥉</div>
+                  <div className="relative">
+                    <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center text-3xl border-4 border-amber-700/60 shadow-lg shadow-amber-900/20">
+                      {topThree[2].avatar}
+                    </div>
+                    <span className="absolute -bottom-1 -right-1 bg-amber-950 text-amber-400 font-mono text-[9px] font-black px-1.5 py-0.5 rounded-full border border-amber-700">
+                      #3
+                    </span>
+                  </div>
+
+                  <div>
+                    <div className="font-black text-sm text-white flex items-center justify-center gap-1">
+                      <span>{topThree[2].name}</span>
+                      {topThree[2].isYou && (
+                        <span className="text-[8px] bg-amber-500/20 text-amber-300 px-1 py-0.2 rounded font-black uppercase">
+                          YOU
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[10px] font-bold text-slate-400">{topThree[2].title}</div>
+                    <div className="text-base font-black font-mono text-amber-500 mt-1">
+                      {leaderboardMetric === 'points'
+                        ? `${topThree[2].points} TP`
+                        : leaderboardMetric === 'rating'
+                        ? `${topThree[2].rating} Elo`
+                        : leaderboardMetric === 'streak'
+                        ? `🔥 ${topThree[2].streak}d`
+                        : `Lvl ${topThree[2].bossLevel}`}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setComparisonPeer(topThree[2])}
+                    className="w-full py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer"
+                  >
+                    Compare Stats 📊
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* FULL STUDENT ACADEMY ROSTER TABLE */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-black text-white">Full Student Academy Roster</h3>
+                  <p className="text-xs text-slate-400">
+                    Showing {filteredPeers.length} ranked academy students · Sorted by {leaderboardMetric.toUpperCase()}
+                  </p>
+                </div>
+                <div className="text-[10px] font-mono text-slate-400 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
+                  {leaderboardTimeframe === 'weekly' ? '⚡ Weekly Season' : '🌟 All-Time'}
+                </div>
+              </div>
+
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-950 text-slate-400 font-bold uppercase text-[10px]">
                     <tr>
                       <th className="p-3">Rank</th>
-                      <th className="p-3">Student</th>
+                      <th className="p-3">Student & Title</th>
+                      <th className="p-3 font-black text-amber-400">
+                        {leaderboardMetric === 'points'
+                          ? '⚡ Training Points'
+                          : leaderboardMetric === 'rating'
+                          ? '⭐ Elo Rating'
+                          : leaderboardMetric === 'streak'
+                          ? '🔥 Streak'
+                          : leaderboardMetric === 'boss'
+                          ? '👑 Bot Beaten'
+                          : '🏆 Badges'}
+                      </th>
                       <th className="p-3">ChessHub Rating</th>
-                      <th className="p-3">Training Streak</th>
-                      <th className="p-3">Max Bot Conquered</th>
-                      <th className="p-3 text-right">Badges</th>
+                      <th className="p-3">Streak</th>
+                      <th className="p-3">Max Bot</th>
+                      <th className="p-3">Badges</th>
+                      <th className="p-3 text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/50">
-                    {PEERS.map((student) => (
+                    {filteredPeers.map((student) => (
                       <tr
-                        key={student.rank}
+                        key={student.rank + student.name}
                         className={`transition-colors ${
                           student.isYou
-                            ? 'bg-amber-500/10 border-l-4 border-amber-500'
-                            : 'hover:bg-slate-800/30'
+                            ? 'bg-amber-500/10 border-l-4 border-amber-500 font-bold'
+                            : 'hover:bg-slate-800/40'
                         }`}
                       >
+                        {/* Rank */}
                         <td className="p-3 font-black text-sm">
-                          {student.rank === 1 ? '🥇' : student.rank === 2 ? '🥈' : student.rank === 3 ? '🥉' : `#${student.rank}`}
+                          <div className="flex items-center gap-1.5">
+                            <span>
+                              {student.rank === 1
+                                ? '🥇'
+                                : student.rank === 2
+                                ? '🥈'
+                                : student.rank === 3
+                                ? '🥉'
+                                : `#${student.rank}`}
+                            </span>
+                            <span
+                              className={`text-[9px] font-mono ${
+                                student.rankDelta.startsWith('+')
+                                  ? 'text-emerald-400 font-bold'
+                                  : student.rankDelta.startsWith('-')
+                                  ? 'text-rose-400'
+                                  : 'text-slate-500'
+                              }`}
+                            >
+                              {student.rankDelta}
+                            </span>
+                          </div>
                         </td>
+
+                        {/* Student Name & Title */}
                         <td className="p-3">
                           <div className="flex items-center gap-2.5">
-                            <span className="text-lg">{student.avatar}</span>
+                            <span className="text-xl shrink-0">{student.avatar}</span>
                             <div>
-                              <div className={`font-bold ${student.isYou ? 'text-amber-300' : 'text-white'}`}>
-                                {student.name}
-                              </div>
-                              {student.isYou && (
-                                <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-black uppercase">
-                                  YOU
+                              <div className="flex items-center gap-1.5">
+                                <span className={`font-black ${student.isYou ? 'text-amber-300' : 'text-white'}`}>
+                                  {student.name}
                                 </span>
-                              )}
+                                {student.isYou && (
+                                  <span className="text-[8px] bg-amber-500 text-slate-950 px-1.5 py-0.2 rounded font-black uppercase">
+                                    YOU
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-slate-400 block">{student.title}</span>
                             </div>
                           </div>
                         </td>
-                        <td className="p-3 font-black text-amber-400">{student.rating}</td>
+
+                        {/* Selected Metric (Highlighted) */}
+                        <td className="p-3 font-mono font-black text-sm text-amber-400">
+                          {leaderboardMetric === 'points'
+                            ? `${leaderboardTimeframe === 'weekly' ? student.weeklyPoints : student.points} TP`
+                            : leaderboardMetric === 'rating'
+                            ? `${student.rating} Elo`
+                            : leaderboardMetric === 'streak'
+                            ? `${student.streak} days`
+                            : leaderboardMetric === 'boss'
+                            ? `Level ${student.bossLevel}`
+                            : `${student.badges} Crests`}
+                        </td>
+
+                        {/* Elo Rating */}
+                        <td className="p-3 font-mono font-bold text-slate-300">{student.rating}</td>
+
+                        {/* Streak */}
                         <td className="p-3 font-bold text-slate-300">
                           <span className="flex items-center gap-1">
                             <span>🔥</span>
-                            <span>{student.streak} days</span>
+                            <span>{student.streak}d</span>
                           </span>
                         </td>
+
+                        {/* Max Bot */}
                         <td className="p-3 font-bold text-slate-300">
-                          Level {student.bossLevel} ({BOT_LEVELS.find((b) => b.level === student.bossLevel)?.name})
+                          Level {student.bossLevel} ({BOT_LEVELS.find((b) => b.level === student.bossLevel)?.name.replace(/Level \d+ — /, '')})
                         </td>
-                        <td className="p-3 text-right font-black text-purple-300">
-                          {student.badges} Crests 🛡️
+
+                        {/* Badges */}
+                        <td className="p-3 font-mono font-bold text-purple-300">
+                          {student.badges} 🛡️
+                        </td>
+
+                        {/* Action: Compare */}
+                        <td className="p-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => setComparisonPeer(student)}
+                            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[10px] font-bold uppercase transition-all cursor-pointer shadow-sm active:translate-y-0.5"
+                          >
+                            Compare 📊
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -3326,6 +4002,109 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                 </table>
               </div>
             </div>
+
+            {/* HEAD-TO-HEAD COMPARISON MODAL */}
+            {comparisonPeer && (
+              <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200">
+                <div className="bg-slate-900 border-2 border-amber-500/50 rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl text-center relative overflow-hidden">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl">⚔️</span>
+                      <h3 className="text-base font-black text-white">Head-to-Head Comparison</h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setComparisonPeer(null)}
+                      className="text-slate-400 hover:text-white text-xs font-bold"
+                    >
+                      ✕ Close
+                    </button>
+                  </div>
+
+                  {/* Two Cards Face-Off */}
+                  <div className="grid grid-cols-2 gap-3 items-center">
+                    {/* You */}
+                    <div className="bg-slate-950/80 border-2 border-amber-500/40 rounded-2xl p-4 text-center space-y-1.5">
+                      <div className="text-3xl">{yourEntry.avatar}</div>
+                      <div className="text-xs font-black text-amber-300">Student (You)</div>
+                      <div className="text-[10px] text-slate-400">{yourEntry.title}</div>
+                      <span className="inline-block text-[9px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full font-black">
+                        Rank #{yourEntry.rank}
+                      </span>
+                    </div>
+
+                    {/* Peer */}
+                    <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 text-center space-y-1.5">
+                      <div className="text-3xl">{comparisonPeer.avatar}</div>
+                      <div className="text-xs font-black text-white">{comparisonPeer.name}</div>
+                      <div className="text-[10px] text-slate-400">{comparisonPeer.title}</div>
+                      <span className="inline-block text-[9px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full font-black">
+                        Rank #{comparisonPeer.rank}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Stat Comparison Bars */}
+                  <div className="space-y-3 text-left text-xs">
+                    {[
+                      { label: '⚡ Training Points', valA: yourEntry.points, valB: comparisonPeer.points, unit: 'TP' },
+                      { label: '⭐ Elo Rating', valA: yourEntry.rating, valB: comparisonPeer.rating, unit: 'Elo' },
+                      { label: '🔥 Daily Streak', valA: yourEntry.streak, valB: comparisonPeer.streak, unit: 'days' },
+                      { label: '👑 Bot Conquered', valA: yourEntry.bossLevel, valB: comparisonPeer.bossLevel, unit: 'Lvl' },
+                      { label: '🏆 Badges Unlocked', valA: yourEntry.badges, valB: comparisonPeer.badges, unit: 'badges' },
+                    ].map((s) => {
+                      const total = Math.max(1, s.valA + s.valB);
+                      const pctA = Math.round((s.valA / total) * 100);
+                      const isWinning = s.valA >= s.valB;
+
+                      return (
+                        <div key={s.label} className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 space-y-1">
+                          <div className="flex items-center justify-between text-[11px] font-bold">
+                            <span className={isWinning ? 'text-amber-400' : 'text-slate-300'}>
+                              {s.valA} {s.unit}
+                            </span>
+                            <span className="text-slate-400 text-[10px] uppercase font-extrabold">{s.label}</span>
+                            <span className={!isWinning ? 'text-emerald-400' : 'text-slate-300'}>
+                              {s.valB} {s.unit}
+                            </span>
+                          </div>
+                          <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden flex">
+                            <div
+                              className="h-full bg-amber-500 transition-all duration-500"
+                              style={{ width: `${pctA}%` }}
+                            />
+                            <div
+                              className="h-full bg-slate-600 transition-all duration-500"
+                              style={{ width: `${100 - pctA}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="pt-2 flex gap-2">
+                    <Button
+                      onClick={() => {
+                        setComparisonPeer(null);
+                        setSelectedLevel(comparisonPeer.bossLevel);
+                        setActiveTab('play');
+                      }}
+                      className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs uppercase rounded-xl shadow-lg shadow-amber-500/20 cursor-pointer"
+                    >
+                      Battle Bot Level {comparisonPeer.bossLevel} ⚔️
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setComparisonPeer(null)}
+                      className="py-3 px-4 text-xs font-bold text-slate-300 border-slate-800 hover:bg-slate-800"
+                    >
+                      Close
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         );
       })()}
@@ -3502,61 +4281,165 @@ ${formattedMoves || '1. e4'} ${game.result}`;
         </div>
       )}
 
-      {/* TAB 5: ACHIEVEMENTS & TROPHY BADGES */}
+      {/* TAB 5: ACHIEVEMENTS & TROPHY BADGES (105 ACHIEVEMENTS) */}
       {activeTab === 'badges' && (() => {
-        const ALL_CRESTS = [
-          // 1. Milestones
-          { id: 'first-blood', category: 'milestones', title: 'First Blood', icon: '🩸', desc: 'Win your first match against any bot', isUnlocked: recentGames.some((g) => g.result === 'win') },
-          { id: 'tactical-sniper', category: 'milestones', title: 'Tactical Sniper', icon: '🎯', desc: 'Score 5+ in Tactical Quests', isUnlocked: quizScore >= 5 },
-          { id: 'boss-slayer', category: 'milestones', title: 'Boss Slayer', icon: '⚔️', desc: 'Deplete a Bot HP bar in Boss Battle Mode', isUnlocked: recentGames.some((g) => g.result === 'win') },
-          { id: 'fried-liver-defier', category: 'milestones', title: 'Fried Liver Defier', icon: '🛡️', desc: 'Explore Italian Opening Tree lines', isUnlocked: adventureHistory.length > 2 },
-          { id: 'gm-prodigy', category: 'milestones', title: 'Grandmaster Prodigy', icon: '👑', desc: 'Reach 1000+ ChessHub Student Rating', isUnlocked: (profile?.rating ?? 400) >= 1000 },
+        const achievementContext: AchievementContext = {
+          profile,
+          recentGames,
+          quizScore,
+          streakCount,
+          adventureHistory,
+          puzzlesSolvedCount: profile?.puzzles_solved ?? 0,
+        };
 
-          // 2. Bot Tiers
-          { id: 'tier-bronze', category: 'tiers', title: 'Bronze Conqueror', icon: '🥉', desc: 'Defeat Level 1, 2, or 3 Bot', isUnlocked: recentGames.some((g) => g.result === 'win' && (g.bot_level ?? 0) <= 3) },
-          { id: 'tier-silver', category: 'tiers', title: 'Silver Master', icon: '🥈', desc: 'Defeat Level 4, 5, or 6 Bot', isUnlocked: recentGames.some((g) => g.result === 'win' && (g.bot_level ?? 0) >= 4) },
-          { id: 'tier-gold', category: 'tiers', title: 'Gold Champion', icon: '🥇', desc: 'Defeat Level 7 or 8 Master Bot', isUnlocked: recentGames.some((g) => g.result === 'win' && (g.bot_level ?? 0) >= 7) },
-          { id: 'tier-diamond', category: 'tiers', title: 'Diamond Virtuoso', icon: '💎', desc: 'Defeat Level 9 or 10 Engine', isUnlocked: recentGames.some((g) => g.result === 'win' && (g.bot_level ?? 0) >= 9) },
+        const allEvaluated = TROPHY_ACHIEVEMENTS.map((ach) => ({
+          ...ach,
+          isUnlocked: ach.checkUnlocked(achievementContext),
+        }));
 
-          // 3. Piece Mastery
-          { id: 'piece-knight', category: 'pieces', title: 'Knight Jumper', icon: '♞', desc: 'Master royal knight forks in quiz quests', isUnlocked: quizScore >= 3 },
-          { id: 'piece-bishop', category: 'pieces', title: 'Bishop Diagonal', icon: '♝', desc: 'Execute pins on long diagonals', isUnlocked: quizScore >= 4 },
-          { id: 'piece-rook', category: 'pieces', title: 'Rook Battery', icon: '♜', desc: 'Control open files and back-ranks', isUnlocked: quizScore >= 5 },
-          { id: 'piece-pawn', category: 'pieces', title: 'Pawn Stormer', icon: '♟️', desc: 'Play 3 or more bot training games', isUnlocked: recentGames.length >= 3 },
+        const totalCount = allEvaluated.length;
+        const unlockedTotal = allEvaluated.filter((c) => c.isUnlocked).length;
+        const totalPossibleXp = allEvaluated.reduce((acc, c) => acc + c.xpReward, 0);
+        const totalEarnedXp = allEvaluated.filter((c) => c.isUnlocked).reduce((acc, c) => acc + c.xpReward, 0);
+        const unlockPct = Math.round((unlockedTotal / Math.max(1, totalCount)) * 100);
 
-          // 4. Secret Easter Eggs
-          { id: 'secret-en-passant', category: 'secret', title: 'En Passant Wizard', icon: '⚡', desc: 'Answer the En Passant Quest correctly', isUnlocked: quizScore >= 6 },
-          { id: 'secret-fortress', category: 'secret', title: 'Castling Fortress', icon: '🏰', desc: 'Castle your king safely into safety', isUnlocked: recentGames.length >= 1 },
-          { id: 'secret-streak', category: 'secret', title: 'Streak Flame Bearer', icon: '🔥', desc: 'Maintain a multi-day training streak', isUnlocked: streakCount >= 3 },
-        ];
+        // Category counts
+        const getCatCounts = (cat: AchievementCategory) => {
+          const items = allEvaluated.filter((c) => c.category === cat);
+          return {
+            total: items.length,
+            unlocked: items.filter((c) => c.isUnlocked).length,
+          };
+        };
 
-        const filteredCrests = badgeCategoryFilter === 'all'
-          ? ALL_CRESTS
-          : ALL_CRESTS.filter((c) => c.category === badgeCategoryFilter);
+        const milestoneCounts = getCatCounts('milestones');
+        const tierCounts = getCatCounts('tiers');
+        const pieceCounts = getCatCounts('pieces');
+        const puzzleCounts = getCatCounts('puzzles');
+        const openingCounts = getCatCounts('openings');
+        const secretCounts = getCatCounts('secret');
 
-        const unlockedTotal = ALL_CRESTS.filter((c) => c.isUnlocked).length;
+        // Filter logic
+        const filteredAchievements = allEvaluated.filter((ach) => {
+          // Category filter
+          if (badgeCategoryFilter !== 'all' && ach.category !== badgeCategoryFilter) {
+            return false;
+          }
+          // Status filter
+          if (badgeStatusFilter === 'unlocked' && !ach.isUnlocked) {
+            return false;
+          }
+          if (badgeStatusFilter === 'locked' && ach.isUnlocked) {
+            return false;
+          }
+          // Rarity filter
+          if (badgeRarityFilter !== 'all' && ach.rarity !== badgeRarityFilter) {
+            return false;
+          }
+          // Search query
+          if (badgeSearchQuery.trim()) {
+            const q = badgeSearchQuery.toLowerCase();
+            const matchTitle = ach.title.toLowerCase().includes(q);
+            const matchDesc = ach.desc.toLowerCase().includes(q);
+            const matchCategory = ach.category.toLowerCase().includes(q);
+            const matchRarity = ach.rarity.toLowerCase().includes(q);
+            if (!matchTitle && !matchDesc && !matchCategory && !matchRarity) {
+              return false;
+            }
+          }
+          return true;
+        });
+
+        const getMasteryRank = (pct: number) => {
+          if (pct >= 90) return { title: 'Grandmaster Champion', color: 'text-amber-400', icon: '👑' };
+          if (pct >= 60) return { title: 'Master Virtuoso', color: 'text-purple-400', icon: '💎' };
+          if (pct >= 30) return { title: 'Adept Knight', color: 'text-cyan-400', icon: '⚔️' };
+          if (pct >= 10) return { title: 'Apprentice Scholar', color: 'text-emerald-400', icon: '📜' };
+          return { title: 'Academy Novice', color: 'text-slate-400', icon: '♟️' };
+        };
+
+        const rank = getMasteryRank(unlockPct);
 
         return (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h2 className="text-base font-extrabold text-white flex items-center gap-2">
-                  <DashboardIcon iconKey="award" className="w-5 h-5 text-amber-400" />
-                  Academy Trophy Showcase ({unlockedTotal} / {ALL_CRESTS.length} Unlocked)
-                </h2>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Earn prestigious academy crests across milestones, difficulty tiers, piece mastery, and secrets!
-                </p>
+            {/* Header & Main Stats */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 border-b border-slate-800/80 pb-6">
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-xl shadow-lg shadow-amber-500/10">
+                    🏆
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-black text-white tracking-wide flex items-center gap-2">
+                      Academy Trophy Showcase
+                      <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        {unlockedTotal} / {totalCount} Unlocked
+                      </span>
+                    </h2>
+                    <p className="text-xs text-slate-400">
+                      Earn 100+ prestigious academy crests across milestones, difficulty tiers, piece mastery, puzzles, openings, and secret achievements!
+                    </p>
+                  </div>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="pt-2 max-w-xl">
+                  <div className="flex justify-between items-center text-xs mb-1.5 font-medium">
+                    <span className="text-slate-400 flex items-center gap-1.5">
+                      <span>Showcase Progress</span>
+                      <span className="text-white font-bold">{unlockPct}% Complete</span>
+                    </span>
+                    <span className={`font-bold flex items-center gap-1 ${rank.color}`}>
+                      <span>{rank.icon}</span>
+                      <span>{rank.title}</span>
+                    </span>
+                  </div>
+                  <div className="h-3 w-full bg-slate-950 rounded-full border border-slate-800 overflow-hidden p-0.5 relative">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-amber-500 via-amber-400 to-emerald-400 transition-all duration-700 shadow-md shadow-amber-500/30"
+                      style={{ width: `${Math.max(3, unlockPct)}%` }}
+                    />
+                  </div>
+                </div>
               </div>
 
-              {/* Filter Pills */}
-              <div className="flex flex-wrap gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+              {/* Stats Counters */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 text-center">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Unlocked</div>
+                  <div className="text-xl font-black text-amber-400 mt-0.5">{unlockedTotal}</div>
+                  <div className="text-[10px] text-slate-500">of {totalCount} badges</div>
+                </div>
+                <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 text-center">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">XP Earned</div>
+                  <div className="text-xl font-black text-emerald-400 mt-0.5">+{totalEarnedXp}</div>
+                  <div className="text-[10px] text-slate-500">of {totalPossibleXp} XP</div>
+                </div>
+                <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 text-center">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Completion</div>
+                  <div className="text-xl font-black text-cyan-400 mt-0.5">{unlockPct}%</div>
+                  <div className="text-[10px] text-slate-500">overall mastery</div>
+                </div>
+                <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 text-center">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Remaining</div>
+                  <div className="text-xl font-black text-slate-300 mt-0.5">{totalCount - unlockedTotal}</div>
+                  <div className="text-[10px] text-slate-500">to conquer</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Filter Toolbar: Categories, Search & Filters */}
+            <div className="space-y-3">
+              {/* Category Pills */}
+              <div className="flex flex-wrap items-center gap-1.5 bg-slate-950/90 p-1.5 rounded-xl border border-slate-800">
                 {[
-                  { id: 'all', label: 'All Badges' },
-                  { id: 'milestones', label: 'Milestones 🏆' },
-                  { id: 'tiers', label: 'Bot Tiers 🥇' },
-                  { id: 'pieces', label: 'Pieces ♞' },
-                  { id: 'secret', label: 'Secrets ⚡' },
+                  { id: 'all', label: `All (${totalCount})` },
+                  { id: 'milestones', label: `Milestones 🏆 (${milestoneCounts.unlocked}/${milestoneCounts.total})` },
+                  { id: 'tiers', label: `Bot Tiers 🥇 (${tierCounts.unlocked}/${tierCounts.total})` },
+                  { id: 'pieces', label: `Pieces ♞ (${pieceCounts.unlocked}/${pieceCounts.total})` },
+                  { id: 'puzzles', label: `Puzzles 🧩 (${puzzleCounts.unlocked}/${puzzleCounts.total})` },
+                  { id: 'openings', label: `Openings 📖 (${openingCounts.unlocked}/${openingCounts.total})` },
+                  { id: 'secret', label: `Secrets ⚡ (${secretCounts.unlocked}/${secretCounts.total})` },
                 ].map((f) => (
                   <button
                     key={f.id}
@@ -3564,7 +4447,7 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                     onClick={() => setBadgeCategoryFilter(f.id as any)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                       badgeCategoryFilter === f.id
-                        ? 'bg-amber-500 text-white shadow-md shadow-amber-500/20'
+                        ? 'bg-amber-500 text-white shadow-md shadow-amber-500/25 ring-1 ring-amber-400'
                         : 'text-slate-400 hover:text-white hover:bg-slate-900'
                     }`}
                   >
@@ -3572,38 +4455,216 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                   </button>
                 ))}
               </div>
-            </div>
 
-            {/* Badges Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-              {filteredCrests.map((crest) => (
-                <div
-                  key={crest.id}
-                  className={`rounded-2xl border p-4 text-center space-y-2.5 transition-all relative overflow-hidden ${
-                    crest.isUnlocked
-                      ? 'border-amber-500/50 bg-gradient-to-b from-slate-950 to-amber-950/20 shadow-lg shadow-amber-500/10'
-                      : 'border-slate-800 bg-slate-950/60 opacity-60'
-                  }`}
-                >
-                  <div className="text-4xl animate-in zoom-in duration-200">{crest.icon}</div>
-                  <div className="space-y-1">
-                    <div className="font-extrabold text-xs text-white">{crest.title}</div>
-                    <div className="text-[10px] text-slate-400 leading-snug">{crest.desc}</div>
+              {/* Secondary Controls: Search, Status & Rarity */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                {/* Search Input */}
+                <div className="relative flex-1 max-w-md">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+                    <DashboardIcon iconKey="search" className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="text"
+                    value={badgeSearchQuery}
+                    onChange={(e) => setBadgeSearchQuery(e.target.value)}
+                    placeholder="Search 105 achievements (e.g. Queen, Checkmate, Master)..."
+                    className="w-full pl-9 pr-8 py-1.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/60 focus:ring-1 focus:ring-amber-500/50 transition-all"
+                  />
+                  {badgeSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setBadgeSearchQuery('')}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white text-xs"
+                      title="Clear search"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* Status and Rarity Filters */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Status Toggle */}
+                  <div className="flex items-center bg-slate-950 border border-slate-800 rounded-lg p-0.5 text-[11px] font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => setBadgeStatusFilter('all')}
+                      className={`px-2.5 py-1 rounded-md transition-all ${
+                        badgeStatusFilter === 'all' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBadgeStatusFilter('unlocked')}
+                      className={`px-2.5 py-1 rounded-md transition-all ${
+                        badgeStatusFilter === 'unlocked' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-400 hover:text-emerald-400'
+                      }`}
+                    >
+                      Unlocked ({unlockedTotal})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBadgeStatusFilter('locked')}
+                      className={`px-2.5 py-1 rounded-md transition-all ${
+                        badgeStatusFilter === 'locked' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Locked ({totalCount - unlockedTotal})
+                    </button>
                   </div>
 
-                  <div className="pt-1">
-                    {crest.isUnlocked ? (
-                      <span className="inline-block text-[10px] font-black uppercase tracking-wider text-emerald-300 bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                        ✅ Unlocked
-                      </span>
-                    ) : (
-                      <span className="inline-block text-[10px] font-bold text-slate-400 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-full">
-                        🔒 Locked
-                      </span>
-                    )}
+                  {/* Rarity Select */}
+                  <div className="flex items-center gap-1 bg-slate-950 border border-slate-800 rounded-lg p-0.5 text-[11px] font-semibold">
+                    {(['all', 'common', 'rare', 'epic', 'legendary'] as const).map((rarity) => (
+                      <button
+                        key={rarity}
+                        type="button"
+                        onClick={() => setBadgeRarityFilter(rarity)}
+                        className={`px-2 py-1 rounded-md capitalize transition-all ${
+                          badgeRarityFilter === rarity
+                            ? rarity === 'legendary'
+                              ? 'bg-amber-500 text-white shadow-sm'
+                              : rarity === 'epic'
+                              ? 'bg-purple-600 text-white shadow-sm'
+                              : rarity === 'rare'
+                              ? 'bg-cyan-600 text-white shadow-sm'
+                              : 'bg-slate-800 text-white shadow-sm'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {rarity}
+                      </button>
+                    ))}
                   </div>
                 </div>
-              ))}
+              </div>
+            </div>
+
+            {/* Showing Count Indicator */}
+            <div className="flex items-center justify-between text-xs text-slate-400 px-1">
+              <span>
+                Showing <strong className="text-white">{filteredAchievements.length}</strong> of {totalCount} achievements
+                {badgeCategoryFilter !== 'all' && (
+                  <span className="text-amber-400 ml-1">in {badgeCategoryFilter}</span>
+                )}
+                {badgeSearchQuery && (
+                  <span className="text-cyan-400 ml-1">matching "{badgeSearchQuery}"</span>
+                )}
+              </span>
+              {(badgeCategoryFilter !== 'all' || badgeSearchQuery || badgeRarityFilter !== 'all' || badgeStatusFilter !== 'all') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBadgeCategoryFilter('all');
+                    setBadgeSearchQuery('');
+                    setBadgeRarityFilter('all');
+                    setBadgeStatusFilter('all');
+                  }}
+                  className="text-amber-400 hover:text-amber-300 font-semibold underline text-xs"
+                >
+                  Reset All Filters
+                </button>
+              )}
+            </div>
+
+            {/* Empty State */}
+            {filteredAchievements.length === 0 && (
+              <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-12 text-center space-y-3">
+                <div className="text-4xl">🔍</div>
+                <h3 className="text-sm font-bold text-white">No Achievements Found</h3>
+                <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                  No trophies match your current filter and search criteria. Try clearing your search or switching categories!
+                </p>
+                <Button
+                  onClick={() => {
+                    setBadgeCategoryFilter('all');
+                    setBadgeSearchQuery('');
+                    setBadgeRarityFilter('all');
+                    setBadgeStatusFilter('all');
+                  }}
+                  className="py-1.5 px-4 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl"
+                >
+                  Clear Filters
+                </Button>
+              </div>
+            )}
+
+            {/* Badges Grid (105 Trophies) */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5">
+              {filteredAchievements.map((crest) => {
+                // Determine styling based on rarity and unlocked status
+                const isUnlocked = crest.isUnlocked;
+                let rarityBorder = 'border-slate-800 bg-slate-950/60';
+                let rarityBadge = 'bg-slate-800/70 text-slate-300 border-slate-700';
+
+                if (crest.rarity === 'legendary') {
+                  rarityBorder = isUnlocked
+                    ? 'border-amber-400/70 bg-gradient-to-b from-amber-950/40 via-slate-950 to-amber-950/20 shadow-lg shadow-amber-500/20 ring-1 ring-amber-400/40'
+                    : 'border-amber-900/40 bg-slate-950/60 opacity-60 hover:opacity-90';
+                  rarityBadge = 'bg-amber-500/20 text-amber-300 border-amber-500/40';
+                } else if (crest.rarity === 'epic') {
+                  rarityBorder = isUnlocked
+                    ? 'border-purple-500/60 bg-gradient-to-b from-purple-950/40 via-slate-950 to-purple-950/20 shadow-lg shadow-purple-500/15 ring-1 ring-purple-400/30'
+                    : 'border-purple-900/40 bg-slate-950/60 opacity-60 hover:opacity-90';
+                  rarityBadge = 'bg-purple-500/20 text-purple-300 border-purple-500/40';
+                } else if (crest.rarity === 'rare') {
+                  rarityBorder = isUnlocked
+                    ? 'border-cyan-500/60 bg-gradient-to-b from-cyan-950/40 via-slate-950 to-cyan-950/20 shadow-lg shadow-cyan-500/15 ring-1 ring-cyan-400/30'
+                    : 'border-cyan-900/40 bg-slate-950/60 opacity-60 hover:opacity-90';
+                  rarityBadge = 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40';
+                } else {
+                  rarityBorder = isUnlocked
+                    ? 'border-slate-700 bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 shadow-md shadow-slate-900/50'
+                    : 'border-slate-800 bg-slate-950/60 opacity-55 hover:opacity-85';
+                }
+
+                return (
+                  <div
+                    key={crest.id}
+                    className={`rounded-2xl border p-3.5 text-center flex flex-col justify-between space-y-2 transition-all duration-200 relative overflow-hidden group hover:scale-[1.02] ${rarityBorder}`}
+                  >
+                    {/* Top Ribbon: Rarity & XP */}
+                    <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider">
+                      <span className={`px-1.5 py-0.5 rounded border ${rarityBadge}`}>
+                        {crest.rarity}
+                      </span>
+                      <span className="text-amber-400 font-extrabold flex items-center gap-0.5 bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-500/30">
+                        ⚡ +{crest.xpReward} XP
+                      </span>
+                    </div>
+
+                    {/* Icon */}
+                    <div className="text-3xl my-1 group-hover:scale-110 transition-transform duration-200 select-none">
+                      {crest.icon}
+                    </div>
+
+                    {/* Title & Desc */}
+                    <div className="space-y-1 flex-1 flex flex-col justify-center">
+                      <div className="font-extrabold text-xs text-white group-hover:text-amber-300 transition-colors line-clamp-1">
+                        {crest.title}
+                      </div>
+                      <div className="text-[10px] text-slate-400 leading-tight line-clamp-2">
+                        {crest.desc}
+                      </div>
+                    </div>
+
+                    {/* Status Pill */}
+                    <div className="pt-1.5 border-t border-slate-800/60">
+                      {isUnlocked ? (
+                        <span className="inline-flex items-center justify-center gap-1 w-full text-[10px] font-black uppercase tracking-wider text-emerald-300 bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 rounded-full shadow-sm shadow-emerald-500/10">
+                          <span>✅</span> Unlocked
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center justify-center gap-1 w-full text-[10px] font-bold text-slate-400 bg-slate-900/90 border border-slate-800 px-2 py-0.5 rounded-full">
+                          <span>🔒</span> Locked
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         );
@@ -4480,70 +5541,186 @@ ${formattedMoves || '1. e4'} ${game.result}`;
       )}
 
       {/* LEVEL GATEKEEPER CHALLENGE MODAL */}
-      {gatekeeperLockedLevel !== null && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200">
-          <div className="bg-slate-900 border-2 border-amber-500/50 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl text-center relative overflow-hidden">
-            <div className="text-5xl">🔒</div>
+      {gatekeeperLockedLevel !== null && (() => {
+        const targetBot = BOT_LEVELS.find((b) => b.level === gatekeeperLockedLevel);
+        const requiredPts = BOT_UNLOCK_THRESHOLDS[gatekeeperLockedLevel] ?? (gatekeeperLockedLevel - 1) * 400;
+        const ptsDiff = Math.max(0, requiredPts - userTrainingPoints);
+        const canUnlockWithPoints = ptsDiff === 0;
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-slate-900 border-2 border-amber-500/50 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl text-center relative overflow-hidden">
+              <div className="text-5xl animate-bounce">🔒</div>
+              <div className="space-y-1">
+                <span className="text-[10px] uppercase font-black tracking-wider text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/30">
+                  Gatekeeper Challenge
+                </span>
+                <h2 className="text-xl font-extrabold text-white">
+                  Level {gatekeeperLockedLevel} is Locked!
+                </h2>
+                <p className="text-xs text-slate-400">
+                  Unlock {targetBot?.name} using any of the mastery paths below:
+                </p>
+              </div>
+
+              <div className="space-y-2.5 text-left text-xs">
+                {/* Path 0 (PRIMARY): Training Points Unlock */}
+                <div
+                  className={`border rounded-2xl p-3.5 flex flex-col gap-2.5 transition-all ${
+                    canUnlockWithPoints
+                      ? 'bg-gradient-to-b from-emerald-950/40 to-slate-950 border-emerald-500/60 shadow-lg shadow-emerald-500/10 ring-1 ring-emerald-500/40'
+                      : 'bg-slate-950 border-amber-500/30'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl">⚡</span>
+                      <div>
+                        <div className="font-extrabold text-white flex items-center gap-1.5">
+                          <span>Primary Path: Training Points</span>
+                          {canUnlockWithPoints && (
+                            <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-mono font-bold border border-emerald-500/30 animate-pulse">
+                              Ready to Unlock!
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-slate-400 text-[11px]">
+                          Target: <strong className="text-amber-400 font-mono">{requiredPts} TP</strong> · You have: <strong className="text-white font-mono">{userTrainingPoints} TP</strong>
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-mono font-black text-amber-400 shrink-0">
+                      {Math.min(100, Math.round((userTrainingPoints / Math.max(1, requiredPts)) * 100))}%
+                    </span>
+                  </div>
+
+                  {/* Visual Progress Bar */}
+                  <div className="w-full bg-slate-900 rounded-full h-2.5 overflow-hidden border border-slate-800 p-0.5">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        canUnlockWithPoints
+                          ? 'bg-gradient-to-r from-emerald-500 to-teal-400 shadow-md shadow-emerald-500/50'
+                          : 'bg-gradient-to-r from-amber-500 to-amber-400'
+                      }`}
+                      style={{ width: `${Math.min(100, Math.max(5, (userTrainingPoints / Math.max(1, requiredPts)) * 100))}%` }}
+                    />
+                  </div>
+
+                  {canUnlockWithPoints ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfile((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                unlocked_levels: Array.from(
+                                  new Set([...(prev.unlocked_levels || [1]), gatekeeperLockedLevel])
+                                ),
+                              }
+                            : prev
+                        );
+                        setSelectedLevel(gatekeeperLockedLevel);
+                        setGatekeeperLockedLevel(null);
+                        setNewlyUnlockedBotLevel(gatekeeperLockedLevel);
+                        try {
+                          playChessSound('quiz_correct');
+                        } catch {}
+                      }}
+                      className="w-full py-2.5 px-3 bg-gradient-to-r from-emerald-500 via-emerald-400 to-teal-500 hover:brightness-110 text-white font-black text-xs uppercase rounded-xl shadow-lg shadow-emerald-500/30 border border-emerald-400/50 flex items-center justify-center gap-2 animate-pulse cursor-pointer active:translate-y-0.5 transition-all"
+                    >
+                      <span>🔓</span>
+                      <span>Unlock & Play Level {gatekeeperLockedLevel} Now! 🚀</span>
+                    </button>
+                  ) : (
+                    <div className="text-[11px] text-amber-300/90 font-medium bg-amber-500/10 p-2 rounded-lg border border-amber-500/20">
+                      ⚡ Need <strong className="text-white font-mono">{ptsDiff} TP</strong> more! Earn points from bot matches (+75 TP for wins) or puzzle quests (+20 TP).
+                    </div>
+                  )}
+                </div>
+
+                {/* Path 1: Tactical Quiz Benchmark */}
+                <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-start gap-3">
+                  <span className="text-xl">🎯</span>
+                  <div className="space-y-0.5">
+                    <div className="font-bold text-white">Path 1: Tactical Quiz Benchmark</div>
+                    <p className="text-slate-400 text-[11px]">
+                      Score 4/10 or more in Tactical Quests. Current score: <strong className="text-amber-400 font-mono">{quizScore}/10</strong>.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Path 2: Boss Knockout Progression */}
+                <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-start gap-3">
+                  <span className="text-xl">⚔️</span>
+                  <div className="space-y-0.5">
+                    <div className="font-bold text-white">Path 2: Boss Knockout Progression</div>
+                    <p className="text-slate-400 text-[11px]">
+                      Defeat Level {gatekeeperLockedLevel - 1} in a match to trigger auto-unlock.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Path 3: Coach Master Key */}
+                <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-start gap-3">
+                  <span className="text-xl">🔑</span>
+                  <div className="space-y-0.5">
+                    <div className="font-bold text-white">Path 3: Coach Master Key</div>
+                    <p className="text-slate-400 text-[11px]">
+                      Your coach can unlock this bot anytime from the coaching portal.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2.5 pt-2">
+                <Button
+                  onClick={() => {
+                    setGatekeeperLockedLevel(null);
+                    setActiveTab('quests');
+                  }}
+                  className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs uppercase shadow-md shadow-amber-500/20"
+                >
+                  Solve Quests (+TP) 🎯
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setGatekeeperLockedLevel(null)}
+                  className="py-3 px-4 text-xs font-bold text-slate-300 border-slate-800 hover:bg-slate-800"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* NEWLY UNLOCKED BOT CELEBRATION MODAL */}
+      {newlyUnlockedBotLevel !== null && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-gradient-to-b from-slate-900 via-slate-900 to-emerald-950/40 border-2 border-emerald-400/80 rounded-3xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl shadow-emerald-500/20 relative overflow-hidden">
+            <div className="text-5xl animate-bounce">🔓</div>
             <div className="space-y-1">
-              <span className="text-[10px] uppercase font-black tracking-wider text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/30">
-                Gatekeeper Challenge
+              <span className="text-[10px] uppercase font-black tracking-wider text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/30">
+                New Arena Challenger Unlocked!
               </span>
-              <h2 className="text-xl font-extrabold text-white">
-                Level {gatekeeperLockedLevel} is Locked!
-              </h2>
-              <p className="text-xs text-slate-400">
-                Unlock {BOT_LEVELS.find((b) => b.level === gatekeeperLockedLevel)?.name} using any of the 3 mastery paths:
+              <h3 className="text-xl font-black text-white">
+                Level {newlyUnlockedBotLevel} — {BOT_LEVELS.find((b) => b.level === newlyUnlockedBotLevel)?.name.replace(/Level \d+ — /, '')}
+              </h3>
+              <p className="text-xs text-slate-300">
+                You earned enough Training Points! Level {newlyUnlockedBotLevel} is now unlocked and ready for battle.
               </p>
             </div>
-
-            <div className="space-y-2.5 text-left text-xs">
-              <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-start gap-3">
-                <span className="text-xl">🎯</span>
-                <div className="space-y-0.5">
-                  <div className="font-bold text-white">Path 1: Tactical Quiz Benchmark</div>
-                  <p className="text-slate-400 text-[11px]">
-                    Score 4/10 or more in Tactical Quests. Current score: <strong className="text-amber-400">{quizScore}/10</strong>.
-                  </p>
-                </div>
-              </div>
-
-              <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-start gap-3">
-                <span className="text-xl">⚔️</span>
-                <div className="space-y-0.5">
-                  <div className="font-bold text-white">Path 2: Boss Knockout Progression</div>
-                  <p className="text-slate-400 text-[11px]">
-                    Defeat Level {gatekeeperLockedLevel - 1} in a Boss Battle Match to trigger auto-unlock.
-                  </p>
-                </div>
-              </div>
-
-              <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-start gap-3">
-                <span className="text-xl">🔑</span>
-                <div className="space-y-0.5">
-                  <div className="font-bold text-white">Path 3: Coach Master Key</div>
-                  <p className="text-slate-400 text-[11px]">
-                    Your chess academy coach can unlock this level anytime from the coach management portal.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-2.5 pt-2">
+            <div className="pt-2">
               <Button
                 onClick={() => {
-                  setGatekeeperLockedLevel(null);
-                  setActiveTab('quests');
+                  setSelectedLevel(newlyUnlockedBotLevel);
+                  setNewlyUnlockedBotLevel(null);
                 }}
-                className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs uppercase shadow-md shadow-amber-500/20"
+                className="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-black text-xs uppercase rounded-xl shadow-lg shadow-emerald-500/30 cursor-pointer"
               >
-                Solve Quests 🎯
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setGatekeeperLockedLevel(null)}
-                className="py-3 px-4 text-xs font-bold text-slate-300 border-slate-800 hover:bg-slate-800"
-              >
-                Close
+                Play Level {newlyUnlockedBotLevel} Now ⚔️
               </Button>
             </div>
           </div>

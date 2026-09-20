@@ -34,15 +34,20 @@ export function wrapChessboard(CB: any) {
     if (merged.customSquareStyles && !merged.squareStyles) {
       merged.squareStyles = merged.customSquareStyles;
     }
-    if (merged.customPieces && !merged.pieces) {
-      merged.pieces = merged.customPieces;
-    }
-    if (merged.pieces && !merged.customPieces) {
-      merged.customPieces = merged.pieces;
-    }
-    if (!merged.customPieces && !merged.pieces) {
-      merged.customPieces = customChessPieces;
-      merged.pieces = customChessPieces;
+    if (merged.useDefaultPieces || merged.customPieces === 'default') {
+      delete merged.customPieces;
+      delete merged.pieces;
+    } else {
+      if (merged.customPieces && !merged.pieces) {
+        merged.pieces = merged.customPieces;
+      }
+      if (merged.pieces && !merged.customPieces) {
+        merged.customPieces = merged.pieces;
+      }
+      if (!merged.customPieces && !merged.pieces) {
+        merged.customPieces = customChessPieces;
+        merged.pieces = customChessPieces;
+      }
     }
 
     if (merged.showCoordinates !== undefined) {

@@ -554,6 +554,36 @@ export default function StudentDashboardClient({
             </div>
           </div>
 
+          {/* ACADEMY LEADERBOARD BANNER */}
+          <div className="rounded-3xl border-2 border-amber-500/30 bg-gradient-to-r from-slate-900 via-amber-950/30 to-slate-900 p-5 sm:p-6 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-2xl text-amber-400 shadow-md shrink-0">
+                🏆
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                    Live Standings
+                  </span>
+                  <span className="text-xs text-slate-400">Academy Hub</span>
+                </div>
+                <h3 className="text-base font-black text-white mt-0.5">
+                  Academy Student Leaderboard
+                </h3>
+                <p className="text-xs text-slate-300">
+                  See how you rank across Overall XP, Tactics Solved, Homework, and Rating against enrolled peers!
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/dashboard/student/leaderboard"
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-amber-500/20 transition-all shrink-0 self-stretch sm:self-auto justify-center"
+            >
+              <span>VIEW LEADERBOARD</span>
+              <span>➔</span>
+            </Link>
+          </div>
+
           {/* 3. TODAY'S MISSION CHECKLIST & RECENT ACTIVITIES */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* MISSION CHECKLIST */}

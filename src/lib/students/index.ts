@@ -965,11 +965,24 @@ export async function getStudentClasses(filters?: {
       const report = reportMap.get(c.id);
       const att = report ? attendanceMap.get(report.id) : null;
 
+      const now = new Date();
+      const schedStart = new Date(c.scheduled_start);
+      const schedEnd = new Date(schedStart.getTime() + (c.duration_minutes || 45) * 60000);
+      const sessionStartedAt = activeSession?.started_at ? new Date(activeSession.started_at) : null;
+      const isSessionRecent = sessionStartedAt && (now.getTime() - sessionStartedAt.getTime()) < 4 * 60 * 60 * 1000;
+
       let computedStatus = c.status || 'SCHEDULED';
-      if (activeSession) {
+      if (activeSession && isSessionRecent) {
         computedStatus = 'LIVE';
       } else if (c.status === 'COMPLETED' || c.status === 'RECORDING_AVAILABLE') {
         computedStatus = 'COMPLETED';
+      } else if (schedEnd < now) {
+        // Class scheduled time has passed
+        if (report || c.status === 'COMPLETED') {
+          computedStatus = 'COMPLETED';
+        } else {
+          computedStatus = 'CONCLUDED_PENDING_REPORT';
+        }
       } else {
         computedStatus = 'SCHEDULED';
       }
