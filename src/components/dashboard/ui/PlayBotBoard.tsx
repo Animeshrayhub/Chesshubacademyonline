@@ -11,6 +11,8 @@ import { supabase } from '@/utils/supabaseClient';
 
 import { wrapChessboard } from '@/components/dashboard/ui/ChessboardWrapper';
 import { computeBotMove, safeExecuteMove } from '@/lib/bot-training/chessBotEngine';
+import ChessCoachAvatar, { CoachAvatarState } from './ChessCoachAvatar';
+import { clearSpokenHistory, resetVoiceCooldown } from '@/utils/chessAudio';
 
 const ChessboardComponent = dynamic(
   () =>
@@ -355,6 +357,8 @@ export default function PlayBotBoard({ initialFen, classId, onCloseCustom }: Pla
 
   const handleReset = (orientation: 'white' | 'black' = boardOrientation) => {
     stockfishRef.current?.terminate();
+    clearSpokenHistory();
+    resetVoiceCooldown();
     const game = new Chess();
     gameRef.current = game;
     setFen(game.fen());
@@ -518,6 +522,21 @@ export default function PlayBotBoard({ initialFen, classId, onCloseCustom }: Pla
               </button>
             </div>
           </div>
+
+          {/* 👨‍🏫 ChessHub Academy Coach Avatar */}
+          <ChessCoachAvatar
+            compact
+            state={
+              status === 'checkmate'
+                ? 'completed'
+                : status === 'resigned'
+                ? 'incorrect'
+                : isBotThinking
+                ? 'thinking'
+                : 'puzzle_start'
+            }
+            customMessage={message}
+          />
 
           {/* Status Message Bubble */}
           <div

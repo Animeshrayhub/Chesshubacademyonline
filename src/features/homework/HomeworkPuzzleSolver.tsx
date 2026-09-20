@@ -11,6 +11,7 @@ import type {
 } from '@/types/homework-puzzles';
 import { THEME_CONFIG, MAX_ATTEMPTS } from '@/types/homework-puzzles';
 
+import ChessCoachAvatar, { CoachAvatarState } from '@/components/dashboard/ui/ChessCoachAvatar';
 import { wrapChessboard } from '@/components/dashboard/ui/ChessboardWrapper';
 
 const ChessboardComponent = dynamic(
@@ -352,6 +353,19 @@ export default function HomeworkPuzzleSolver({
   const attemptsRemaining = MAX_ATTEMPTS - attemptsUsed;
   const isDone = status === 'solved' || status === 'failed' || isAlreadySolved || isAlreadyFailed;
 
+  const coachAvatarState: CoachAvatarState =
+    status === 'solved' || isAlreadySolved
+      ? 'completed'
+      : status === 'wrong' || status === 'failed' || isAlreadyFailed
+      ? 'incorrect'
+      : status === 'correct'
+      ? 'correct'
+      : currentHint
+      ? 'hint'
+      : status === 'solving'
+      ? 'thinking'
+      : 'puzzle_start';
+
   return (
     <div className="bg-white rounded-2xl border border-border shadow-card overflow-hidden">
       {/* ── Header ── */}
@@ -432,6 +446,20 @@ export default function HomeworkPuzzleSolver({
 
         {/* Side panel */}
         <div className="flex-1 border-t lg:border-t-0 lg:border-l border-border p-5 flex flex-col gap-4">
+
+          {/* ChessHub Coach Avatar */}
+          <ChessCoachAvatar
+            state={coachAvatarState}
+            customMessage={
+              status === 'solved' || isAlreadySolved
+                ? 'Great job! Puzzle solved!'
+                : status === 'failed' || isAlreadyFailed
+                ? 'Attempts exhausted. Check the solution.'
+                : currentHint
+                ? currentHint
+                : undefined
+            }
+          />
 
           {/* Message banner */}
           <div className={`rounded-xl px-4 py-3 text-sm font-medium transition-all ${

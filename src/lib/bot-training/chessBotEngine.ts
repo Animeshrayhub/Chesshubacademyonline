@@ -463,17 +463,15 @@ export function computeBotMove(
     });
 
     if (matchingLegal.length > 0) {
-      // Prioritize Fried Liver specific attack moves if Level 3
-      let chosenMove = matchingLegal[0];
-      if (botLevel === 3) {
-        // Special check: if Ng5 (f3g5) or Nxf7 (g5f7) or Qf3 (d1f3) is available, pick it!
+      // Diverse opening selection across all matching book moves
+      let chosenMove = matchingLegal[Math.floor(Math.random() * matchingLegal.length)];
+      if (botLevel === 3 && uciHistory.length >= 2) {
+        // Special check: if Ng5 (f3g5) or Nxf7 (g5f7) or Qf3 (d1f3) is available in Italian setup, pick it!
         const friedLiverKey = matchingLegal.find((m) => {
           const uci = `${m.from}${m.to}`;
           return uci === 'g5f7' || uci === 'f3g5' || uci === 'd1f3' || uci === 'b1c3';
         });
         if (friedLiverKey) chosenMove = friedLiverKey;
-      } else {
-        chosenMove = matchingLegal[Math.floor(Math.random() * matchingLegal.length)];
       }
 
       const uci = `${chosenMove.from}${chosenMove.to}${chosenMove.promotion || ''}`;
@@ -485,7 +483,7 @@ export function computeBotMove(
         promotion: chosenMove.promotion,
         san: chosenMove.san,
         openingName: bookNode?.name,
-        botCommentary: bookNode?.comment,
+        botCommentary: bookNode?.comment || "Developing according to classical chess principles!",
         isOpeningBookMove: true,
       };
     }
@@ -515,6 +513,12 @@ export function computeBotMove(
     }
 
     const currentOpening = identifyOpeningFromMoves(uciHistory);
+    const beginnerAdvice = [
+      "Good move! Keep developing your pieces toward the center.",
+      "Control the center squares to give your pieces more freedom.",
+      "Remember to castle your King to safety when you get the chance!",
+      "Always check if your pieces are guarded before playing.",
+    ];
 
     return {
       from: chosenMove.from,
@@ -522,7 +526,7 @@ export function computeBotMove(
       promotion: chosenMove.promotion,
       san: chosenMove.san,
       openingName: currentOpening.name,
-      botCommentary: "Keep developing your pieces! You're playing well!",
+      botCommentary: beginnerAdvice[Math.floor(Math.random() * beginnerAdvice.length)],
       isOpeningBookMove: false,
     };
   }
@@ -534,6 +538,12 @@ export function computeBotMove(
     const result = alphaBeta(searchGame, 1, -Infinity, Infinity, isWhite);
     const chosen = result.bestMove || legalMoves[0];
     const currentOpening = identifyOpeningFromMoves(uciHistory);
+    const casualAdvice = [
+      "Solid development! Look for tactical combinations.",
+      "Watch out for knight forks and bishop pins!",
+      "Keep an eye on undefended pieces across the board.",
+      "Connect your rooks by moving your queen off the back rank.",
+    ];
 
     return {
       from: chosen.from,
@@ -541,7 +551,7 @@ export function computeBotMove(
       promotion: chosen.promotion,
       san: chosen.san,
       openingName: currentOpening.name,
-      botCommentary: "Solid development! Remember to castle your King soon!",
+      botCommentary: casualAdvice[Math.floor(Math.random() * casualAdvice.length)],
       isOpeningBookMove: false,
     };
   }

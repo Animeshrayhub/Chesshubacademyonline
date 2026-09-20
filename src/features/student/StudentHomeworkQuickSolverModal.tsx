@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Chess } from 'chess.js';
 import dynamic from 'next/dynamic';
 import { wrapChessboard } from '@/components/dashboard/ui/ChessboardWrapper';
+import ChessCoachAvatar, { CoachAvatarState } from '@/components/dashboard/ui/ChessCoachAvatar';
 
 const ChessboardComponent = dynamic(
   () => import('react-chessboard').then((mod) => wrapChessboard(mod.Chessboard)),
@@ -300,6 +301,17 @@ export default function StudentHomeworkQuickSolverModal({
     setShowHint((prev) => !prev);
   }, []);
 
+  const coachAvatarState: CoachAvatarState =
+    status === 'solved'
+      ? 'completed'
+      : status === 'wrong'
+      ? 'incorrect'
+      : status === 'correct'
+      ? 'correct'
+      : showHint
+      ? 'hint'
+      : 'puzzle_start';
+
   if (!isOpen) return null;
 
   return (
@@ -352,6 +364,19 @@ export default function StudentHomeworkQuickSolverModal({
 
         {/* Modal Body */}
         <div className="p-6 overflow-y-auto space-y-4 flex flex-col items-center">
+          {/* 👨‍🏫 ChessHub Academy Coach Avatar */}
+          <div className="w-full max-w-[420px]">
+            <ChessCoachAvatar
+              compact
+              state={coachAvatarState}
+              customMessage={
+                showHint && currentPuzzle.hint_1
+                  ? currentPuzzle.hint_1
+                  : undefined
+              }
+            />
+          </div>
+
           {/* Status Alert Banner */}
           <div
             className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold text-center border transition-all ${

@@ -181,7 +181,40 @@ export function playChessSound(type: 'move' | 'capture' | 'check' | 'castle' | '
 
 let coachVoiceEnabled = true;
 let lastSpokenTimestamp = 0;
-const DEFAULT_MIN_SPEECH_INTERVAL_MS = 10000; // 10 seconds minimum cooldown between voice lines
+const DEFAULT_MIN_SPEECH_INTERVAL_MS = 16000; // 16 seconds minimum cooldown between voice lines
+const spokenPhrasesHistory = new Set<string>();
+
+// Cached natural voice
+let cachedNaturalVoice: SpeechSynthesisVoice | null = null;
+
+function updateCachedVoice() {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+  try {
+    const voices = window.speechSynthesis.getVoices();
+    cachedNaturalVoice =
+      voices.find(
+        (v) =>
+          v.lang.startsWith('en') &&
+          (v.name.includes('Natural') ||
+            v.name.includes('Google') ||
+            v.name.includes('Samantha') ||
+            v.name.includes('Karen') ||
+            v.name.includes('Daniel') ||
+            v.name.includes('Jenny') ||
+            v.name.includes('Guy'))
+      ) ||
+      voices.find((v) => v.lang.startsWith('en-US')) ||
+      voices.find((v) => v.lang.startsWith('en')) ||
+      null;
+  } catch {}
+}
+
+if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+  updateCachedVoice();
+  if (window.speechSynthesis.onvoiceschanged !== undefined) {
+    window.speechSynthesis.onvoiceschanged = updateCachedVoice;
+  }
+}
 
 export function setCoachVoiceEnabled(enabled: boolean) {
   coachVoiceEnabled = enabled;
@@ -202,6 +235,71 @@ export function stopCoachVoice() {
 
 export function resetVoiceCooldown() {
   lastSpokenTimestamp = 0;
+}
+
+export function clearSpokenHistory() {
+  spokenPhrasesHistory.clear();
+  lastSpokenTimestamp = 0;
+}
+
+export type TacticalTheme =
+  | 'fork'
+  | 'pin'
+  | 'skewer'
+  | 'hanging'
+  | 'king_safety'
+  | 'opening'
+  | 'center'
+  | 'endgame';
+
+export const TACTICAL_COACH_ADVICE: Record<TacticalTheme, string[]> = {
+  fork: [
+    'Watch out! The knight or piece is attacking two targets at once.',
+    'A fork can win material! Look for ways to strike multiple undefended pieces.',
+    'Double attack in the air! Check if any of your pieces are caught in a fork.',
+  ],
+  pin: [
+    'That piece is pinned! Moving it would expose a more valuable piece behind it.',
+    "Pins restrict your opponent's pieces. Look to apply pressure to pinned targets.",
+    'Be careful of the absolute pin on your king — you cannot move that piece.',
+  ],
+  skewer: [
+    'A skewer attack forces the more valuable piece to move, leaving what is behind exposed.',
+    'Line up your long-range pieces along open files and diagonals for skewers.',
+  ],
+  hanging: [
+    'Look for unprotected pieces! A hanging piece is a tactical opportunity.',
+    'Ensure all your pieces are guarded by friendly pawns or pieces.',
+    'Calculate carefully before capturing: make sure you win material, not just trade.',
+  ],
+  king_safety: [
+    'King safety comes first! Consider castling to tuck your king safely into the corner.',
+    'Avoid pushing too many pawns in front of your castled king.',
+    'Watch out for open diagonals aiming right at your king.',
+  ],
+  opening: [
+    'In the opening: control the center, develop your minor pieces, and castle quickly.',
+    'Try not to move the same piece multiple times in the opening unless necessary.',
+    'Connect your rooks by developing your queen to a safe, active square.',
+  ],
+  center: [
+    'Fight for the center squares: e4, d4, e5, and d5 give your pieces maximum mobility.',
+    'Pawn tension in the center dictates the pace of the game.',
+  ],
+  endgame: [
+    'In the endgame, activate your king! The king becomes an active fighting piece.',
+    'Passed pawns must be pushed! Support your passed pawns with your king and rooks.',
+    'Rooks belong behind passed pawns to support their advance.',
+  ],
+};
+
+export function getRandomTacticalAdvice(theme: TacticalTheme): string {
+  const pool = TACTICAL_COACH_ADVICE[theme] || TACTICAL_COACH_ADVICE.opening;
+  const available = pool.filter((p) => !spokenPhrasesHistory.has(p.toLowerCase()));
+  if (available.length > 0) {
+    return available[Math.floor(Math.random() * available.length)];
+  }
+  return pool[Math.floor(Math.random() * pool.length)];
 }
 
 export function speakCoachAdvice(
@@ -234,11 +332,17 @@ export function speakCoachAdvice(
     // Strip emojis and symbols for crystal clear speech synthesis
     const cleanText = text
       .replace(/[\u{1F300}-\u{1F9FF}]/gu, '')
-      .replace(/[♚♛♜♝♞♟♔♕♖♗♘♙⚔️⚡🎯🏆💡🔥]/g, '')
+      .replace(/[♚♛♜♝♞♟♔♕♖♗♘♙⚔️⚡🎯🏆💡🔥🐾🧩]/g, '')
       .replace(/\s+/g, ' ')
       .trim();
 
     if (!cleanText) return false;
+
+    // Deduplication check: Do not repeat identical phrase unless force is true
+    const normalized = cleanText.toLowerCase();
+    if (!options?.force && spokenPhrasesHistory.has(normalized)) {
+      return false;
+    }
 
     window.speechSynthesis.cancel();
 
@@ -247,18 +351,24 @@ export function speakCoachAdvice(
     utterance.pitch = options?.pitch ?? 1.05;
     utterance.volume = 0.9;
 
-    // Pick a natural English voice if available
-    const voices = window.speechSynthesis.getVoices();
-    const naturalVoice = voices.find(
-      (v) => (v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Samantha') || v.name.includes('Karen') || v.name.includes('Daniel')))
-    ) || voices.find((v) => v.lang.startsWith('en'));
-
-    if (naturalVoice) {
-      utterance.voice = naturalVoice;
+    if (!cachedNaturalVoice) {
+      updateCachedVoice();
+    }
+    if (cachedNaturalVoice) {
+      utterance.voice = cachedNaturalVoice;
     }
 
     window.speechSynthesis.speak(utterance);
     lastSpokenTimestamp = Date.now();
+    spokenPhrasesHistory.add(normalized);
+
+    // Keep history bounded to last 60 phrases
+    if (spokenPhrasesHistory.size > 60) {
+      const arr = Array.from(spokenPhrasesHistory);
+      spokenPhrasesHistory.clear();
+      arr.slice(-30).forEach((item) => spokenPhrasesHistory.add(item));
+    }
+
     return true;
   } catch (err) {
     console.warn('[speakCoachAdvice] Speech synthesis failed:', err);

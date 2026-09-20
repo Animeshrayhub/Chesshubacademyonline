@@ -17,6 +17,7 @@ import {
 
 import { wrapChessboard } from '@/components/dashboard/ui/ChessboardWrapper';
 import { playChessSound } from '@/utils/chessAudio';
+import ChessCoachAvatar, { CoachAvatarState } from './ChessCoachAvatar';
 
 const ChessboardComponent = dynamic(
   () =>
@@ -642,6 +643,26 @@ export default function PuzzleBoard({ puzzle, onSolveComplete, token }: PuzzleBo
     { id: 'zugzwang', label: '🌀 Zugzwang' },
   ];
 
+  const coachAvatarState: CoachAvatarState =
+    status === 'solved'
+      ? 'completed'
+      : status === 'failed' || message.type === 'error'
+      ? 'incorrect'
+      : hintSquare || hintTargetSquare
+      ? 'hint'
+      : status === 'solving'
+      ? (solutionIndex > 0 ? 'correct' : 'puzzle_start')
+      : 'idle';
+
+  const coachCustomMessage =
+    status === 'solved'
+      ? 'Great job! Puzzle solved!'
+      : hintText
+      ? hintText
+      : aiExplanation
+      ? aiExplanation
+      : undefined;
+
   return (
     <div className="space-y-4">
       {/* 🏆 Student Tactical Progress & Growth Banner */}
@@ -923,6 +944,12 @@ export default function PuzzleBoard({ puzzle, onSolveComplete, token }: PuzzleBo
           <h3 className="text-sm font-bold text-accent tracking-wide uppercase">
             Tactics & Practice Arena
           </h3>
+
+          {/* 👨‍🏫 ChessHub Academy Coach Avatar */}
+          <ChessCoachAvatar
+            state={coachAvatarState}
+            customMessage={coachCustomMessage}
+          />
 
           {/* Difficulty Level Selector */}
           <div>

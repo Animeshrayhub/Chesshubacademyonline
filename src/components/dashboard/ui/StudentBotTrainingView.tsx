@@ -15,7 +15,8 @@ import {
   generateWeaknessPuzzlesAction,
   submitPuzzleAttemptAction,
 } from '@/actions/botTraining';
-import { playChessSound, setChessSoundEnabled, speakCoachAdvice, stopCoachVoice, setCoachVoiceEnabled, resetVoiceCooldown } from '@/utils/chessAudio';
+import { playChessSound, setChessSoundEnabled, speakCoachAdvice, stopCoachVoice, setCoachVoiceEnabled, resetVoiceCooldown, clearSpokenHistory } from '@/utils/chessAudio';
+import ChessCoachAvatar from './ChessCoachAvatar';
 import { computeBotMove, identifyOpeningFromMoves, safeExecuteMove, evaluatePosition } from '@/lib/bot-training/chessBotEngine';
 import { TACTICAL_QUIZ_QUESTIONS } from '@/lib/bot-training/tacticalQuizData';
 import { ALL_OPENING_ADVENTURES, FRIED_LIVER_ADVENTURE } from '@/lib/bot-training/openingTreeData';
@@ -713,6 +714,7 @@ ${formattedMoves || '1. e4'} ${game.result}`;
     spokenEventsRef.current.clear();
     const startGreeting = getRandomNonRepeatingQuote(selectedPersonalityId, 'greeting', []);
     spokenQuotesRef.current = [startGreeting];
+    clearSpokenHistory();
     resetVoiceCooldown();
     setBotDialogue(startGreeting);
     if (voiceNarrationOn) {
@@ -2487,43 +2489,69 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                     </div>
                   )}
 
-                  {/* Live Bot Commentary / Opening Advice Bubble */}
-                  {botDialogue && (
-                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-3.5 py-2.5 text-xs text-amber-200 flex items-start justify-between gap-2.5 shadow-sm">
-                      <div className="flex items-start gap-2 leading-snug">
-                        <span className="text-base leading-none mt-0.5">{currentPersonality.avatar}</span>
-                        <div>
-                          <span className="font-extrabold text-amber-400 mr-1.5">
-                            {BOT_LEVELS.find((b) => b.level === selectedLevel)?.name} ({currentPersonality.name}):
-                          </span>
-                          <span>{botDialogue}</span>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (botDialogue) {
-                            speakCoachAdvice(botDialogue, { pitch: currentPersonality.pitch, rate: currentPersonality.rate, force: true });
-                          }
-                        }}
-                        className="text-xs p-1 rounded hover:bg-amber-500/20 text-amber-400 shrink-0"
-                        title="Replay Voice Dialogue"
-                      >
-                        🔊
-                      </button>
-                    </div>
-                  )}
+                  {/* 👨‍🏫 ChessHub Academy Coach Avatar & Educational Dialogue */}
+                  <div className="space-y-3">
+                    <ChessCoachAvatar
+                      state={
+                        isBotThinking
+                          ? 'thinking'
+                          : gameStatus === 'completed'
+                          ? 'completed'
+                          : remainingHints < 3
+                          ? 'hint'
+                          : 'puzzle_start'
+                      }
+                      customMessage={
+                        coachTipDialogue ||
+                        botDialogue ||
+                        "Calculate your moves carefully and control the center!"
+                      }
+                    />
 
-                  {/* Live Coach Tactical Tip Bubble */}
-                  {coachTipDialogue && (
-                    <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-3.5 py-2.5 text-xs text-emerald-200 flex items-start gap-2.5 shadow-sm animate-in fade-in">
-                      <span className="text-base leading-none mt-0.5">💡</span>
-                      <div className="leading-snug">
-                        <span className="font-extrabold text-emerald-400 mr-1.5">Grandmaster Coach:</span>
-                        <span>{coachTipDialogue}</span>
+                    {/* Audio Feedback Controls Pill */}
+                    <div className="flex items-center justify-between bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-1.5 text-xs">
+                      <span className="text-[11px] font-bold text-slate-400">Audio Feedback:</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const next = !voiceNarrationOn;
+                            setVoiceNarrationOn(next);
+                            setCoachVoiceEnabled(next);
+                          }}
+                          className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold transition-all flex items-center gap-1 ${
+                            voiceNarrationOn
+                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                              : 'bg-slate-800 text-slate-400'
+                          }`}
+                          title="Toggle Coach Voice Narration"
+                        >
+                          <span>{voiceNarrationOn ? '🔊 Voice ON' : '🔇 Voice OFF'}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const next = !soundOn;
+                            setSoundOn(next);
+                            setChessSoundEnabled(next);
+                          }}
+                          className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold transition-all flex items-center gap-1 ${
+                            soundOn
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                              : 'bg-slate-800 text-slate-400'
+                          }`}
+                          title="Toggle Move Sound Effects"
+                        >
+                          <span>{soundOn ? '🎵 SFX ON' : '🔇 SFX OFF'}</span>
+                        </button>
                       </div>
                     </div>
-                  )}
+                  </div>
 
                   {/* Coach Candidate Clue Lightbulb Button (3 Free Hints) */}
                   <div className="flex items-center justify-between bg-slate-950/80 border border-slate-800 rounded-xl p-3">
@@ -4055,25 +4083,40 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                 </div>
 
                 {/* Primary Action Buttons */}
-                <div className="flex items-center gap-2 pt-1">
+                <div className="flex items-center gap-2 pt-1 flex-wrap">
                   {Array.isArray(analysisData.analysisSummary?.keyMoments) && analysisData.analysisSummary.keyMoments.length > 0 && (
                     <Button
                       onClick={() => handleStartPracticeMistakes(0)}
-                      className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-extrabold text-xs uppercase tracking-wider shadow-lg flex items-center justify-center gap-1.5"
+                      className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-extrabold text-xs uppercase tracking-wider shadow-lg flex items-center justify-center gap-1.5 min-w-[140px]"
                     >
                       <span>🎯 Practice Mistakes ({analysisData.analysisSummary.keyMoments.length})</span>
                     </Button>
                   )}
                   <Button
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowAnalysisModal(false);
+                      setPracticeMistakeIndex(null);
+                      setReplayAutoPlay(false);
+                      handleStartGame();
+                    }}
+                    className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-wider shadow-lg min-w-[120px]"
+                  >
+                    🔄 Play Again
+                  </Button>
+                  <Button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
                       setShowAnalysisModal(false);
                       setPracticeMistakeIndex(null);
                       setReplayAutoPlay(false);
                       setInGame(false);
                     }}
-                    className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs"
+                    className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs min-w-[130px]"
                   >
-                    Back to Overview
+                    🤖 Pick Another Bot
                   </Button>
                 </div>
               </div>

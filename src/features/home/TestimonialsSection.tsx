@@ -54,11 +54,13 @@ export default function TestimonialsSection() {
   const [submitError, setSubmitError] = useState('');
 
   useEffect(() => {
-    fetchApprovedReviewsAction().then((res) => {
-      if (res.success && res.reviews && res.reviews.length > 0) {
-        setReviewsList(res.reviews);
-      }
-    });
+    fetchApprovedReviewsAction()
+      .then((res) => {
+        if (res?.success && res?.reviews && res.reviews.length > 0) {
+          setReviewsList(res.reviews);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const handleSubmitReview = async (e: React.FormEvent) => {
@@ -77,7 +79,7 @@ export default function TestimonialsSection() {
         location: location || 'Global Learner',
       });
 
-      if (res.success) {
+      if (res?.success) {
         setSubmitSuccess(true);
         setName('');
         setLocation('');

@@ -11,6 +11,7 @@ import {
   getStudentPuzzleStats,
   hydrateStatsFromDb,
 } from '@/lib/puzzles/progress';
+import ChessCoachAvatar, { CoachAvatarState } from '@/components/dashboard/ui/ChessCoachAvatar';
 
 const ChessboardComponent = dynamic(
   () => import('react-chessboard').then((mod) => wrapChessboard(mod.Chessboard)),
@@ -831,6 +832,18 @@ export default function StudentPuzzleTrainer() {
     }
   };
 
+  const coachAvatarState: CoachAvatarState = isSolved
+    ? 'completed'
+    : isFailed
+    ? 'incorrect'
+    : hintLevel > 0
+    ? 'hint'
+    : attempts > 1
+    ? 'incorrect'
+    : loading
+    ? 'idle'
+    : 'puzzle_start';
+
   return (
     <div className="space-y-6">
       {/* Mode & Category Bar */}
@@ -1135,7 +1148,21 @@ export default function StudentPuzzleTrainer() {
         {/* Puzzle Details & Controls */}
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col justify-between space-y-6">
           <div className="space-y-4">
-            <div className="border-b border-slate-800 pb-4">
+            {/* 👨‍🏫 ChessHub Academy Coach Avatar */}
+            <ChessCoachAvatar
+              state={coachAvatarState}
+              customMessage={
+                isSolved
+                  ? 'Great job! Puzzle solved!'
+                  : isFailed
+                  ? 'Almost! Check the solution walkthrough below.'
+                  : hintLevel > 0 && currentPuzzle?.hint1
+                  ? currentPuzzle.hint1
+                  : undefined
+              }
+            />
+
+            <div className="border-b border-slate-800 pb-4 pt-2">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-extrabold text-amber-400 uppercase tracking-widest block">
                   {practiceMode === 'daily'
