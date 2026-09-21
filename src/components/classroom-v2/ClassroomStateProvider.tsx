@@ -179,6 +179,23 @@ export function ClassroomStateProvider({
   snapshotRef.current = snapshot;
   const activeChannelRef = useRef<any>(null);
 
+  // Synchronous mutation & version tracking refs (immune to React re-renders)
+  const localVersionRef = useRef(initialSnapshot.version);
+  const localCurrentMoveIndexRef = useRef(initialSnapshot.board.currentMoveIndex);
+  const lastProcessedMoveIdRef = useRef<string | null>(null);
+  const processedMoveIdsSet = useRef<Set<string>>(new Set());
+
+  // Mutable callback and prop refs to keep Realtime channel subscription stable
+  const reconcileSnapshotRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const userIdRef = useRef(userId);
+  userIdRef.current = userId;
+  const userNameRef = useRef(userName);
+  userNameRef.current = userName;
+  const roleRef = useRef(role);
+  roleRef.current = role;
+  const isCoachRef = useRef(isCoach);
+  isCoachRef.current = isCoach;
+
   const clearError = useCallback(() => setErrorMessage(null), []);
 
   // ── Snapshot Reconciliation ───────────────────────────────────────────────
@@ -186,6 +203,8 @@ export function ClassroomStateProvider({
     try {
       const res = await getCanonicalClassroomSnapshotAction(classId, sessionId);
       if (res.success && res.data) {
+        localVersionRef.current = Math.max(localVersionRef.current, res.data.version);
+        localCurrentMoveIndexRef.current = Math.max(localCurrentMoveIndexRef.current, res.data.board.currentMoveIndex);
         setSnapshot((prev) => ({
           ...res.data!,
           version: Math.max(prev.version, res.data!.version),
@@ -195,6 +214,10 @@ export function ClassroomStateProvider({
       console.warn('[Snapshot Reconcile Error]', err);
     }
   }, [classId, sessionId]);
+
+  useEffect(() => {
+    reconcileSnapshotRef.current = reconcileSnapshot;
+  }, [reconcileSnapshot]);
 
   // ── Initial Chat History Fetch ───────────────────────────────────────────
   useEffect(() => {
@@ -213,6 +236,7 @@ export function ClassroomStateProvider({
   // ── Realtime WebSocket Setup & Connection Resilience ─────────────────────
   useEffect(() => {
     let isMounted = true;
+    let isIntentionalClose = false;
     const supabase = createSupabaseClient();
     const channelName = `live-session:${sessionId}`;
     let currentChannel: any = null;
@@ -223,14 +247,17 @@ export function ClassroomStateProvider({
       if (!isMounted) return;
       if (currentChannel) {
         try {
+          isIntentionalClose = true;
           supabase.removeChannel(currentChannel);
-        } catch {}
+        } catch {} finally {
+          isIntentionalClose = false;
+        }
       }
 
       const channel = supabase.channel(channelName, {
         config: {
           presence: {
-            key: userId,
+            key: userIdRef.current,
           },
         },
       });
@@ -247,10 +274,17 @@ export function ClassroomStateProvider({
         (changePayload: any) => {
           const row = changePayload?.new;
           if (!row) return;
+          const rawMoves = Array.isArray(row.moves) ? row.moves : [];
+          const moveIdx = row.current_move_index ?? (rawMoves.length - 1);
+
           setSnapshot((current) => {
-            const rawMoves = Array.isArray(row.moves) ? row.moves : [];
-            const moveIdx = row.current_move_index ?? (rawMoves.length - 1);
-            if (moveIdx < current.board.currentMoveIndex) return current;
+            // If we are already at or ahead of this move index, and FEN matches, do not rewrite board
+            if (moveIdx <= current.board.currentMoveIndex && row.fen === current.board.fen) {
+              return current;
+            }
+            if (moveIdx > localCurrentMoveIndexRef.current) {
+              localCurrentMoveIndexRef.current = moveIdx;
+            }
             const parsedPerms = parseBoardControllers(row.board_controller_id || '');
             return {
               ...current,
@@ -280,7 +314,7 @@ export function ClassroomStateProvider({
 
         // Instant direct client board drawing handler (<50ms)
         if (payload.type === 'BOARD_DRAWING') {
-          if (payload.senderId !== userId) {
+          if (payload.senderId !== userIdRef.current) {
             setSnapshot((current) => ({
               ...current,
               board: {
@@ -293,25 +327,68 @@ export function ClassroomStateProvider({
           return;
         }
 
-        // Apply reducer for canonical board/puzzle/quiz states immediately — never drop moves!
-        setSnapshot((current) => classroomReducer(current, payload));
+        // Dedicated sub-second move handler with echo prevention
+        if (payload.type === 'MOVE_PLAYED') {
+          const moveEventId = payload.eventId || payload.moveId;
+          const isMyMove =
+            payload.move?.playedBy === userIdRef.current ||
+            (moveEventId && processedMoveIdsSet.current.has(moveEventId)) ||
+            moveEventId === lastProcessedMoveIdRef.current;
 
-        if (payload.type === 'MOVE_PLAYED' && payload.move?.playedBy !== userId) {
+          if (isMyMove) {
+            // COACH / SENDER'S OWN MOVE ECHO:
+            // The originating client has ALREADY applied this move optimistically!
+            if (moveEventId) processedMoveIdsSet.current.add(moveEventId);
+            if (payload.version && payload.version > localVersionRef.current) {
+              localVersionRef.current = payload.version;
+            }
+            if (payload.currentMoveIndex !== undefined && payload.currentMoveIndex > localCurrentMoveIndexRef.current) {
+              localCurrentMoveIndexRef.current = payload.currentMoveIndex;
+            }
+
+            // Confirm server version in snapshot without re-animating or re-playing audio
+            setSnapshot((current) => ({
+              ...current,
+              version: Math.max(current.version, payload.version || current.version),
+              updatedAt: payload.timestamp || current.updatedAt,
+            }));
+            return;
+          }
+
+          // Move from another participant:
+          if (moveEventId) processedMoveIdsSet.current.add(moveEventId);
+          if (payload.version) {
+            localVersionRef.current = Math.max(localVersionRef.current, payload.version);
+          }
+          if (payload.currentMoveIndex !== undefined) {
+            localCurrentMoveIndexRef.current = Math.max(localCurrentMoveIndexRef.current, payload.currentMoveIndex);
+          }
+
+          setSnapshot((current) => classroomReducer(current, payload));
+
           const san = payload.move?.san || '';
           const isCapture = san.includes('x');
           const isCheck = san.includes('+') || san.includes('#');
           playChessSound(isCheck ? 'check' : isCapture ? 'capture' : 'move');
+
+          // Gap detection: Only reconcile if an external event skips a version
+          if (payload.version && payload.version > localVersionRef.current + 1) {
+            console.warn('[Realtime Gap] Received version', payload.version, 'while at', localVersionRef.current, '- Reconciling in background');
+            reconcileSnapshotRef.current();
+          }
+          return;
         }
 
-        // Gap detection: If incoming version skips local version, reconcile canonical state in background
-        if (payload.version && payload.version > snapshotRef.current.version + 1) {
-          console.warn('[Realtime Gap] Received version', payload.version, 'while at', snapshotRef.current.version, '- Reconciling canonical snapshot in background');
-          reconcileSnapshot();
+        // Apply reducer for other events (puzzle, quiz, etc.)
+        setSnapshot((current) => classroomReducer(current, payload));
+
+        if (payload.version && payload.version > localVersionRef.current + 1) {
+          reconcileSnapshotRef.current();
         }
 
         // Special handling for secondary real-time entities
         if (payload.type === 'CHAT_MESSAGE' || payload.type === 'PRIVATE_CHAT_MESSAGE') {
-          const isForMe = !payload.isPrivate || isCoach || payload.recipientId === userId || payload.senderId === userId;
+          const isForMe = !payload.isPrivate || isCoachRef.current || payload.recipientId === userIdRef.current || payload.senderId === userIdRef.current;
           if (isForMe && payload.message) {
             setMessages((prev) => {
               if (prev.some((m) => m.id === payload.message.id)) return prev;
@@ -324,8 +401,7 @@ export function ClassroomStateProvider({
             { id: `rx_${Date.now()}_${Math.random()}`, emoji: payload.emoji, userName: payload.userName },
           ]);
         } else if (payload.type === 'STUDENT_RESPONSE') {
-          // If responses are revealed to class, or if coach, or if author student: accept it
-          const isForMe = isCoach || areResponsesRevealedRef.current || payload.response?.studentId === userId;
+          const isForMe = isCoachRef.current || areResponsesRevealedRef.current || payload.response?.studentId === userIdRef.current;
           if (isForMe && payload.response) {
             setResponses((prev) => {
               if (prev.some((r) => r.id === payload.response.id)) return prev;
@@ -341,7 +417,7 @@ export function ClassroomStateProvider({
               return r;
             })
           );
-          if (role === 'student' && payload.status === 'correct') {
+          if (roleRef.current === 'student' && payload.status === 'correct') {
             try { playChessSound('capture'); } catch {}
           }
         } else if (payload.type === 'TOGGLE_REVEAL_RESPONSES') {
@@ -365,14 +441,14 @@ export function ClassroomStateProvider({
             attempts: payload.attempts,
             timestamp: payload.timestamp,
           });
-          if (payload.studentId === userId) {
+          if (payload.studentId === userIdRef.current) {
             setTimeout(() => setPuzzleAttemptResult(null), 4000);
           }
         } else if (payload.type === 'RAISE_HAND_CHANGED') {
           setRaisedHandUserIds((prev) => {
             const next = new Set(prev);
             if (payload.raised) {
-              if (!prev.has(payload.studentId) && isCoach && payload.studentId !== userId) {
+              if (!prev.has(payload.studentId) && isCoachRef.current && payload.studentId !== userIdRef.current) {
                 playChessSound('hand');
               }
               next.add(payload.studentId);
@@ -381,7 +457,7 @@ export function ClassroomStateProvider({
             }
             return next;
           });
-          if (payload.studentId === userId) {
+          if (payload.studentId === userIdRef.current) {
             setHasRaisedHand(payload.raised);
           }
         } else if (payload.type === 'CLASS_ENDED') {
@@ -400,7 +476,7 @@ export function ClassroomStateProvider({
         }
       });
 
-      // Realtime Presence tracking — accurately maps presence key and payload to onlineUserIds
+      // Realtime Presence tracking
       channel
         .on('presence', { event: 'sync' }, () => {
           const state = channel.presenceState();
@@ -441,19 +517,22 @@ export function ClassroomStateProvider({
         });
 
       channel.subscribe((status: string) => {
-        if (!isMounted) return;
+        if (!isMounted || isIntentionalClose) return;
         if (status === 'SUBSCRIBED') {
           reconnectAttempts = 0;
           setConnectionState('connected');
           channel.track({
-            userId,
-            userName,
-            role,
+            userId: userIdRef.current,
+            userName: userNameRef.current,
+            role: roleRef.current,
             onlineAt: new Date().toISOString(),
           });
-          reconcileSnapshot();
-        } else if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+        } else if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR') {
           scheduleReconnect();
+        } else if (status === 'CLOSED') {
+          if (!isIntentionalClose && isMounted) {
+            scheduleReconnect();
+          }
         }
       });
 
@@ -462,13 +541,13 @@ export function ClassroomStateProvider({
     };
 
     const scheduleReconnect = () => {
-      if (reconnectTimeout || !isMounted) return;
+      if (reconnectTimeout || !isMounted || isIntentionalClose) return;
       reconnectAttempts++;
       const delay = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), 10000) + Math.floor(Math.random() * 500);
       setConnectionState('reconnecting');
       reconnectTimeout = setTimeout(() => {
         reconnectTimeout = null;
-        if (!isMounted) return;
+        if (!isMounted || isIntentionalClose) return;
         initChannel();
       }, delay);
     };
@@ -477,21 +556,22 @@ export function ClassroomStateProvider({
 
     const handleOnline = () => {
       setConnectionState('reconnecting');
-      reconcileSnapshot().then(() => setConnectionState('connected'));
+      reconcileSnapshotRef.current().then(() => setConnectionState('connected'));
       if (activeChannelRef.current?.state !== 'joined') {
         scheduleReconnect();
       }
     };
 
     const handleFocus = () => {
-      reconcileSnapshot();
+      reconcileSnapshotRef.current();
     };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('focus', handleFocus);
 
-    // Periodic background chat sync (every 10 seconds fallback)
+    // Periodic background chat sync (every 15 seconds fallback)
     const chatSyncInterval = setInterval(() => {
+      if (!classId) return;
       getClassroomChatHistoryAction(classId).then((res) => {
         if (res.success && Array.isArray(res.messages) && res.messages.length > 0) {
           setMessages((prev) => {
@@ -502,20 +582,23 @@ export function ClassroomStateProvider({
           });
         }
       }).catch(() => {});
-    }, 10000);
+    }, 15000);
 
     return () => {
       isMounted = false;
+      isIntentionalClose = true;
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
       clearInterval(chatSyncInterval);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('focus', handleFocus);
       if (currentChannel) {
-        supabase.removeChannel(currentChannel);
+        try {
+          supabase.removeChannel(currentChannel);
+        } catch {}
       }
       activeChannelRef.current = null;
     };
-  }, [classId, sessionId, userId, userName, role, isCoach, router, reconcileSnapshot]);
+  }, [sessionId, classId]);
 
   // ── Compute Participants List ─────────────────────────────────────────────
   const participants: ParticipantInfo[] = useMemo(() => {
@@ -559,14 +642,7 @@ export function ClassroomStateProvider({
 
   const onMakeMove = useCallback(
     async (from: string, to: string, promotion?: string): Promise<boolean> => {
-      console.log('[ClassroomStateProvider] onMakeMove called:', {
-        from,
-        to,
-        promotion,
-        canMove,
-        isBoardLocked,
-        currentFen: snapshotRef.current?.board?.fen,
-      });
+      const perfStart = performance.now();
 
       if (!canMove || isBoardLocked) {
         // Silently reject — the board's FEN prop stays unchanged, piece snaps back naturally.
@@ -585,7 +661,6 @@ export function ClassroomStateProvider({
       const allowIllegalMoves = Boolean(snapshotRef.current?.board?.allowIllegalMoves);
       const validation = validateChessMove(snapshotRef.current.board.fen, { from, to, promotion }, allowIllegalMoves);
       if (!validation.valid || !validation.newFen) {
-        console.warn('[ClassroomStateProvider] Move validation failed (silent):', validation.error);
         // Silent return — no error banner. Invalid moves snap back via FEN prop naturally.
         return false;
       }
@@ -593,11 +668,9 @@ export function ClassroomStateProvider({
       if (!isCoach) {
         const studentColorPerm = getUserAllowedColor(role, userId, snapshotRef.current.permissions);
         if (studentColorPerm === 'white' && validation.color !== 'w') {
-          console.warn('[ClassroomStateProvider] Student only permitted to play White');
           return false;
         }
         if (studentColorPerm === 'black' && validation.color !== 'b') {
-          console.warn('[ClassroomStateProvider] Student only permitted to play Black');
           return false;
         }
       }
@@ -605,6 +678,12 @@ export function ClassroomStateProvider({
       const previousSnapshot = snapshotRef.current;
       const expectedVersion = previousSnapshot.version;
       const mutationId = `move_${Date.now()}_${from}_${to}`;
+
+      // Synchronously record this move in local tracking refs BEFORE broadcasting or saving
+      lastProcessedMoveIdRef.current = mutationId;
+      processedMoveIdsSet.current.add(mutationId);
+      localVersionRef.current = expectedVersion + 1;
+      localCurrentMoveIndexRef.current = previousSnapshot.board.moves.length;
 
       const newMoveData: MoveData = {
         moveNumber: Math.floor(previousSnapshot.board.moves.length / 2) + 1,
@@ -620,7 +699,7 @@ export function ClassroomStateProvider({
         timestamp: new Date().toISOString(),
       };
 
-      // Optimistic UI state
+      // Optimistic UI state (<1ms local board update)
       setSnapshot((current) => ({
         ...current,
         version: current.version + 1,
@@ -634,6 +713,8 @@ export function ClassroomStateProvider({
           highlights: [],
         },
       }));
+
+      const localApplyMs = performance.now() - perfStart;
 
       // Instant client-side WebSocket broadcast (<30ms peer sync)
       try {
@@ -659,25 +740,43 @@ export function ClassroomStateProvider({
       const moveSan = validation.san || '';
       playChessSound(moveSan.includes('+') || moveSan.includes('#') ? 'check' : moveSan.includes('x') ? 'capture' : 'move');
 
-      // Server-Authoritative Persist & Broadcast
+      // Server-Authoritative Persist & Broadcast in background
+      const serverReqStart = performance.now();
       const res = await mutateClassroomMoveAction(
         sessionId,
         { from, to, promotion },
         expectedVersion,
         mutationId
       );
+      const serverRoundtripMs = performance.now() - serverReqStart;
+
+      // Performance Telemetry Debugging
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[BOARD PERFORMANCE]', {
+          move_id: mutationId,
+          source: from,
+          target: to,
+          local_apply_ms: Math.round(localApplyMs * 10) / 10,
+          server_roundtrip_ms: Math.round(serverRoundtripMs * 10) / 10,
+          version: localVersionRef.current,
+          connection_status: connectionState,
+        });
+      }
 
       if (!res.success) {
         // Rollback on rejection
+        console.warn('[onMakeMove] Move rejected by server, rolling back:', res.error);
         setSnapshot(previousSnapshot);
+        localVersionRef.current = previousSnapshot.version;
+        localCurrentMoveIndexRef.current = previousSnapshot.board.currentMoveIndex;
         setErrorMessage(res.error || 'Move rejected by server.');
-        reconcileSnapshot();
+        reconcileSnapshotRef.current();
         return false;
       }
 
       return true;
     },
-    [canMove, isBoardLocked, sessionId, userId, reconcileSnapshot]
+    [canMove, isBoardLocked, isCoach, role, sessionId, userId, connectionState]
   );
 
   const onUndoMove = useCallback(async (): Promise<boolean> => {

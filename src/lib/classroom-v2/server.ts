@@ -291,7 +291,8 @@ export async function mutateClassroomMove(
   userId: string,
   userRole: UserRole,
   moveInput: { from: string; to: string; promotion?: string } | string,
-  expectedVersion?: number
+  expectedVersion?: number,
+  mutationId?: string
 ): Promise<{
   success: boolean;
   error?: string;
@@ -435,10 +436,12 @@ export async function mutateClassroomMove(
   overlay.arrows = [];
   overlay.highlights = [];
 
+  const eventId = mutationId || `move_${Date.now()}_${nextVersion}`;
+
   // 5. Broadcast Realtime Event
   await broadcastToLiveSession(sessionId, {
     sessionId,
-    eventId: `move_${Date.now()}_${nextVersion}`,
+    eventId,
     type: 'MOVE_PLAYED',
     move: newMoveData,
     fen: validation.newFen,

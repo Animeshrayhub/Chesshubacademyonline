@@ -87,7 +87,8 @@ export async function mutateClassroomMoveAction(
     auth.userId,
     auth.userRole,
     moveInput,
-    expectedVersion
+    expectedVersion,
+    mutationId
   );
 
   if (mutationId && res.success) {
