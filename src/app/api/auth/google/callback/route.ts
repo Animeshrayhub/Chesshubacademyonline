@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getCurrentUser } from '@/lib/supabase/auth';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
-import { exchangeGoogleAuthCode, getGoogleUserEmail } from '@/lib/google/meet';
+import { exchangeGoogleAuthCode, getGoogleUserEmail, verifySignedOAuthState } from '@/lib/google/meet';
 import { encryptToken } from '@/lib/security/tokenEncryption';
+import { saveCoachGoogleTokens, getCoachGoogleTokens } from '@/lib/google/tokens';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,10 +26,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(redirectTarget);
   }
 
-  // 2. Validate state token against httpOnly cookie (CSRF defense)
+  // 2. Validate state token (Check cookie first, fallback to cryptographic signature)
   const savedState = request.cookies.get('chesshub_google_oauth_state')?.value;
-  if (!state || !savedState || state !== savedState) {
-    console.error('[Google OAuth Callback] CSRF state mismatch or missing state token.');
+  const verifiedSignedState = state ? verifySignedOAuthState(state) : { isValid: false };
+
+  const isStateValid = Boolean(
+    (state && savedState && state === savedState) || verifiedSignedState.isValid
+  );
+
+  if (!isStateValid || !state) {
+    console.error('[Google OAuth Callback] CSRF state mismatch or invalid state token.');
     redirectTarget.searchParams.set('google_error', 'csrf_mismatch');
     return NextResponse.redirect(redirectTarget);
   }
@@ -39,22 +46,43 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(redirectTarget);
   }
 
-  // 4. Authenticate current user and enforce Coach or Admin authorization
-  const user = await getCurrentUser();
-  if (!user || (user.role !== 'COACH' && user.role !== 'ADMIN')) {
+  // 4. Authenticate current user (or resolve from validated signed state)
+  const admin = createSupabaseAdmin();
+  let user = await getCurrentUser();
+
+  if (!user && verifiedSignedState.isValid && verifiedSignedState.userId) {
+    const { data: dbUser } = await admin
+      .from('users')
+      .select('id, email, role')
+      .eq('id', verifiedSignedState.userId)
+      .maybeSingle();
+
+    if (dbUser) {
+      user = {
+        id: dbUser.id,
+        email: dbUser.email,
+        username: dbUser.email.split('@')[0],
+        firstName: 'Coach',
+        lastName: 'Instructor',
+        role: dbUser.role as any,
+        isActive: true,
+      };
+    }
+  }
+
+  const userRole = user?.role?.toUpperCase();
+  if (!user || (userRole !== 'COACH' && userRole !== 'ADMIN')) {
     redirectTarget.searchParams.set('google_error', 'unauthorized');
     return NextResponse.redirect(redirectTarget);
   }
 
   try {
-    const admin = createSupabaseAdmin();
-
     // 5. Lookup coach_profile id corresponding to current user
     let coachProfileId = user.id;
     const { data: coachProfile } = await admin
       .from('coach_profiles')
-      .select('id')
-      .eq('id', user.id)
+      .select('id, user_id')
+      .or(`user_id.eq.${user.id},id.eq.${user.id}`)
       .maybeSingle();
 
     if (coachProfile?.id) {
@@ -62,55 +90,31 @@ export async function GET(request: NextRequest) {
     }
 
     // 6. Exchange code for tokens (server-to-server)
-    const tokenData = await exchangeGoogleAuthCode(code);
+    const tokenData = await exchangeGoogleAuthCode(code, request.nextUrl.origin);
 
     if (!tokenData.refresh_token) {
       // If a refresh token wasn't returned, check if an existing refresh token is already stored
-      const { data: existingToken } = await admin
-        .from('coach_google_tokens')
-        .select('id')
-        .eq('coach_id', coachProfileId)
-        .maybeSingle();
+      const existingToken = await getCoachGoogleTokens(user.id);
 
       if (!existingToken) {
         throw new Error('Google did not return a refresh token. Please re-authorize with consent.');
       }
     }
 
-    // 7. Encrypt refresh token with AES-256-GCM
+    // 7. Fetch user email from Google
     const email = await getGoogleUserEmail(tokenData.access_token);
 
+    // 8. Encrypt and persist credentials
     if (tokenData.refresh_token) {
       const encrypted = encryptToken(tokenData.refresh_token);
 
-      // 8. Upsert encrypted credentials into coach_google_tokens
-      const { error: upsertErr } = await admin
-        .from('coach_google_tokens')
-        .upsert(
-          {
-            coach_id: coachProfileId,
-            google_account_email: email,
-            encrypted_refresh_token: encrypted.ciphertext,
-            iv: encrypted.iv,
-            auth_tag: encrypted.tag,
-            scope: tokenData.scope || null,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'coach_id' }
-        );
-
-      if (upsertErr) {
-        throw new Error(`Failed to store Google token in database: ${upsertErr.message}`);
-      }
-    } else if (email) {
-      // Update email if only access token was refreshed
-      await admin
-        .from('coach_google_tokens')
-        .update({
-          google_account_email: email,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('coach_id', coachProfileId);
+      await saveCoachGoogleTokens(user.id, {
+        email,
+        encrypted_refresh_token: encrypted.ciphertext,
+        iv: encrypted.iv,
+        auth_tag: encrypted.tag,
+        scope: tokenData.scope || null,
+      });
     }
 
     // 9. Clean up state cookie & redirect coach with success status

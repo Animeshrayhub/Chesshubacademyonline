@@ -27,7 +27,7 @@ export async function GET(
 
     const { data: activeSession } = await admin
       .from('live_sessions')
-      .select('id')
+      .select('id, started_at')
       .eq('class_id', params.classId)
       .eq('status', 'active')
       .maybeSingle();
@@ -44,6 +44,7 @@ export async function GET(
     return NextResponse.json({
       status: cls.status,
       isLive,
+      startedAt: activeSession?.started_at || null,
       meetingProvider: isGoogleMeet ? 'GOOGLE_MEET' : 'ZOOM',
       zoomJoinUrl: isGoogleMeet ? null : (cls.zoom_join_url || null),
       googleMeetUri: activeMeetUri,

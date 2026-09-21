@@ -5,6 +5,7 @@ import { getCurrentUser } from '@/lib/supabase/auth';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { refreshGoogleAccessToken, createGoogleMeetSpace } from '@/lib/google/meet';
 import { decryptToken } from '@/lib/security/tokenEncryption';
+import { getCoachGoogleTokens, deleteCoachGoogleTokens } from '@/lib/google/tokens';
 
 export interface CoachGoogleStatusResult {
   isConnected: boolean;
@@ -22,23 +23,14 @@ export async function getCoachGoogleMeetStatusAction(): Promise<{
 }> {
   try {
     const user = await getCurrentUser();
-    if (!user || (user.role !== 'COACH' && user.role !== 'ADMIN')) {
+    const userRole = user?.role?.toUpperCase();
+    if (!user || (userRole !== 'COACH' && userRole !== 'ADMIN')) {
       return { success: false, error: { message: 'Unauthorized. Coach access required.' } };
     }
 
-    const admin = createSupabaseAdmin();
-    const { data: tokenRecord, error } = await admin
-      .from('coach_google_tokens')
-      .select('google_account_email, updated_at')
-      .eq('coach_id', user.id)
-      .maybeSingle();
+    const tokens = await getCoachGoogleTokens(user.id);
 
-    if (error) {
-      console.warn('[getCoachGoogleMeetStatusAction] query warning:', error.message);
-      return { success: true, data: { isConnected: false, email: null, updatedAt: null } };
-    }
-
-    if (!tokenRecord) {
+    if (!tokens) {
       return { success: true, data: { isConnected: false, email: null, updatedAt: null } };
     }
 
@@ -46,8 +38,8 @@ export async function getCoachGoogleMeetStatusAction(): Promise<{
       success: true,
       data: {
         isConnected: true,
-        email: tokenRecord.google_account_email || null,
-        updatedAt: tokenRecord.updated_at || null,
+        email: tokens.email || null,
+        updatedAt: tokens.updated_at || null,
       },
     };
   } catch (err: any) {
@@ -64,19 +56,12 @@ export async function disconnectCoachGoogleMeetAction(): Promise<{
 }> {
   try {
     const user = await getCurrentUser();
-    if (!user || (user.role !== 'COACH' && user.role !== 'ADMIN')) {
+    const userRole = user?.role?.toUpperCase();
+    if (!user || (userRole !== 'COACH' && userRole !== 'ADMIN')) {
       return { success: false, error: { message: 'Unauthorized. Coach access required.' } };
     }
 
-    const admin = createSupabaseAdmin();
-    const { error } = await admin
-      .from('coach_google_tokens')
-      .delete()
-      .eq('coach_id', user.id);
-
-    if (error) {
-      throw new Error(`Failed to remove Google Meet connection: ${error.message}`);
-    }
+    await deleteCoachGoogleTokens(user.id);
 
     revalidatePath('/dashboard/coach/classes');
     return { success: true };
@@ -96,7 +81,8 @@ export async function createGoogleMeetForClassAction(classId: string): Promise<{
 }> {
   try {
     const user = await getCurrentUser();
-    if (!user || (user.role !== 'COACH' && user.role !== 'ADMIN')) {
+    const userRole = user?.role?.toUpperCase();
+    if (!user || (userRole !== 'COACH' && userRole !== 'ADMIN')) {
       return { success: false, error: { message: 'Unauthorized. Coach access required.' } };
     }
 
@@ -114,7 +100,7 @@ export async function createGoogleMeetForClassAction(classId: string): Promise<{
     }
 
     // 2. Verify coach assignment (Admins can override)
-    let isAssigned = user.role === 'ADMIN';
+    let isAssigned = userRole === 'ADMIN';
     let tokenOwnerUserId = user.id;
 
     if (!isAssigned) {
@@ -123,19 +109,18 @@ export async function createGoogleMeetForClassAction(classId: string): Promise<{
       } else {
         const { data: cp } = await admin
           .from('coach_profiles')
-          .select('id')
-          .eq('user_id', user.id)
+          .select('id, user_id')
+          .or(`user_id.eq.${user.id},id.eq.${user.id}`)
           .maybeSingle();
-        if (cp && cls.coach_id === cp.id) {
+        if (cp && (cls.coach_id === cp.id || cls.coach_id === cp.user_id)) {
           isAssigned = true;
         }
       }
     } else if (cls.coach_id && cls.coach_id !== user.id) {
-      // If admin, check if cls.coach_id is coach_profiles.id or direct users.id
       const { data: cp } = await admin
         .from('coach_profiles')
         .select('user_id')
-        .eq('id', cls.coach_id)
+        .or(`id.eq.${cls.coach_id},user_id.eq.${cls.coach_id}`)
         .maybeSingle();
       tokenOwnerUserId = cp?.user_id || cls.coach_id;
     }
@@ -145,13 +130,9 @@ export async function createGoogleMeetForClassAction(classId: string): Promise<{
     }
 
     // 3. Retrieve coach's encrypted Google tokens
-    const { data: tokenRecord, error: tokenErr } = await admin
-      .from('coach_google_tokens')
-      .select('encrypted_refresh_token, iv, auth_tag, google_account_email')
-      .eq('coach_id', tokenOwnerUserId)
-      .maybeSingle();
+    const tokenRecord = await getCoachGoogleTokens(tokenOwnerUserId);
 
-    if (tokenErr || !tokenRecord) {
+    if (!tokenRecord || !tokenRecord.encrypted_refresh_token) {
       return {
         success: false,
         error: {
@@ -173,22 +154,36 @@ export async function createGoogleMeetForClassAction(classId: string): Promise<{
     // 6. Call Google Meet REST API to create a live meeting space
     const meetSpace = await createGoogleMeetSpace(freshAccessToken);
 
-    // 7. Update class record with Google Meet space details
-    const updatePayload = {
-      meeting_provider: 'GOOGLE_MEET',
-      google_meet_space_id: meetSpace.spaceId,
-      google_meet_uri: meetSpace.meetingUri,
-      zoom_join_url: meetSpace.meetingUri, // Fallback compatibility mirror
+    // 7. Update class record with Google Meet space details (resilient to schema differences)
+    const safePayload: Record<string, any> = {
+      zoom_join_url: meetSpace.meetingUri,
+      zoom_start_url: meetSpace.meetingUri,
+      zoom_meeting_id: meetSpace.spaceId,
       updated_at: new Date().toISOString(),
     };
 
-    const { error: updateErr } = await admin
+    const fullPayload = {
+      ...safePayload,
+      meeting_provider: 'GOOGLE_MEET',
+      google_meet_space_id: meetSpace.spaceId,
+      google_meet_uri: meetSpace.meetingUri,
+    };
+
+    const { error: fullUpdateErr } = await admin
       .from('classes')
-      .update(updatePayload)
+      .update(fullPayload)
       .eq('id', classId);
 
-    if (updateErr) {
-      throw new Error(`Failed to save Google Meet details to class: ${updateErr.message}`);
+    if (fullUpdateErr) {
+      console.warn('[createGoogleMeetForClassAction] falling back to safe columns:', fullUpdateErr.message);
+      const { error: fallbackErr } = await admin
+        .from('classes')
+        .update(safePayload)
+        .eq('id', classId);
+
+      if (fallbackErr) {
+        throw new Error(`Failed to save Google Meet details to class: ${fallbackErr.message}`);
+      }
     }
 
     revalidatePath('/dashboard/coach/classes');

@@ -431,6 +431,24 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
 
     setIsSubmitting(true);
 
+    const notifyRealtimeClassUpdate = async () => {
+      try {
+        const { createSupabaseClient } = await import('@/lib/supabase/client');
+        const supabase = createSupabaseClient();
+        const ch = supabase.channel('coach-classes-realtime');
+        ch.subscribe((status: any) => {
+          if (status === 'SUBSCRIBED') {
+            ch.send({
+              type: 'broadcast',
+              event: 'CLASS_ASSIGNED',
+              payload: { timestamp: Date.now() },
+            });
+            setTimeout(() => supabase.removeChannel(ch), 1000);
+          }
+        });
+      } catch (e) {}
+    };
+
     try {
       const isGoogleMeet = formData.videoProvider === 'GOOGLE_MEET';
       const payload: CreateClassInput = {
@@ -451,6 +469,7 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
       if (editClass) {
         const res = await updateClassAction(editClass.id, payload);
         if (res.success) {
+          notifyRealtimeClassUpdate();
           setFormSuccess(true);
           setTimeout(() => {
             setIsCreateOpen(false);
@@ -470,6 +489,7 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
 
         const res = await createBatchClassesAction(batchPayload);
         if (res.success && res.data) {
+          notifyRealtimeClassUpdate();
           setCreatedBatchResult(res.data);
         } else {
           setFormError(res.error?.message || 'An error occurred. Please try again.');
@@ -486,6 +506,21 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
     if (!confirmDelete) return;
     startTransition(async () => {
       await deleteClassAction(confirmDelete.id);
+      try {
+        const { createSupabaseClient } = await import('@/lib/supabase/client');
+        const supabase = createSupabaseClient();
+        const ch = supabase.channel('coach-classes-realtime');
+        ch.subscribe((status: any) => {
+          if (status === 'SUBSCRIBED') {
+            ch.send({
+              type: 'broadcast',
+              event: 'CLASS_ASSIGNED',
+              payload: { timestamp: Date.now() },
+            });
+            setTimeout(() => supabase.removeChannel(ch), 1000);
+          }
+        });
+      } catch (e) {}
       setConfirmDelete(null);
     });
   };

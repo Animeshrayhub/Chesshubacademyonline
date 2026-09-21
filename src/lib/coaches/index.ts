@@ -427,12 +427,34 @@ export async function getCoachDashboardStats(): Promise<Result<{
       .eq('user_id', user.id)
       .maybeSingle();
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    // Timezone resilient range (covering UTC-12 to UTC+14) for today's classes
+    const dayStartIso = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1, 10, 0, 0)).toISOString();
+    const dayEndIso = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 14, 0, 0)).toISOString();
     const startOfWeek = new Date();
     startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
     const endOfWeek = new Date();
     endOfWeek.setDate(endOfWeek.getDate() + (6 - endOfWeek.getDay()));
     const coachIds = [profile?.id, user.id].filter(Boolean) as string[];
+
+    const classesTodayQuery = admin
+      .from('classes')
+      .select('*', { count: 'exact', head: true })
+      .gte('scheduled_start', dayStartIso)
+      .lte('scheduled_start', dayEndIso)
+      .is('archived_at', null);
+
+    const weeklySessionsQuery = admin
+      .from('classes')
+      .select('*', { count: 'exact', head: true })
+      .gte('scheduled_start', startOfWeek.toISOString())
+      .lte('scheduled_start', endOfWeek.toISOString())
+      .is('archived_at', null);
+
+    if (user.role !== 'ADMIN' && coachIds.length > 0) {
+      classesTodayQuery.in('coach_id', coachIds);
+      weeklySessionsQuery.in('coach_id', coachIds);
+    }
 
     const [
       { count: activeStudents },
@@ -441,37 +463,45 @@ export async function getCoachDashboardStats(): Promise<Result<{
       { count: weeklySessions },
     ] = await Promise.all([
       admin.from('coach_student_assignments').select('*', { count: 'exact', head: true }).in('coach_id', coachIds).is('archived_at', null),
-      admin.from('classes').select('*', { count: 'exact', head: true }).in('coach_id', coachIds).gte('scheduled_start', `${todayStr}T00:00:00Z`).lte('scheduled_start', `${todayStr}T23:59:59Z`).is('archived_at', null),
+      classesTodayQuery,
       admin.from('homework_assignments').select('*', { count: 'exact', head: true }).in('coach_id', coachIds).eq('status', 'submitted'),
-      admin.from('classes').select('*', { count: 'exact', head: true }).in('coach_id', coachIds).gte('scheduled_start', startOfWeek.toISOString()).lte('scheduled_start', endOfWeek.toISOString()).is('archived_at', null),
+      weeklySessionsQuery,
     ]);
 
-    // Fetch next upcoming class
-    const nowStr = new Date().toISOString();
-    const { data: nextClasses } = await admin
+    // Fetch next upcoming or active class (SCHEDULED, LIVE, or IN_PROGRESS)
+    let nextClassQuery = admin
       .from('classes')
-      .select('scheduled_start')
-      .in('coach_id', coachIds)
-      .gt('scheduled_start', nowStr)
+      .select('scheduled_start, status')
+      .in('status', ['SCHEDULED', 'LIVE', 'IN_PROGRESS'])
       .is('archived_at', null)
       .order('scheduled_start', { ascending: true })
       .limit(1);
 
+    if (user.role !== 'ADMIN' && coachIds.length > 0) {
+      nextClassQuery = nextClassQuery.in('coach_id', coachIds);
+    }
+
+    const { data: nextClasses } = await nextClassQuery;
+
     let nextClassStr = 'None';
     if (nextClasses && nextClasses[0]) {
-      const nextDate = new Date(nextClasses[0].scheduled_start);
-      const today = new Date();
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      
-      const timeStr = nextDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-      
-      if (nextDate.toDateString() === today.toDateString()) {
-        nextClassStr = `Today at ${timeStr}`;
-      } else if (nextDate.toDateString() === tomorrow.toDateString()) {
-        nextClassStr = `Tomorrow at ${timeStr}`;
+      if (nextClasses[0].status === 'LIVE' || nextClasses[0].status === 'IN_PROGRESS') {
+        nextClassStr = 'Live Session Active';
       } else {
-        nextClassStr = `${nextDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at ${timeStr}`;
+        const nextDate = new Date(nextClasses[0].scheduled_start);
+        const today = new Date();
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        
+        const timeStr = nextDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        
+        if (nextDate.toDateString() === today.toDateString()) {
+          nextClassStr = `Today at ${timeStr}`;
+        } else if (nextDate.toDateString() === tomorrow.toDateString()) {
+          nextClassStr = `Tomorrow at ${timeStr}`;
+        } else {
+          nextClassStr = `${nextDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at ${timeStr}`;
+        }
       }
     }
 
@@ -751,30 +781,42 @@ export async function getCoachClasses(): Promise<Result<any[]>> {
       .in('class_id', classIds)
       .is('archived_at', null);
 
-    const studentProfileIds = [...new Set(mappings?.map((m: any) => m.student_id) ?? [])];
+    const rawStudentIds = [...new Set(mappings?.map((m: any) => m.student_id) ?? [])];
     
     let studentUserMap = new Map<string, { first_name: string; last_name: string }>();
-    let studentProfileToUserId = new Map<string, string>();
 
-    if (studentProfileIds.length > 0) {
-      const { data: studentProfiles } = await admin
-        .from('student_profiles')
-        .select('id, user_id')
-        .in('id', studentProfileIds);
+    if (rawStudentIds.length > 0) {
+      const [profilesRes, directUsersRes] = await Promise.all([
+        admin.from('student_profiles').select('id, user_id').in('id', rawStudentIds),
+        admin.from('users').select('id, first_name, last_name').in('id', rawStudentIds),
+      ]);
 
-      if (studentProfiles) {
-        studentProfileToUserId = new Map<string, string>(studentProfiles.map((sp: any) => [sp.id, sp.user_id]));
-        const userIds = [...new Set(studentProfiles.map((sp: any) => sp.user_id))];
+      const studentProfiles = profilesRes.data ?? [];
+      const directUsers = directUsersRes.data ?? [];
 
-        if (userIds.length > 0) {
-          const { data: studentUsers } = await admin
-            .from('users')
-            .select('id, first_name, last_name')
-            .in('id', userIds);
+      const userIdsFromProfiles = [...new Set(studentProfiles.map((sp: any) => sp.user_id))];
+      let profileUsers: any[] = [];
+      if (userIdsFromProfiles.length > 0) {
+        const { data: uRes } = await admin
+          .from('users')
+          .select('id, first_name, last_name')
+          .in('id', userIdsFromProfiles);
+        profileUsers = uRes ?? [];
+      }
 
-          if (studentUsers) {
-            studentUserMap = new Map<string, any>(studentUsers.map((u: any) => [u.id, { first_name: u.first_name, last_name: u.last_name }]));
-          }
+      const allUsersMap = new Map<string, any>([
+        ...directUsers.map((u: any) => [u.id, u]),
+        ...profileUsers.map((u: any) => [u.id, u]),
+      ]);
+
+      const profileToUserIdMap = new Map<string, string>(studentProfiles.map((sp: any) => [sp.id, sp.user_id]));
+
+      for (const id of (rawStudentIds as string[])) {
+        const uId = profileToUserIdMap.get(id) || id;
+        const u = allUsersMap.get(uId);
+        if (u) {
+          studentUserMap.set(id, { first_name: u.first_name, last_name: u.last_name });
+          studentUserMap.set(uId, { first_name: u.first_name, last_name: u.last_name });
         }
       }
     }
@@ -794,15 +836,18 @@ export async function getCoachClasses(): Promise<Result<any[]>> {
     // Map student names, attendance counts, and reports to each class
     const mapped = classes.map((c: any) => {
       const classMappings = mappings?.filter((m: any) => m.class_id === c.id) ?? [];
-      const studentNames = classMappings.map((m: any) => {
-        const uId = studentProfileToUserId.get(m.student_id);
-        const u = uId ? studentUserMap.get(uId) : null;
-        return u ? `${u.first_name} ${u.last_name}` : 'Student';
-      });
+      const studentNames = classMappings
+        .map((m: any) => {
+          const u = studentUserMap.get(m.student_id);
+          return u ? `${u.first_name} ${u.last_name}`.trim() : null;
+        })
+        .filter(Boolean) as string[];
 
       const titleMatch = c.title?.match(/^([^(]+)/);
-      const extractedName = titleMatch ? titleMatch[1].trim() : 'Student';
-      const finalStudentNames = studentNames.length > 0 ? studentNames : [extractedName];
+      const extractedName = titleMatch ? titleMatch[1].trim() : '';
+      const finalStudentNames = studentNames.length > 0
+        ? studentNames
+        : (extractedName ? [extractedName] : ['Student Session']);
 
       const totalStudents = Math.max(1, classMappings.length);
       const attendanceCount = Math.max(1, classMappings.filter((m: any) => !!m.first_joined_at).length);

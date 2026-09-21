@@ -7,28 +7,21 @@ const IV_LENGTH = 12; // 96 bits recommended for GCM
  * Retrieves the 32-byte encryption key from environment variables.
  */
 function getEncryptionKey(): Buffer {
-  const rawKey = process.env.GOOGLE_OAUTH_ENCRYPTION_KEY;
+  const rawKey =
+    process.env.GOOGLE_OAUTH_ENCRYPTION_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    'chesshub-development-gmeet-secret-seed-key';
 
-  if (rawKey) {
-    // If provided as 64-character hex string
-    if (rawKey.length === 64 && /^[0-9a-fA-F]+$/.test(rawKey)) {
-      return Buffer.from(rawKey, 'hex');
-    }
-    // If provided as 32-character string
-    if (Buffer.byteLength(rawKey, 'utf-8') === 32) {
-      return Buffer.from(rawKey, 'utf-8');
-    }
-    // Hash arbitrary length keys to 32 bytes using SHA-256
-    return crypto.createHash('sha256').update(rawKey).digest();
+  // If provided as 64-character hex string
+  if (rawKey.length === 64 && /^[0-9a-fA-F]+$/.test(rawKey)) {
+    return Buffer.from(rawKey, 'hex');
   }
-
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('CRITICAL: GOOGLE_OAUTH_ENCRYPTION_KEY is required in production environment.');
+  // If provided as 32-character string
+  if (Buffer.byteLength(rawKey, 'utf-8') === 32) {
+    return Buffer.from(rawKey, 'utf-8');
   }
-
-  // Development / local fallback
-  console.warn('[tokenEncryption] WARNING: GOOGLE_OAUTH_ENCRYPTION_KEY is not set. Using local development seed key.');
-  return crypto.createHash('sha256').update('chesshub-development-gmeet-secret-seed-key').digest();
+  // Hash arbitrary length keys to 32 bytes using SHA-256
+  return crypto.createHash('sha256').update(rawKey).digest();
 }
 
 export interface EncryptedPayload {

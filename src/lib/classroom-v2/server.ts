@@ -1530,7 +1530,8 @@ export async function endClassroomSession(
   userId: string,
   userRole: UserRole,
   attendanceRecords?: Array<{ studentProfileId: string; status: 'PRESENT' | 'ABSENT' | 'LATE' | 'LEFT_EARLY'; feedback?: string }>,
-  reviewNotes?: string
+  reviewNotes?: string,
+  actualDurationMinutesParam?: number
 ): Promise<{ success: boolean; error?: string }> {
   if (!isCoachOrAdmin(userRole)) {
     return { success: false, error: 'Only coach or admin can end the class.' };
@@ -1542,24 +1543,38 @@ export async function endClassroomSession(
   // 1. Fetch class details to compute actual duration and get Zoom/Meet meeting ID
   const { data: cls } = await admin
     .from('classes')
-    .select('id, coach_id, zoom_meeting_id, zoom_join_url')
+    .select('id, coach_id, scheduled_start, zoom_meeting_id, zoom_join_url')
     .eq('id', classId)
     .maybeSingle();
 
-  const { data: liveSession } = await admin
-    .from('live_sessions')
-    .select('started_at')
-    .eq('id', sessionId)
-    .maybeSingle();
+  // Determine actual duration: use explicit param if provided (> 0), otherwise compute from live_sessions or scheduled_start
+  let actualDurationMinutes = actualDurationMinutesParam && actualDurationMinutesParam > 0
+    ? Math.round(actualDurationMinutesParam)
+    : 0;
 
-  const startTime = liveSession?.started_at ? new Date(liveSession.started_at).getTime() : Date.now();
-  const actualDurationMinutes = Math.max(1, Math.round((Date.now() - startTime) / 60000));
+  if (!actualDurationMinutes) {
+    const { data: liveSession } = await admin
+      .from('live_sessions')
+      .select('started_at')
+      .or(`id.eq.${sessionId},class_id.eq.${classId}`)
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const startTime = liveSession?.started_at
+      ? new Date(liveSession.started_at).getTime()
+      : cls?.scheduled_start
+      ? new Date(cls.scheduled_start).getTime()
+      : Date.now();
+
+    actualDurationMinutes = Math.max(1, Math.round((Date.now() - startTime) / 60000));
+  }
 
   // 2. Mark live session ended in PostgreSQL
   await admin
     .from('live_sessions')
     .update({ status: 'ended', ended_at: endedAt, updated_at: endedAt })
-    .eq('id', sessionId);
+    .or(`id.eq.${sessionId},class_id.eq.${classId}`);
 
   // 3. Mark class completed and persist real elapsed duration
   await admin
@@ -1599,11 +1614,8 @@ export async function endClassroomSession(
         tokenOwnerUserId = cp?.user_id || cls.coach_id;
       }
 
-      const { data: tokenRecord } = await admin
-        .from('coach_google_tokens')
-        .select('encrypted_refresh_token, iv, auth_tag')
-        .eq('coach_id', tokenOwnerUserId)
-        .maybeSingle();
+      const { getCoachGoogleTokens } = await import('@/lib/google/tokens');
+      const tokenRecord = await getCoachGoogleTokens(tokenOwnerUserId);
 
       if (tokenRecord) {
         const { decryptToken } = await import('@/lib/security/tokenEncryption');

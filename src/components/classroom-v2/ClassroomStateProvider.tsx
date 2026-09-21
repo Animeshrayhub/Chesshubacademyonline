@@ -123,7 +123,7 @@ export interface ClassroomContextValue {
   onSendReaction: (emoji: string) => Promise<boolean>;
   /** Coach broadcasts a question prompt to all students */
   onAskQuestion: (question: CoachQuestion) => Promise<boolean>;
-  onEndClass: (attendanceRecords?: any[], reviewNotes?: string) => Promise<boolean>;
+  onEndClass: (attendanceRecords?: any[], reviewNotes?: string, actualDurationMinutes?: number) => Promise<boolean>;
 }
 
 const ClassroomContext = createContext<ClassroomContextValue | null>(null);
@@ -1316,8 +1316,8 @@ export function ClassroomStateProvider({
     [isCoach, sessionId]
   );
 
-  const onEndClass = useCallback(async (attendanceRecords?: any[], reviewNotes?: string): Promise<boolean> => {
-    const res = await endClassroomSessionAction(classId, sessionId, attendanceRecords, undefined, reviewNotes);
+  const onEndClass = useCallback(async (attendanceRecords?: any[], reviewNotes?: string, actualDurationMinutes?: number): Promise<boolean> => {
+    const res = await endClassroomSessionAction(classId, sessionId, attendanceRecords, undefined, reviewNotes, actualDurationMinutes);
     if (!res.success) {
       setErrorMessage(res.error || 'Failed to end class.');
       return false;

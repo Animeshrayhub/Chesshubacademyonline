@@ -10,15 +10,58 @@ export const GOOGLE_MEET_SCOPES = [
   'https://www.googleapis.com/auth/userinfo.email',
 ].join(' ');
 
+import crypto from 'node:crypto';
+
+/**
+ * Creates a cryptographically signed OAuth state containing user ID and timestamp.
+ */
+export function createSignedOAuthState(userId: string): string {
+  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY || 'chesshub-default-oauth-secret';
+  const timestamp = Date.now().toString();
+  const payload = `${userId}:${timestamp}`;
+  const hmac = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+  return `${payload}:${hmac}`;
+}
+
+/**
+ * Validates a signed OAuth state token and returns the userId if valid and not expired (15m).
+ */
+export function verifySignedOAuthState(state: string): { isValid: boolean; userId?: string } {
+  try {
+    const parts = state.split(':');
+    if (parts.length !== 3) return { isValid: false };
+    const [userId, timestampStr, signature] = parts;
+    const secret = process.env.SUPABASE_SERVICE_ROLE_KEY || 'chesshub-default-oauth-secret';
+    const expectedHmac = crypto.createHmac('sha256', secret).update(`${userId}:${timestampStr}`).digest('hex');
+    if (signature !== expectedHmac) return { isValid: false };
+
+    const timestamp = parseInt(timestampStr, 10);
+    if (isNaN(timestamp) || Date.now() - timestamp > 15 * 60 * 1000) {
+      return { isValid: false };
+    }
+    return { isValid: true, userId };
+  } catch {
+    return { isValid: false };
+  }
+}
+
 /**
  * Resolves the Google OAuth redirect URI matching configured credentials.
  */
-export function getGoogleRedirectUri(): string {
+export function getGoogleRedirectUri(origin?: string): string {
+  // If request origin is provided (e.g. from NextRequest), resolve matching callback URL
+  if (origin) {
+    const cleanOrigin = origin.replace(/\/+$/, '');
+    if (cleanOrigin.includes('localhost') || cleanOrigin.includes('127.0.0.1')) {
+      return `${cleanOrigin}/api/auth/google/callback`;
+    }
+    return 'https://chesshubacademy.online/api/auth/google/callback';
+  }
   // If explicitly configured in environment, prefer it
   if (process.env.GOOGLE_MEET_REDIRECT_URI) {
     return process.env.GOOGLE_MEET_REDIRECT_URI;
   }
-  const base = process.env.NEXT_PUBLIC_SITE_URL || SITE_URL || 'http://localhost:3000';
+  const base = process.env.NEXT_PUBLIC_SITE_URL || SITE_URL || 'https://chesshubacademy.online';
   const cleanBase = base.replace(/\/+$/, '');
   return `${cleanBase}/api/auth/google/callback`;
 }
@@ -26,13 +69,13 @@ export function getGoogleRedirectUri(): string {
 /**
  * Generates the Google OAuth 2.0 Consent URL for Coach authentication.
  */
-export function getGoogleOAuthConsentUrl(state: string): string {
+export function getGoogleOAuthConsentUrl(state: string, origin?: string): string {
   const clientId = process.env.GOOGLE_MEET_CLIENT_ID;
   if (!clientId) {
     throw new Error('GOOGLE_MEET_CLIENT_ID is not configured.');
   }
 
-  const redirectUri = getGoogleRedirectUri();
+  const redirectUri = getGoogleRedirectUri(origin);
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -58,7 +101,7 @@ export interface GoogleTokenResponse {
 /**
  * Exchanges authorization code for Google access and refresh tokens.
  */
-export async function exchangeGoogleAuthCode(code: string): Promise<GoogleTokenResponse> {
+export async function exchangeGoogleAuthCode(code: string, origin?: string): Promise<GoogleTokenResponse> {
   const clientId = process.env.GOOGLE_MEET_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_MEET_CLIENT_SECRET;
 
@@ -66,7 +109,7 @@ export async function exchangeGoogleAuthCode(code: string): Promise<GoogleTokenR
     throw new Error('Google OAuth client credentials are missing from server environment.');
   }
 
-  const redirectUri = getGoogleRedirectUri();
+  const redirectUri = getGoogleRedirectUri(origin);
 
   const body = new URLSearchParams({
     code,

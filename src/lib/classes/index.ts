@@ -1179,20 +1179,19 @@ export async function completeClassSession(
 
     const classStatus = input.recordingUrl?.trim() ? 'RECORDING_AVAILABLE' : 'COMPLETED';
 
-    const updatePayload: any = {
+    const updatePayload: Record<string, any> = {
       status: classStatus,
       updated_at: new Date().toISOString(),
     };
 
     if (input.actualDurationMinutes && input.actualDurationMinutes > 0) {
-      updatePayload.duration_minutes = input.actualDurationMinutes;
+      updatePayload.duration_minutes = Math.round(input.actualDurationMinutes);
     }
 
-    // 1. Update class record safely (session_notes, status, duration_minutes, updated_at)
+    // 1. Update class record safely (status, duration_minutes, updated_at)
     let updatedClass: any = null;
     let classErr: any = null;
 
-    // Tier 1: Try updating status, session_notes, recording_url, duration_minutes
     try {
       const { data, error } = await admin
         .from('classes')
@@ -1207,16 +1206,20 @@ export async function completeClassSession(
       classErr = e;
     }
 
-    // Tier 2: Try updating status, session_notes (without recording_url)
+    // Tier 2: Fallback — update status and duration_minutes ONLY
     if (classErr) {
       try {
+        const fallbackPayload: Record<string, any> = {
+          status: classStatus,
+          updated_at: new Date().toISOString(),
+        };
+        if (input.actualDurationMinutes && input.actualDurationMinutes > 0) {
+          fallbackPayload.duration_minutes = Math.round(input.actualDurationMinutes);
+        }
+
         const { data: fbData, error: fbErr } = await admin
           .from('classes')
-          .update({
-            status: classStatus,
-            session_notes: input.sessionNotes,
-            updated_at: new Date().toISOString(),
-          })
+          .update(fallbackPayload)
           .eq('id', input.classId)
           .select()
           .maybeSingle();
@@ -1232,22 +1235,32 @@ export async function completeClassSession(
       }
     }
 
-    // Tier 3: Core Fallback — update status and updated_at ONLY (guarantees completion even if session_notes column is missing)
     if (classErr) {
-      const { data: finalData, error: finalErr } = await admin
-        .from('classes')
-        .update({
-          status: classStatus,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', input.classId)
-        .select()
-        .maybeSingle();
+      return { success: false, error: new DatabaseError('Failed to complete class session', classErr) };
+    }
 
-      if (finalErr) {
-        return { success: false, error: new DatabaseError('Failed to complete class session', finalErr) };
+    // Save or update class_reports record with notes
+    if (input.sessionNotes) {
+      try {
+        const { data: clsData } = await admin
+          .from('classes')
+          .select('coach_id')
+          .eq('id', input.classId)
+          .maybeSingle();
+
+        await admin.from('class_reports').upsert(
+          {
+            class_id: input.classId,
+            coach_id: clsData?.coach_id || null,
+            notes: input.sessionNotes,
+            submitted_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'class_id' }
+        );
+      } catch (e) {
+        console.warn('[completeClassSession] class_reports upsert note:', e);
       }
-      updatedClass = finalData;
     }
 
     // 2. Insert attendance records into class_attendance if any

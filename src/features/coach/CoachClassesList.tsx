@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { createSupabaseClient } from '@/lib/supabase/client';
 import CoachClassCompletionModal from './CoachClassCompletionModal';
 import {
   getCoachGoogleMeetStatusAction,
@@ -71,16 +72,28 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
 
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('google_connected') === 'success') {
+      const isGoogleSuccess = urlParams.get('google_connected') === 'success' || urlParams.get('google_connected') === 'true';
+      const rawGoogleError = urlParams.get('google_error') || urlParams.get('error');
+
+      if (isGoogleSuccess) {
         setActionMessage({
           type: 'success',
           text: 'Google Meet connected successfully! You can now create Google Meet spaces for your classes.',
         });
         window.history.replaceState({}, '', window.location.pathname);
-      } else if (urlParams.get('error')) {
+      } else if (rawGoogleError) {
+        const decoded = decodeURIComponent(rawGoogleError);
+        let message = `Google connection failed: ${decoded}`;
+        if (decoded === 'access_denied') {
+          message = 'Google authorization was cancelled.';
+        } else if (decoded === 'csrf_mismatch') {
+          message = 'Session state expired. Please click Connect Google Meet again.';
+        } else if (decoded === 'unauthorized') {
+          message = 'Coach authorization required. Please log in and try again.';
+        }
         setActionMessage({
           type: 'error',
-          text: `Google connection failed: ${decodeURIComponent(urlParams.get('error') || '')}`,
+          text: message,
         });
         window.history.replaceState({}, '', window.location.pathname);
       }
@@ -91,6 +104,67 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
       isMounted = false;
     };
   }, []);
+
+  // Fetch fresh classes authoritative state directly into client state without requiring manual page reload
+  const fetchFreshClasses = React.useCallback(async () => {
+    try {
+      const { getCoachClassesAction } = await import('@/actions/classes');
+      const res = await getCoachClassesAction();
+      if (res && res.success && Array.isArray(res.data)) {
+        setClassList(res.data);
+      }
+    } catch (e) {
+      console.warn('[CoachClassesList] Realtime sync error:', e);
+    }
+  }, []);
+
+  // Realtime synchronization: Listen for class assignment, creation, and status updates
+  useEffect(() => {
+    const supabase = createSupabaseClient();
+    const handleUpdate = () => {
+      fetchFreshClasses();
+      router.refresh();
+    };
+
+    const channel = supabase
+      .channel('coach-classes-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'live_sessions' },
+        handleUpdate
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'classes' },
+        handleUpdate
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'class_students' },
+        handleUpdate
+      )
+      .on('broadcast', { event: 'CLASS_ASSIGNED' }, handleUpdate)
+      .on('broadcast', { event: 'CLASS_STARTED' }, handleUpdate)
+      .on('broadcast', { event: 'CLASS_ENDED' }, handleUpdate)
+      .subscribe();
+
+    const handleFocus = () => handleUpdate();
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') handleUpdate();
+    });
+
+    // Auto-polling fallback: ensures newly assigned classes appear within seconds without manual page reload
+    const pollInterval = setInterval(() => {
+      fetchFreshClasses();
+    }, 4000);
+
+    return () => {
+      clearInterval(pollInterval);
+      supabase.removeChannel(channel);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [fetchFreshClasses, router]);
 
   const handleDisconnectGoogle = async () => {
     if (
@@ -173,6 +247,11 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
     setStartingClassId(classId);
     setActionMessage(null);
     try {
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(`class_start_time_${classId}`, Date.now().toString());
+        } catch {}
+      }
       const { startClassAction } = await import('@/actions/classes');
       const res = await startClassAction(classId);
       if (res.success) {
@@ -193,13 +272,19 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
     }
   };
 
-  const [activeTab, setActiveTab] = useState<TabType>('UPCOMING');
-  // Default: show TODAY'S CLASSES ONLY (Local browser date)
+  // Determine initial active tab: Default to ACTIVE if any live/in_progress classes exist, otherwise UPCOMING
+  const hasActiveLiveClasses = (initialClasses || []).some(
+    (c) => c.status === 'LIVE' || c.status === 'IN_PROGRESS'
+  );
+  const [activeTab, setActiveTab] = useState<TabType>(
+    hasActiveLiveClasses ? 'ACTIVE' : 'UPCOMING'
+  );
   const getLocalDateStr = (d: Date = new Date()) => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
-  const [startDate, setStartDate] = useState(getLocalDateStr);
-  const [endDate, setEndDate] = useState(getLocalDateStr);
+  // Default: show all classes for active tab (matches student portal behavior). Presets allow quick 1-click filtering.
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [selectedStudent, setSelectedStudent] = useState('ALL');
   const [studentSearchInput, setStudentSearchInput] = useState('');
   const [sortBy, setSortBy] = useState<'default' | 'date-asc' | 'date-desc' | 'name' | 'duration'>('default');
@@ -273,14 +358,16 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
       return false;
     }
 
-    // Date range filter
-    if (startDate) {
-      const start = new Date(`${startDate}T00:00:00`);
-      if (classTime < start) return false;
-    }
-    if (endDate) {
-      const end = new Date(`${endDate}T23:59:59`);
-      if (classTime > end) return false;
+    // Date range filter: LIVE sessions are never hidden by date filters
+    if (activeTab !== 'ACTIVE') {
+      if (startDate) {
+        const start = new Date(`${startDate}T00:00:00`);
+        if (classTime < start) return false;
+      }
+      if (endDate) {
+        const end = new Date(`${endDate}T23:59:59`);
+        if (classTime > end) return false;
+      }
     }
 
     // Student filter
@@ -542,33 +629,7 @@ export default function CoachClassesList({ classes: initialClasses }: CoachClass
         {/* Tabs: ACTIVE | UPCOMING | COMPLETED */}
         <div className="flex items-center gap-6 border-b lg:border-b-0 border-slate-200 w-full lg:w-auto pb-2 lg:pb-0">
           {(['ACTIVE', 'UPCOMING', 'COMPLETED'] as TabType[]).map((tab) => {
-            const count = classList.filter((c) => {
-              // Apply active filters to counters as well
-              if (!matchesTab(c, tab)) return false;
-
-              if (startDate) {
-                const start = new Date(`${startDate}T00:00:00`);
-                if (new Date(c.schedule) < start) return false;
-              }
-              if (endDate) {
-                const end = new Date(`${endDate}T23:59:59`);
-                if (new Date(c.schedule) > end) return false;
-              }
-
-              if (selectedStudent !== 'ALL') {
-                if (!c.studentNames.some((n) => n.toLowerCase().includes(selectedStudent.toLowerCase()))) {
-                  return false;
-                }
-              }
-              if (studentSearchInput.trim()) {
-                const q = studentSearchInput.toLowerCase();
-                if (!c.studentNames.some((n) => n.toLowerCase().includes(q))) {
-                  return false;
-                }
-              }
-
-              return true;
-            }).length;
+            const count = classList.filter((c) => matchesTab(c, tab)).length;
 
             return (
               <button

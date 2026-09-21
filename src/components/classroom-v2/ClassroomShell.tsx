@@ -305,6 +305,10 @@ export default function ClassroomShell({
   const [learnedTopics, setLearnedTopics] = useState('');
   const [studentFeedbackMap, setStudentFeedbackMap] = useState<Record<string, string>>({});
   const [isEndingSession, setIsEndingSession] = useState(false);
+  const [customDurationMins, setCustomDurationMins] = useState<number | ''>('');
+  const conductedMinutes = typeof customDurationMins === 'number' && customDurationMins > 0
+    ? customDurationMins
+    : Math.max(1, Math.round(elapsedSeconds / 60));
 
   // Puzzle Bank data
   const [puzzlesList, setPuzzlesList] = useState<any[]>([]);
@@ -353,6 +357,15 @@ export default function ClassroomShell({
   useEffect(() => {
     const startMs = snapshot.startedAt ? new Date(snapshot.startedAt).getTime() : localMountTimeRef.current;
 
+    if (typeof window !== 'undefined' && classId) {
+      try {
+        const existing = localStorage.getItem(`class_start_time_${classId}`);
+        if (!existing && startMs > 0) {
+          localStorage.setItem(`class_start_time_${classId}`, String(startMs));
+        }
+      } catch {}
+    }
+
     const updateTimer = () => {
       const nowMs = Date.now();
       let diffSecs = Math.max(0, Math.floor((nowMs - startMs) / 1000));
@@ -366,7 +379,7 @@ export default function ClassroomShell({
     updateTimer();
     const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
-  }, [snapshot.startedAt]);
+  }, [snapshot.startedAt, classId]);
 
   const formatTimer = (totalSeconds: number) => {
     const hours = Math.floor(totalSeconds / 3600);
@@ -514,7 +527,7 @@ export default function ClassroomShell({
       status: attendanceRecords[student.userId]?.status || (student.isOnline ? 'PRESENT' : 'ABSENT'),
       feedback: studentFeedbackMap[student.userId] || attendanceRecords[student.userId]?.notes || '',
     }));
-    await onEndClass(records, learnedTopics);
+    await onEndClass(records, learnedTopics, conductedMinutes);
     setIsEndingSession(false);
   };
 
@@ -527,7 +540,8 @@ export default function ClassroomShell({
       status: student.isOnline ? 'PRESENT' : 'ABSENT',
       feedback: 'Attended live classroom session.',
     }));
-    await onEndClass(records, learnedTopics || 'Live session completed.');
+    const autoMins = Math.max(1, Math.round(elapsedSeconds / 60));
+    await onEndClass(records, learnedTopics || 'Live session completed.', autoMins);
     setIsEndingSession(false);
   };
 
@@ -1464,7 +1478,7 @@ export default function ClassroomShell({
                   <span>🏁</span> Complete Class & Review
                 </h2>
                 <p className="text-[11px] text-slate-400 mt-0.5">
-                  Conducted duration: {formatTimer(elapsedSeconds)} ({Math.max(1, Math.round(elapsedSeconds / 60))} mins)
+                  Elapsed timer: {formatTimer(elapsedSeconds)} (recorded as {conductedMinutes} mins)
                 </p>
               </div>
               <button
@@ -1476,18 +1490,44 @@ export default function ClassroomShell({
               </button>
             </div>
 
-            {/* WHAT WE LEARNED Topic Input */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-extrabold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                <span>📖</span> WHAT WE LEARNED
-              </label>
-              <textarea
-                rows={3}
-                value={learnedTopics}
-                onChange={(e) => setLearnedTopics(e.target.value)}
-                placeholder="Key concepts, openings, tactical motifs or endgames covered in this lesson..."
-                className="w-full bg-slate-950 border border-slate-750 focus:border-indigo-500 rounded-xl p-2.5 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none transition-colors"
-              />
+            {/* WHAT WE LEARNED Topic Input & Real Duration */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="sm:col-span-2 space-y-1.5">
+                <label className="text-xs font-extrabold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                  <span>📖</span> WHAT WE LEARNED
+                </label>
+                <textarea
+                  rows={3}
+                  value={learnedTopics}
+                  onChange={(e) => setLearnedTopics(e.target.value)}
+                  placeholder="Key concepts, openings, tactical motifs or endgames covered in this lesson..."
+                  className="w-full bg-slate-950 border border-slate-750 focus:border-indigo-500 rounded-xl p-2.5 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none transition-colors"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-extrabold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                  <span>⏱️</span> REAL DURATION
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min={1}
+                    max={300}
+                    value={customDurationMins === '' ? conductedMinutes : customDurationMins}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCustomDurationMins(val === '' ? '' : Math.max(1, parseInt(val, 10) || 1));
+                    }}
+                    className="w-full bg-slate-950 border border-slate-750 focus:border-indigo-500 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none transition-colors pr-12 font-bold"
+                  />
+                  <span className="absolute right-3 top-2.5 text-slate-400 text-xs font-semibold pointer-events-none">
+                    mins
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400 leading-tight">
+                  Real conducted time. If you ended in 30 min, stores 30 min.
+                </p>
+              </div>
             </div>
 
             {/* Attendance & Per-Student Feedback */}

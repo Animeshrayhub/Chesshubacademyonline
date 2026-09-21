@@ -36,6 +36,7 @@ export default function CoachClassCompletionModal({
 
   // Calculate real elapsed session duration from start time or pre-fill with scheduled duration
   useEffect(() => {
+    let isMounted = true;
     if (isOpen && typeof window !== 'undefined') {
       try {
         const savedStart = localStorage.getItem(`class_start_time_${classId}`);
@@ -45,14 +46,33 @@ export default function CoachClassCompletionModal({
             const elapsedMins = Math.max(1, Math.round((Date.now() - startTime) / 60000));
             setActualDuration(elapsedMins);
           }
-        } else if (durationMinutes) {
-          setActualDuration(durationMinutes);
+        } else {
+          // Fetch live session started_at from server to compute real elapsed duration
+          fetch(`/api/class-status/${classId}`)
+            .then((res) => res.json())
+            .then((data) => {
+              if (isMounted && data?.startedAt) {
+                const start = new Date(data.startedAt).getTime();
+                if (!isNaN(start) && start > 0) {
+                  const elapsedMins = Math.max(1, Math.round((Date.now() - start) / 60000));
+                  setActualDuration(elapsedMins);
+                }
+              }
+            })
+            .catch(() => {});
+
+          if (durationMinutes) {
+            setActualDuration(durationMinutes);
+          }
         }
 
         const savedDraft = localStorage.getItem(`completion_notes_draft_${classId}`);
         if (savedDraft) setSessionNotes(savedDraft);
       } catch {}
     }
+    return () => {
+      isMounted = false;
+    };
   }, [isOpen, classId, durationMinutes]);
 
   // Auto-save draft on notes change

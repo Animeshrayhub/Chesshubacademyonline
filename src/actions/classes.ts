@@ -53,9 +53,14 @@ export async function updateClassAction(id: string, data: classesService.UpdateC
   const result = await classesService.updateClass(id, data);
   if (result.success) {
     revalidatePath('/dashboard/admin/classes');
+    revalidatePath('/dashboard/coach/classes');
+    revalidatePath('/dashboard/student/classes');
+    revalidatePath('/dashboard/coach');
+    revalidatePath('/dashboard/student');
     revalidatePath('/dashboard/admin/recordings');
     revalidatePath('/dashboard/student/recordings');
     revalidatePath('/dashboard/coach/recordings');
+    revalidatePath('/dashboard/admin');
   }
   return serializeResult(result);
 }
@@ -64,8 +69,18 @@ export async function deleteClassAction(id: string) {
   const result = await classesService.deleteClass(id);
   if (result.success) {
     revalidatePath('/dashboard/admin/classes');
+    revalidatePath('/dashboard/coach/classes');
+    revalidatePath('/dashboard/student/classes');
+    revalidatePath('/dashboard/coach');
+    revalidatePath('/dashboard/student');
     revalidatePath('/dashboard/admin');
   }
+  return serializeResult(result);
+}
+
+export async function getCoachClassesAction() {
+  const { getCoachClasses } = await import('@/lib/coaches');
+  const result = await getCoachClasses();
   return serializeResult(result);
 }
 
