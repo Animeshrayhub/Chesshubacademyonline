@@ -18,7 +18,7 @@ import type {
   ClassType,
   VideoProvider,
 } from '@/lib/classes';
-import { generateRecurringDates, normalizeToIsoDate } from '@/lib/classes';
+import { generateRecurringDates, normalizeToIsoDate } from '@/lib/classes/scheduleUtils';
 import {
   createClassAction,
   createBatchClassesAction,

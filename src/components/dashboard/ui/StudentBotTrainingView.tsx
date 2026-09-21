@@ -4967,7 +4967,7 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                   <span className="text-amber-400 ml-1">in {badgeCategoryFilter}</span>
                 )}
                 {badgeSearchQuery && (
-                  <span className="text-cyan-400 ml-1">matching "{badgeSearchQuery}"</span>
+                  <span className="text-cyan-400 ml-1">matching &quot;{badgeSearchQuery}&quot;</span>
                 )}
               </span>
               {(badgeCategoryFilter !== 'all' || badgeSearchQuery || badgeRarityFilter !== 'all' || badgeStatusFilter !== 'all') && (
