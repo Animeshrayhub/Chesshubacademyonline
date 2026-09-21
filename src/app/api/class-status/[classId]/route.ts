@@ -17,7 +17,7 @@ export async function GET(
     const admin = createSupabaseAdmin();
     const { data: cls, error } = await admin
       .from('classes')
-      .select('status, meeting_provider, zoom_join_url, google_meet_uri')
+      .select('status, zoom_join_url')
       .eq('id', params.classId)
       .maybeSingle();
 
@@ -35,15 +35,18 @@ export async function GET(
     const isLive = cls.status === 'LIVE' || cls.status === 'IN_PROGRESS' || Boolean(activeSession);
 
     const isGoogleMeet =
-      cls.meeting_provider === 'GOOGLE_MEET' ||
-      Boolean(cls.google_meet_uri && cls.google_meet_uri.includes('meet.google.com'));
+      Boolean(cls.zoom_join_url && cls.zoom_join_url.includes('meet.google.com')) ||
+      (cls as any).meeting_provider === 'GOOGLE_MEET' ||
+      Boolean((cls as any).google_meet_uri && (cls as any).google_meet_uri.includes('meet.google.com'));
+
+    const activeMeetUri = isGoogleMeet ? (cls.zoom_join_url || (cls as any).google_meet_uri || null) : null;
 
     return NextResponse.json({
       status: cls.status,
       isLive,
       meetingProvider: isGoogleMeet ? 'GOOGLE_MEET' : 'ZOOM',
       zoomJoinUrl: isGoogleMeet ? null : (cls.zoom_join_url || null),
-      googleMeetUri: isGoogleMeet ? (cls.google_meet_uri || null) : null,
+      googleMeetUri: activeMeetUri,
     });
   } catch {
     return NextResponse.json({ status: 'ERROR', isLive: false }, { status: 500 });

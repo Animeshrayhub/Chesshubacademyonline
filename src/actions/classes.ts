@@ -107,11 +107,12 @@ export async function startClassAction(id: string) {
 
     const { data: cls, error: clsErr } = await admin
       .from('classes')
-      .select('id, coach_id, status, scheduled_start, duration_minutes, class_type, meeting_provider, zoom_meeting_id, zoom_join_url, google_meet_space_id, google_meet_uri')
+      .select('id, coach_id, status, scheduled_start, duration_minutes, class_type, zoom_meeting_id, zoom_join_url, zoom_start_url')
       .eq('id', id)
       .maybeSingle();
 
     if (clsErr || !cls) {
+      console.error('[startClassAction] Class lookup failed:', { id, error: clsErr });
       return { success: false, error: { message: 'Class session not found.' } };
     }
 
@@ -163,9 +164,14 @@ export async function startClassAction(id: string) {
       }
     }
 
-    const provider = cls.meeting_provider === 'GOOGLE_MEET' ? 'GOOGLE_MEET' : 'ZOOM';
-    let activeZoomUrl = cls.zoom_join_url;
-    let activeMeetUri = cls.google_meet_uri;
+    const isGoogleMeet =
+      Boolean(cls.zoom_join_url && cls.zoom_join_url.includes('meet.google.com')) ||
+      (cls as any).meeting_provider === 'GOOGLE_MEET' ||
+      Boolean((cls as any).google_meet_uri && (cls as any).google_meet_uri.includes('meet.google.com'));
+
+    const provider: 'GOOGLE_MEET' | 'ZOOM' = isGoogleMeet ? 'GOOGLE_MEET' : 'ZOOM';
+    let activeZoomUrl = isGoogleMeet ? null : cls.zoom_join_url;
+    let activeMeetUri = isGoogleMeet ? (cls.zoom_join_url || (cls as any).google_meet_uri || null) : null;
 
     // Auto-provision Google Meet if needed
     if (provider === 'GOOGLE_MEET' && !activeMeetUri) {
@@ -210,6 +216,23 @@ export async function startClassAction(id: string) {
       .from('classes')
       .update({ status: 'LIVE', updated_at: new Date().toISOString() })
       .eq('id', id);
+
+    // Development diagnostic log
+    console.log('[CLASS JOIN DEBUG]', {
+      authenticatedUserId: user.id,
+      requestedId: id,
+      requestedIdType: 'class.id',
+      classFound: Boolean(cls),
+      sessionFound: Boolean(sessionId),
+      classId: id,
+      sessionId,
+      coachId: cls.coach_id,
+      meetingProvider: provider,
+      meetingId: cls.zoom_meeting_id || null,
+      meetingUrl: provider === 'GOOGLE_MEET' ? activeMeetUri : activeZoomUrl,
+      authorization: 'AUTHORIZED',
+      finalResult: 'LIVE',
+    });
 
     // Broadcast CLASS_STARTED in real time across channels
     try {

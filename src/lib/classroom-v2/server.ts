@@ -1539,7 +1539,7 @@ export async function endClassroomSession(
   // 1. Fetch class details to compute actual duration and get Zoom/Meet meeting ID
   const { data: cls } = await admin
     .from('classes')
-    .select('id, coach_id, meeting_provider, zoom_meeting_id, google_meet_space_id')
+    .select('id, coach_id, zoom_meeting_id, zoom_join_url')
     .eq('id', classId)
     .maybeSingle();
 
@@ -1568,8 +1568,12 @@ export async function endClassroomSession(
     })
     .eq('id', classId);
 
+  const isGoogleMeet =
+    Boolean(cls?.zoom_join_url && cls.zoom_join_url.includes('meet.google.com')) ||
+    (cls as any)?.meeting_provider === 'GOOGLE_MEET';
+
   // 4. Terminate Zoom meeting cloud session (only if Zoom)
-  if (cls?.meeting_provider !== 'GOOGLE_MEET' && cls?.zoom_meeting_id) {
+  if (!isGoogleMeet && cls?.zoom_meeting_id) {
     try {
       const { endZoomMeeting } = await import('../zoom');
       await endZoomMeeting(cls.zoom_meeting_id);
@@ -1579,7 +1583,7 @@ export async function endClassroomSession(
   }
 
   // 4b. Terminate Google Meet conference if provider is GOOGLE_MEET
-  if (cls?.meeting_provider === 'GOOGLE_MEET' && cls?.google_meet_space_id) {
+  if (isGoogleMeet && (cls as any)?.google_meet_space_id) {
     try {
       // Resolve coach user ID for tokens
       let tokenOwnerUserId = userId;

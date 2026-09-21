@@ -302,8 +302,9 @@ export default async function ClassroomPage({ params }: { params: { classId: str
 
   // 5. Detect Video Provider & Isolate Zoom from Google Meet completely
   const isGoogleMeet =
-    cls.meeting_provider === 'GOOGLE_MEET' ||
-    Boolean(cls.google_meet_uri && cls.google_meet_uri.includes('meet.google.com'));
+    (cls as any).meeting_provider === 'GOOGLE_MEET' ||
+    Boolean((cls as any).google_meet_uri && (cls as any).google_meet_uri.includes('meet.google.com')) ||
+    Boolean(cls.zoom_join_url && cls.zoom_join_url.includes('meet.google.com'));
 
   const videoProvider: 'ZOOM' | 'GOOGLE_MEET' | 'JITSI' | 'CUSTOM' = isGoogleMeet
     ? 'GOOGLE_MEET'
@@ -334,7 +335,7 @@ export default async function ClassroomPage({ params }: { params: { classId: str
 
   // Purely isolated meeting URLs (Never cross-pollinate Zoom and Meet)
   const activeMeetingUrl = isGoogleMeet
-    ? (cls.google_meet_uri || '')
+    ? (cls.zoom_join_url || (cls as any).google_meet_uri || '')
     : (cls.zoom_join_url || '');
   const activeZoomMeetingId = isGoogleMeet ? '' : (cls.zoom_meeting_id || '');
 
@@ -353,6 +354,25 @@ export default async function ClassroomPage({ params }: { params: { classId: str
   const sessionId = sessionRes.success && sessionRes.data?.sessionId ? sessionRes.data.sessionId : null;
   const sessionStatus = sessionRes.data?.status || 'scheduled';
 
+  const effectiveSessionId = sessionId || params.classId;
+
+  // Development diagnostic log
+  console.log('[CLASS JOIN DEBUG]', {
+    authenticatedUserId: user.id,
+    requestedId: params.classId,
+    requestedIdType: 'class.id',
+    classFound: Boolean(cls),
+    sessionFound: Boolean(sessionId),
+    classId: params.classId,
+    sessionId: effectiveSessionId,
+    coachId: cls.coach_id,
+    meetingProvider: videoProvider,
+    meetingId: activeZoomMeetingId || null,
+    meetingUrl: activeMeetingUrl,
+    authorization: isAuthorized ? 'AUTHORIZED' : 'DENIED',
+    finalResult: role === 'student' && (!sessionId || sessionStatus === 'scheduled') ? 'WAITING_ROOM' : 'CLASSROOM_OPEN',
+  });
+
   // 7. Student check: If no active session exists yet, show waiting room
   if (role === 'student' && (!sessionId || sessionStatus === 'scheduled')) {
     return (
@@ -366,8 +386,6 @@ export default async function ClassroomPage({ params }: { params: { classId: str
       />
     );
   }
-
-  const effectiveSessionId = sessionId || params.classId;
 
   // 8. Fetch canonical snapshot
   const initialSnapshot = await getCanonicalClassroomSnapshot(
