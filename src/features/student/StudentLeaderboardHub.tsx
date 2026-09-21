@@ -1,7 +1,15 @@
 'use client';
 
 import React, { useState, useTransition } from 'react';
+import Link from 'next/link';
 import type { LeaderboardResponse, LeaderboardCategory, LeaderboardEntry } from '@/lib/students/leaderboard';
+import {
+  DIVISIONS,
+  type DivisionTier,
+  type SimulatedStudentPeer,
+  type LiveTickerEvent,
+  type SeasonInfo,
+} from '@/lib/students/leaderboardSimulation';
 
 // Inline SVG Icons for self-contained, zero-dependency rendering
 function IconTrophy({ className = 'w-4 h-4' }: { className?: string }) {
@@ -88,6 +96,7 @@ interface StudentLeaderboardHubProps {
 export default function StudentLeaderboardHub({ initialData, currentUserId }: StudentLeaderboardHubProps) {
   const [data, setData] = useState<LeaderboardResponse>(initialData);
   const [activeCategory, setActiveCategory] = useState<LeaderboardCategory>('xp');
+  const [selectedDivision, setSelectedDivision] = useState<DivisionTier | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isPending, startTransition] = useTransition();
 
@@ -105,7 +114,14 @@ export default function StudentLeaderboardHub({ initialData, currentUserId }: St
     });
   };
 
-  const currentList: LeaderboardEntry[] = data.entries[activeCategory] || [];
+  const baseList: LeaderboardEntry[] = data.entries[activeCategory] || [];
+  const currentList = selectedDivision === 'all'
+    ? baseList
+    : baseList.filter((e) => {
+        const dCfg = DIVISIONS[selectedDivision];
+        return e.rating >= dCfg.minElo && e.rating <= dCfg.maxElo;
+      });
+
   const filteredList = currentList.filter(
     (e) =>
       e.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -144,6 +160,26 @@ export default function StudentLeaderboardHub({ initialData, currentUserId }: St
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      {/* ─── Live Activity Ticker Ribbon ─── */}
+      {data.tickerEvents && data.tickerEvents.length > 0 && (
+        <div className="bg-slate-950/90 border border-amber-500/30 rounded-2xl p-2.5 px-4 shadow-xl flex items-center gap-3 overflow-hidden text-xs">
+          <div className="flex items-center gap-2 shrink-0 text-amber-400 font-black text-[10px] uppercase tracking-wider bg-amber-500/10 px-2.5 py-1 rounded-xl border border-amber-500/30 shadow-inner">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <span>Live Academy Feed</span>
+          </div>
+          <div className="flex items-center gap-6 overflow-x-auto scrollbar-none whitespace-nowrap py-0.5">
+            {data.tickerEvents.map((evt) => (
+              <div key={evt.id} className="flex items-center gap-1.5 text-slate-300 text-[11px]">
+                <span>{evt.avatar}</span>
+                <span className="font-bold text-white">{evt.studentName}</span>
+                <span className="text-slate-400">{evt.description}</span>
+                <span className="text-[9px] text-amber-400/80 font-mono">({evt.timestampMinutesAgo}m ago)</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ─── Header & Category Switcher ─── */}
       <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-900/50 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
         {/* Background glow accents */}
@@ -168,7 +204,7 @@ export default function StudentLeaderboardHub({ initialData, currentUserId }: St
             <button
               onClick={handleRefresh}
               disabled={isPending}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/10 hover:bg-white/15 active:scale-95 text-white text-xs font-bold border border-white/10 transition-all shadow-sm"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/10 hover:bg-white/15 active:scale-95 text-white text-xs font-bold border border-white/10 transition-all shadow-sm cursor-pointer"
               title="Refresh live leaderboard"
             >
               <IconRefresh className={`w-3.5 h-3.5 ${isPending ? 'animate-spin' : ''}`} />
@@ -181,7 +217,7 @@ export default function StudentLeaderboardHub({ initialData, currentUserId }: St
         <div className="mt-8 pt-6 border-t border-white/10 grid grid-cols-2 sm:grid-cols-4 gap-2">
           <button
             onClick={() => setActiveCategory('xp')}
-            className={`flex items-center justify-center gap-2.5 px-4 py-3 rounded-2xl text-xs font-black transition-all ${
+            className={`flex items-center justify-center gap-2.5 px-4 py-3 rounded-2xl text-xs font-black transition-all cursor-pointer ${
               activeCategory === 'xp'
                 ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/25 scale-[1.02]'
                 : 'bg-white/5 hover:bg-white/10 text-slate-300 border border-white/5'
@@ -193,7 +229,7 @@ export default function StudentLeaderboardHub({ initialData, currentUserId }: St
 
           <button
             onClick={() => setActiveCategory('tactics')}
-            className={`flex items-center justify-center gap-2.5 px-4 py-3 rounded-2xl text-xs font-black transition-all ${
+            className={`flex items-center justify-center gap-2.5 px-4 py-3 rounded-2xl text-xs font-black transition-all cursor-pointer ${
               activeCategory === 'tactics'
                 ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/25 scale-[1.02]'
                 : 'bg-white/5 hover:bg-white/10 text-slate-300 border border-white/5'
@@ -205,7 +241,7 @@ export default function StudentLeaderboardHub({ initialData, currentUserId }: St
 
           <button
             onClick={() => setActiveCategory('homework')}
-            className={`flex items-center justify-center gap-2.5 px-4 py-3 rounded-2xl text-xs font-black transition-all ${
+            className={`flex items-center justify-center gap-2.5 px-4 py-3 rounded-2xl text-xs font-black transition-all cursor-pointer ${
               activeCategory === 'homework'
                 ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/25 scale-[1.02]'
                 : 'bg-white/5 hover:bg-white/10 text-slate-300 border border-white/5'
@@ -217,7 +253,7 @@ export default function StudentLeaderboardHub({ initialData, currentUserId }: St
 
           <button
             onClick={() => setActiveCategory('rating')}
-            className={`flex items-center justify-center gap-2.5 px-4 py-3 rounded-2xl text-xs font-black transition-all ${
+            className={`flex items-center justify-center gap-2.5 px-4 py-3 rounded-2xl text-xs font-black transition-all cursor-pointer ${
               activeCategory === 'rating'
                 ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/25 scale-[1.02]'
                 : 'bg-white/5 hover:bg-white/10 text-slate-300 border border-white/5'
@@ -226,6 +262,51 @@ export default function StudentLeaderboardHub({ initialData, currentUserId }: St
             <IconSword className="w-4 h-4 shrink-0" />
             <span>Training Rating</span>
           </button>
+        </div>
+
+        {/* ─── 4 Division Leagues Filter & Season Countdown ─── */}
+        <div className="mt-4 pt-4 border-t border-white/10 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider shrink-0">Division:</span>
+            <button
+              onClick={() => setSelectedDivision('all')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                selectedDivision === 'all'
+                  ? 'bg-white/20 text-white font-black border border-white/30'
+                  : 'bg-white/5 hover:bg-white/10 text-slate-400'
+              }`}
+            >
+              All Leagues
+            </button>
+            {(['bronze', 'silver', 'gold', 'diamond'] as DivisionTier[]).map((divKey) => {
+              const dCfg = DIVISIONS[divKey];
+              const isSel = selectedDivision === divKey;
+              return (
+                <button
+                  key={divKey}
+                  onClick={() => setSelectedDivision(divKey)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                    isSel
+                      ? 'bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/20'
+                      : 'bg-white/5 hover:bg-white/10 text-slate-300'
+                  }`}
+                >
+                  <span>{dCfg.badge}</span>
+                  <span>{dCfg.name}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {data.seasonInfo && (
+            <div className="text-[11px] font-mono text-slate-300 bg-white/5 px-3 py-1 rounded-xl border border-white/10 flex items-center gap-1.5 shrink-0">
+              <span className="text-amber-400">⏱️</span>
+              <span className="text-slate-400">Sunday Reset:</span>
+              <span className="text-amber-300 font-bold">
+                {data.seasonInfo.daysRemaining}d {data.seasonInfo.hoursRemaining}h {data.seasonInfo.minutesRemaining}m
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -284,9 +365,9 @@ export default function StudentLeaderboardHub({ initialData, currentUserId }: St
             <h3 className="text-lg font-black text-text-primary mt-2">Top 3 Contenders</h3>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 items-end max-w-3xl mx-auto pt-4">
-            {/* 2nd Place */}
-            <div className="bg-slate-50 border border-slate-200 rounded-3xl p-5 text-center flex flex-col items-center justify-between order-2 sm:order-1 relative shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-end justify-center gap-4 sm:gap-6 max-w-3xl mx-auto pt-4">
+            {/* 2nd Place (Left on desktop, 2nd on mobile) */}
+            <div className="bg-slate-50 border border-slate-200 rounded-3xl p-5 text-center flex flex-col items-center justify-between order-2 sm:order-1 sm:w-1/3 relative shadow-sm hover:shadow-md transition-shadow">
               <div className="absolute -top-4 w-8 h-8 rounded-full bg-slate-200 border-2 border-slate-300 flex items-center justify-center font-black text-slate-700 text-sm shadow-sm">
                 🥈
               </div>
@@ -309,8 +390,8 @@ export default function StudentLeaderboardHub({ initialData, currentUserId }: St
               </div>
             </div>
 
-            {/* 1st Place (Gold / Crown / Tallest) */}
-            <div className="bg-gradient-to-b from-amber-50 to-amber-100/50 border-2 border-amber-400 rounded-3xl p-6 text-center flex flex-col items-center justify-between order-1 sm:order-2 relative shadow-xl shadow-amber-500/10 scale-105 sm:-translate-y-2">
+            {/* 1st Place (Center on desktop, 1st on mobile) */}
+            <div className="bg-gradient-to-b from-amber-50 to-amber-100/50 border-2 border-amber-400 rounded-3xl p-6 text-center flex flex-col items-center justify-between order-1 sm:order-2 sm:w-1/3 relative shadow-xl shadow-amber-500/10 scale-105 sm:-translate-y-2">
               <div className="absolute -top-6 flex flex-col items-center text-amber-500">
                 <IconCrown className="w-8 h-8 animate-bounce" />
               </div>
@@ -336,8 +417,8 @@ export default function StudentLeaderboardHub({ initialData, currentUserId }: St
               </div>
             </div>
 
-            {/* 3rd Place */}
-            <div className="bg-amber-50/40 border border-amber-200/60 rounded-3xl p-5 text-center flex flex-col items-center justify-between order-3 sm:order-3 relative shadow-sm hover:shadow-md transition-shadow">
+            {/* 3rd Place (Right on desktop, 3rd on mobile) */}
+            <div className="bg-amber-50/40 border border-amber-200/60 rounded-3xl p-5 text-center flex flex-col items-center justify-between order-3 sm:order-3 sm:w-1/3 relative shadow-sm hover:shadow-md transition-shadow">
               <div className="absolute -top-4 w-8 h-8 rounded-full bg-amber-100 border-2 border-amber-300 flex items-center justify-center font-black text-amber-800 text-sm shadow-sm">
                 🥉
               </div>
@@ -400,6 +481,7 @@ export default function StudentLeaderboardHub({ initialData, currentUserId }: St
                 <th className="py-3.5 px-4 text-right">
                   {activeCategory === 'xp' ? 'Total XP' : activeCategory === 'tactics' ? 'Tactics Solved' : activeCategory === 'homework' ? 'Homework' : 'Rating'}
                 </th>
+                <th className="py-3.5 px-4 text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/60 font-medium">
@@ -481,13 +563,28 @@ export default function StudentLeaderboardHub({ initialData, currentUserId }: St
                         {getMetricLabel(activeCategory, entry)}
                       </span>
                     </td>
+
+                    {/* Action */}
+                    <td className="py-3.5 px-4 text-right">
+                      {!entry.isYou ? (
+                        <Link
+                          href={`/dashboard/student?tab=bot-training`}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-[11px] uppercase transition-all shadow-sm active:scale-95 cursor-pointer"
+                        >
+                          <span>Challenge</span>
+                          <span>⚔️</span>
+                        </Link>
+                      ) : (
+                        <span className="text-[10px] text-text-muted font-bold">You</span>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
 
               {filteredList.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-12 text-center text-xs text-text-muted italic">
+                  <td colSpan={6} className="py-12 text-center text-xs text-text-muted italic">
                     No students match your search query.
                   </td>
                 </tr>

@@ -47,6 +47,16 @@ import {
   type AchievementRarity,
   type AchievementContext,
 } from '@/lib/bot-training/trophyAchievementsData';
+import {
+  DIVISIONS,
+  type DivisionTier,
+  type SimulatedStudentPeer,
+  type LiveTickerEvent,
+  type SeasonInfo,
+  buildDynamicAcademyCohort,
+  getDivisionForRating,
+  getSeasonInfo,
+} from '@/lib/students/leaderboardSimulation';
 import type {
   StudentColor,
   TimeControlOption,
@@ -469,11 +479,18 @@ ${formattedMoves || '1. e4'} ${game.result}`;
   const [botChatterOption, setBotChatterOption] = useState<'active' | 'quiet'>('active');
   const [newlyUnlockedBotLevel, setNewlyUnlockedBotLevel] = useState<number | null>(null);
 
-  // Upgraded Leaderboard ("Lider Bora") State
+  // Upgraded Dynamic Leaderboard ("Lider Bora") State
   const [leaderboardMetric, setLeaderboardMetric] = useState<'points' | 'rating' | 'streak' | 'boss' | 'badges'>('points');
   const [leaderboardTimeframe, setLeaderboardTimeframe] = useState<'all_time' | 'weekly'>('all_time');
   const [leaderboardSearch, setLeaderboardSearch] = useState<string>('');
   const [comparisonPeer, setComparisonPeer] = useState<any | null>(null);
+  const [selectedDivision, setSelectedDivision] = useState<DivisionTier>('bronze');
+  const [liveDivisions, setLiveDivisions] = useState<Record<DivisionTier, SimulatedStudentPeer[]> | null>(null);
+  const [liveTickerEvents, setLiveTickerEvents] = useState<LiveTickerEvent[]>([]);
+  const [seasonInfo, setSeasonInfo] = useState<SeasonInfo | null>(null);
+  const [ghostSparringRival, setGhostSparringRival] = useState<SimulatedStudentPeer | null>(null);
+  const [rankRiseAlert, setRankRiseAlert] = useState<{ prevRank: number; newRank: number; rivalOvertaken: string } | null>(null);
+  const [showSundayRecap, setShowSundayRecap] = useState<boolean>(false);
 
   // Daily Quests & Streak System State
   const [dailyBonusClaimed, setDailyBonusClaimed] = useState<boolean>(false);
@@ -655,17 +672,29 @@ ${formattedMoves || '1. e4'} ${game.result}`;
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'leaderboard' && !livePeers) {
+    if (activeTab === 'leaderboard' && !liveDivisions) {
       fetch('/api/leaderboard')
         .then((res) => res.json())
         .then((data) => {
+          if (data?.divisions) {
+            setLiveDivisions(data.divisions);
+            if (data.yourStanding?.division) {
+              setSelectedDivision(data.yourStanding.division);
+            }
+          }
           if (data?.entries?.rating) {
             setLivePeers(data.entries.rating);
+          }
+          if (data?.tickerEvents) {
+            setLiveTickerEvents(data.tickerEvents);
+          }
+          if (data?.seasonInfo) {
+            setSeasonInfo(data.seasonInfo);
           }
         })
         .catch(() => {});
     }
-  }, [activeTab, livePeers]);
+  }, [activeTab, liveDivisions]);
 
   // Terminate Stockfish on unmount
   useEffect(() => {
@@ -772,7 +801,9 @@ ${formattedMoves || '1. e4'} ${game.result}`;
     setInGame(true);
     setCurrentOpening('Starting Position');
     spokenEventsRef.current.clear();
-    const startGreeting = getRandomNonRepeatingQuote(selectedPersonalityId, 'greeting', []);
+    const startGreeting = ghostSparringRival
+      ? `⚔️ Ghost Sparring Match! Challenging ${ghostSparringRival.name} (${ghostSparringRival.rating} Elo, Rank #${ghostSparringRival.rank})! Win to overtake my rank on the leaderboard!`
+      : getRandomNonRepeatingQuote(selectedPersonalityId, 'greeting', []);
     spokenQuotesRef.current = [startGreeting];
     clearSpokenHistory();
     resetVoiceCooldown();
@@ -1344,8 +1375,68 @@ ${formattedMoves || '1. e4'} ${game.result}`;
         setChestQuizSelectedOption(null);
         setChestQuizAnswerSubmitted(false);
         const shuffled = [...TACTICAL_QUIZ_QUESTIONS].sort(() => 0.5 - Math.random()).slice(0, 3);
-        const winQuote = getRandomPersonalityQuote(selectedPersonalityId, 'studentWin');
+        const winQuote = ghostSparringRival
+          ? `Spectacular! You defeated ${ghostSparringRival.name}'s Ghost sparring match! Your academy rank surges!`
+          : getRandomPersonalityQuote(selectedPersonalityId, 'studentWin');
         triggerVictoryCelebration(winQuote);
+
+        if (ghostSparringRival) {
+          const overtakenRank = ghostSparringRival.rank;
+          const oldRank = overtakenRank + 1;
+          setRankRiseAlert({
+            prevRank: oldRank,
+            newRank: overtakenRank,
+            rivalOvertaken: ghostSparringRival.name,
+          });
+          setLiveDivisions((prev) => {
+            if (!prev) return prev;
+            const divKey = ghostSparringRival.division;
+            const list = [...(prev[divKey] || [])];
+            const youIdx = list.findIndex((p) => p.isYou);
+            const rivalIdx = list.findIndex((p) => p.id === ghostSparringRival.id);
+            if (youIdx >= 0 && rivalIdx >= 0 && youIdx > rivalIdx) {
+              const [youItem] = list.splice(youIdx, 1);
+              list.splice(rivalIdx, 0, youItem);
+              const reRanked = list.map((p, i) => ({
+                ...p,
+                rank: i + 1,
+                rankDelta: p.isYou ? `+${youIdx - rivalIdx}` : p.id === ghostSparringRival.id ? '-1' : p.rankDelta,
+              }));
+              return { ...prev, [divKey]: reRanked };
+            }
+            return prev;
+          });
+        } else if (liveDivisions && selectedDivision) {
+          const currentList = liveDivisions[selectedDivision] || [];
+          const youIdx = currentList.findIndex((p) => p.isYou);
+          if (youIdx > 0) {
+            const peerAhead = currentList[youIdx - 1];
+            const nextRating = res.data?.ratingAfter || ((profile?.rating || 400) + 20);
+            if (nextRating >= peerAhead.rating) {
+              setRankRiseAlert({
+                prevRank: youIdx + 1,
+                newRank: youIdx,
+                rivalOvertaken: peerAhead.name,
+              });
+              setLiveDivisions((prev) => {
+                if (!prev) return prev;
+                const list = [...(prev[selectedDivision] || [])];
+                const yIdx = list.findIndex((p) => p.isYou);
+                if (yIdx > 0) {
+                  const [youItem] = list.splice(yIdx, 1);
+                  list.splice(yIdx - 1, 0, youItem);
+                  const reRanked = list.map((p, i) => ({
+                    ...p,
+                    rank: i + 1,
+                    rankDelta: p.isYou ? '+1' : i === yIdx ? '-1' : p.rankDelta,
+                  }));
+                  return { ...prev, [selectedDivision]: reRanked };
+                }
+                return prev;
+              });
+            }
+          }
+        }
       } else {
         if (result === 'loss') {
           setStudentHp(0);
@@ -1353,6 +1444,31 @@ ${formattedMoves || '1. e4'} ${game.result}`;
           setBotDialogue(botWinQuote);
           if (voiceNarrationOn) {
             speakCoachAdvice(botWinQuote, { pitch: currentPersonality.pitch, rate: currentPersonality.rate });
+          }
+          if (liveDivisions && selectedDivision) {
+            const currentList = liveDivisions[selectedDivision] || [];
+            const youIdx = currentList.findIndex((p) => p.isYou);
+            if (youIdx >= 0 && youIdx < currentList.length - 1) {
+              if (Math.random() < 0.35) {
+                setLiveDivisions((prev) => {
+                  if (!prev) return prev;
+                  const list = [...(prev[selectedDivision] || [])];
+                  const yIdx = list.findIndex((p) => p.isYou);
+                  if (yIdx >= 0 && yIdx < list.length - 1) {
+                    const peerItem = list[yIdx + 1];
+                    const [youItem] = list.splice(yIdx, 1);
+                    list.splice(yIdx + 1, 0, youItem);
+                    const reRanked = list.map((p, i) => ({
+                      ...p,
+                      rank: i + 1,
+                      rankDelta: p.isYou ? '-1' : p.id === peerItem.id ? '+1' : p.rankDelta,
+                    }));
+                    return { ...prev, [selectedDivision]: reRanked };
+                  }
+                  return prev;
+                });
+              }
+            }
           }
         }
         setShowAnalysisModal(true);
@@ -1870,6 +1986,76 @@ ${formattedMoves || '1. e4'} ${game.result}`;
           })}
         </div>
       </div>
+
+      {/* Ghost Sparring Active Banner */}
+      {ghostSparringRival && (
+        <div className="bg-gradient-to-r from-purple-950 via-indigo-950 to-purple-950 border-2 border-purple-500/60 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-white shadow-xl shadow-purple-900/30 animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl sm:text-3xl animate-pulse">👻</span>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-black text-purple-300 uppercase tracking-wider text-[10px]">Ghost Sparring Active</span>
+                <span className="bg-purple-500/20 text-purple-200 px-2 py-0.2 rounded text-[10px] font-bold border border-purple-500/40">
+                  {ghostSparringRival.division.toUpperCase()} LEAGUE
+                </span>
+                <span className="text-[10px] font-mono text-amber-400 font-bold">
+                  Rank #{ghostSparringRival.rank}
+                </span>
+              </div>
+              <div className="text-sm font-black text-white">
+                Challenging {ghostSparringRival.name} ({ghostSparringRival.rating} Elo)
+              </div>
+              <div className="text-[10px] text-purple-300/80">
+                Opening Style: <strong className="text-white">{ghostSparringRival.signatureOpening || 'Balanced Italian/Spanish'}</strong> · Defeat this ghost bot to claim ranking points and surge ahead on the leaderboard!
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setGhostSparringRival(null)}
+            className="px-3 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 text-purple-200 text-xs font-black uppercase transition-all cursor-pointer shrink-0"
+          >
+            ✕ Exit Sparring
+          </button>
+        </div>
+      )}
+
+      {/* Rank Rise Surge Alert Banner */}
+      {rankRiseAlert && (
+        <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-emerald-950 border-2 border-emerald-500/60 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-white shadow-xl shadow-emerald-900/30 animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl sm:text-3xl animate-bounce">🚀</span>
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-wider text-emerald-400">Academy Rank Rise!</div>
+              <div className="text-sm font-black text-white">
+                You climbed from Rank #{rankRiseAlert.prevRank} ➔ #{rankRiseAlert.newRank}!
+              </div>
+              <div className="text-[10px] text-emerald-300">
+                You overtook <span className="font-bold underline text-white">{rankRiseAlert.rivalOvertaken}</span> on the academy leaderboard! Keep winning to secure your promotion!
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('leaderboard');
+                setRankRiseAlert(null);
+              }}
+              className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black uppercase shadow-md transition-all cursor-pointer"
+            >
+              View Standings 🏆
+            </button>
+            <button
+              type="button"
+              onClick={() => setRankRiseAlert(null)}
+              className="p-1.5 text-slate-400 hover:text-white text-xs font-bold cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* TAB 1: PLAY BOT */}
       {activeTab === 'play' && (
@@ -3404,143 +3590,20 @@ ${formattedMoves || '1. e4'} ${game.result}`;
       {/* TAB: ACADEMY LEADERBOARD ("Lider Bora") */}
       {activeTab === 'leaderboard' && (() => {
         const studentRating = profile?.rating || 400;
-        const maxBotBeaten = Math.max(...Array.from(unlockedSet), 1);
 
-        const rawPeers = [
-          {
-            name: 'Aarav Sharma',
-            rating: 1420,
-            points: 2840,
-            weeklyPoints: 520,
-            streak: 14,
-            bossLevel: 7,
-            badges: 12,
-            avatar: '👑',
-            title: 'Grandmaster Slayer',
-            winRate: 82,
-            rankDelta: '+2',
-            isYou: false,
-          },
-          {
-            name: 'Ananya Roy',
-            rating: 1280,
-            points: 2310,
-            weeklyPoints: 410,
-            streak: 11,
-            bossLevel: 6,
-            badges: 9,
-            avatar: '🎖️',
-            title: 'Tactics Prodigy',
-            winRate: 75,
-            rankDelta: '+1',
-            isYou: false,
-          },
-          {
-            name: 'Vihaan Patel',
-            rating: 1150,
-            points: 1890,
-            weeklyPoints: 340,
-            streak: 8,
-            bossLevel: 5,
-            badges: 8,
-            avatar: '🏅',
-            title: 'Endgame Master',
-            winRate: 69,
-            rankDelta: '0',
-            isYou: false,
-          },
-          {
-            name: 'You (Current Student)',
-            rating: studentRating,
-            points: userTrainingPoints,
-            weeklyPoints: Math.min(userTrainingPoints, 290),
-            streak: streakCount,
-            bossLevel: maxBotBeaten,
-            badges: badges.length,
-            avatar: '🛡️',
-            title: maxBotBeaten >= 6 ? 'Arena Conqueror' : maxBotBeaten >= 3 ? 'Knight Hunter' : 'Aspiring Master',
-            winRate: Math.round(((profile?.wins || 0) / Math.max(1, profile?.games_played || 0)) * 100) || 50,
-            rankDelta: '+1',
-            isYou: true,
-          },
-          {
-            name: 'Rohan Gupta',
-            rating: 780,
-            points: 1120,
-            weeklyPoints: 210,
-            streak: 5,
-            bossLevel: 3,
-            badges: 6,
-            avatar: '♟️',
-            title: 'Opening Explorer',
-            winRate: 58,
-            rankDelta: '-1',
-            isYou: false,
-          },
-          {
-            name: 'Sara Khan',
-            rating: 650,
-            points: 840,
-            weeklyPoints: 175,
-            streak: 4,
-            bossLevel: 2,
-            badges: 4,
-            avatar: '♞',
-            title: 'Tactical Striker',
-            winRate: 52,
-            rankDelta: '0',
-            isYou: false,
-          },
-          {
-            name: 'Kabir Verma',
-            rating: 520,
-            points: 560,
-            weeklyPoints: 120,
-            streak: 2,
-            bossLevel: 1,
-            badges: 3,
-            avatar: '♝',
-            title: 'Rising Challenger',
-            winRate: 46,
-            rankDelta: '-1',
-            isYou: false,
-          },
-          {
-            name: 'Meera Nair',
-            rating: 490,
-            points: 440,
-            weeklyPoints: 95,
-            streak: 3,
-            bossLevel: 1,
-            badges: 3,
-            avatar: '⚔️',
-            title: 'Puzzle Solver',
-            winRate: 48,
-            rankDelta: '+3',
-            isYou: false,
-          },
-        ];
-
-        // Base peers list from server or enhanced mock data
-        const basePeers = (livePeers && livePeers.length > 0)
-          ? livePeers.map((p, idx) => ({
-              name: p.name,
-              rating: p.rating,
-              points: (p as any).training_points ?? p.rating * 2,
-              weeklyPoints: Math.round(((p as any).training_points ?? p.rating * 2) * 0.25),
-              streak: p.streak || 1,
-              bossLevel: p.botLevel || 1,
-              badges: p.badges || Math.max(1, Math.floor(p.rating / 100)),
-              avatar: p.avatar || '🛡️',
-              title: (p as any).title || 'Academy Scholar',
-              winRate: (p as any).winRate || 60,
-              rankDelta: idx === 0 ? '+2' : idx === 1 ? '+1' : '0',
-              isYou: p.isYou || false,
-            }))
-          : rawPeers;
+        // Obtain dynamic cohort for selected division
+        const activeDivisionPeers: SimulatedStudentPeer[] = (liveDivisions && liveDivisions[selectedDivision])
+          ? liveDivisions[selectedDivision]
+          : buildDynamicAcademyCohort([], profile?.student_id, {
+              rating: studentRating,
+              trainingPoints: userTrainingPoints,
+              streak: streakCount,
+              botLevel: Math.max(...Array.from(unlockedSet), 1),
+              badges: badges.length,
+            }).divisions[selectedDivision];
 
         // Sort peers dynamically by selected leaderboard metric
-        const sortedPeers = [...basePeers].sort((a, b) => {
+        const sortedPeers = [...activeDivisionPeers].sort((a, b) => {
           if (leaderboardMetric === 'points') {
             const valA = leaderboardTimeframe === 'weekly' ? a.weeklyPoints : a.points;
             const valB = leaderboardTimeframe === 'weekly' ? b.weeklyPoints : b.points;
@@ -3557,7 +3620,8 @@ ${formattedMoves || '1. e4'} ${game.result}`;
         const filteredPeers = sortedPeers.filter(
           (p) =>
             p.name.toLowerCase().includes(leaderboardSearch.toLowerCase()) ||
-            p.title.toLowerCase().includes(leaderboardSearch.toLowerCase())
+            p.title.toLowerCase().includes(leaderboardSearch.toLowerCase()) ||
+            p.username.toLowerCase().includes(leaderboardSearch.toLowerCase())
         );
 
         const yourEntry = sortedPeers.find((p) => p.isYou) || sortedPeers[0];
@@ -3568,110 +3632,263 @@ ${formattedMoves || '1. e4'} ${game.result}`;
               : peerAhead.rating - yourEntry.rating)
           : 0;
 
-        const topThree = [sortedPeers[1], sortedPeers[0], sortedPeers[2]].filter(Boolean);
+        const rank1 = sortedPeers[0];
+        const rank2 = sortedPeers[1];
+        const rank3 = sortedPeers[2];
+        const activeDivConfig = DIVISIONS[selectedDivision];
+        const userDivision = getDivisionForRating(studentRating);
+
+        const handleChallengeGhost = (peer: SimulatedStudentPeer) => {
+          setGhostSparringRival(peer);
+          // Find closest bot level matching rival rating
+          const closestBot = BOT_LEVELS.reduce((prev, curr) =>
+            Math.abs(curr.rating - peer.rating) < Math.abs(prev.rating - peer.rating) ? curr : prev
+          );
+          setSelectedLevel(closestBot.level);
+          setActiveTab('play');
+        };
+
+        const renderRankDelta = (delta?: string) => {
+          if (!delta || delta === '0' || delta === '+0' || delta === '-0') {
+            return (
+              <span className="text-[10px] font-bold text-slate-500 inline-flex items-center gap-0.5">
+                <span>—</span>
+                <span>Stable</span>
+              </span>
+            );
+          }
+          if (delta.startsWith('+')) {
+            return (
+              <span className="text-[10px] font-black text-emerald-400 inline-flex items-center gap-0.5 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/30">
+                <span>▲</span>
+                <span>{delta.replace('+', '')}</span>
+              </span>
+            );
+          }
+          if (delta.startsWith('-')) {
+            return (
+              <span className="text-[10px] font-black text-rose-400 inline-flex items-center gap-0.5 bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/30">
+                <span>▼</span>
+                <span>{delta.replace('-', '')}</span>
+              </span>
+            );
+          }
+          return <span className="text-[10px] text-slate-400">{delta}</span>;
+        };
 
         return (
-          <div className="space-y-6">
-            {/* Leaderboard Header Banner */}
-            <div className="bg-gradient-to-r from-slate-900 via-amber-950/40 to-slate-900 border-2 border-amber-500/40 rounded-3xl p-6 shadow-2xl flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5 relative overflow-hidden">
-              {/* Background ambient glow */}
-              <div className="absolute top-0 right-1/4 w-80 h-32 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-
-              <div className="space-y-1.5 relative z-10">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl animate-bounce">🏆</span>
-                  <span className="text-xs font-black uppercase tracking-wider text-amber-400 bg-amber-500/15 px-2.5 py-0.5 rounded-full border border-amber-500/30">
-                    ChessHub Academy Standings
-                  </span>
-                  <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/15 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                    ● Live Season
-                  </span>
-                </div>
-                <h2 className="text-2xl font-black text-white tracking-tight">Student Training Leaderboard</h2>
-                <p className="text-xs text-slate-300 max-w-xl">
-                  Compete with fellow academy peers across Training Points, Elo rating, daily streaks, and bot conquests!
-                </p>
+          <div className="space-y-5">
+            {/* 1. TOP BAR: 4 DIVISION LEAGUES & SUNDAY SEASON COUNTDOWN */}
+            <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-3.5 sm:p-4 shadow-xl flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+              {/* League Selector Tabs */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0 scrollbar-none">
+                {(['bronze', 'silver', 'gold', 'diamond'] as DivisionTier[]).map((divKey) => {
+                  const dCfg = DIVISIONS[divKey];
+                  const isSelected = selectedDivision === divKey;
+                  const isUserLeague = userDivision === divKey;
+                  return (
+                    <button
+                      key={divKey}
+                      type="button"
+                      onClick={() => setSelectedDivision(divKey)}
+                      className={`py-2 px-3 sm:px-3.5 rounded-2xl text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer active:translate-y-0.5 ${
+                        isSelected
+                          ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-lg shadow-amber-500/25 border-b-2 border-amber-700 scale-[1.02]'
+                          : 'bg-slate-950/80 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                      }`}
+                    >
+                      <span className="text-base">{dCfg.badge}</span>
+                      <span>{dCfg.name}</span>
+                      <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
+                        isSelected ? 'bg-slate-950/30 text-slate-950' : 'bg-slate-800 text-slate-400'
+                      }`}>
+                        {dCfg.minElo}–{dCfg.maxElo}
+                      </span>
+                      {isUserLeague && (
+                        <span className="text-[8px] bg-emerald-500 text-slate-950 font-black px-1.5 py-0.5 rounded uppercase tracking-wider">
+                          YOU
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
 
-              <div className="flex items-center gap-3 w-full lg:w-auto justify-between lg:justify-end relative z-10">
-                {/* Your Live Standing Card */}
-                <div className="bg-slate-950/90 border border-amber-500/40 rounded-2xl p-3 sm:p-4 flex items-center gap-3 shadow-xl">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center font-black text-lg text-white shadow-lg shadow-amber-500/30 border border-amber-400/50">
-                    #{yourEntry.rank}
-                  </div>
-                  <div className="space-y-0.5">
-                    <div className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider flex items-center gap-1">
-                      <span>Your Rank</span>
-                      <span className="text-emerald-400 font-black">{yourEntry.rankDelta}</span>
+              {/* Sunday Season Countdown & Rules Recap Button */}
+              <div className="flex items-center gap-2 justify-between lg:justify-end shrink-0">
+                <div className="text-[11px] font-mono text-slate-300 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 flex items-center gap-1.5 shadow-inner">
+                  <span className="text-amber-400">⏱️</span>
+                  <span className="text-slate-400 font-bold">Sunday Reset:</span>
+                  <span className="text-amber-400 font-black">
+                    {seasonInfo
+                      ? `${seasonInfo.daysRemaining}d ${seasonInfo.hoursRemaining}h ${seasonInfo.minutesRemaining}m`
+                      : '6d 19h 2m'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowSundayRecap(true)}
+                  className="px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:translate-y-0.5"
+                >
+                  <span>🏆</span>
+                  <span>Rules</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 2. UNIFIED LEAGUE HEADER BANNER & YOUR STANDING CARD */}
+            <div className={`bg-gradient-to-r ${activeDivConfig.bgGradient} border-2 border-amber-500/30 rounded-3xl p-5 sm:p-6 shadow-2xl flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5 relative overflow-hidden`}>
+              <div className="space-y-2 relative z-10 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-2xl">{activeDivConfig.badge}</span>
+                  <span className="text-xs font-black uppercase tracking-wider text-amber-400 bg-amber-500/15 px-2.5 py-0.5 rounded-full border border-amber-500/30">
+                    {activeDivConfig.name} Standings
+                  </span>
+                  <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/15 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                    ● Season {seasonInfo?.seasonNumber || 38} Active
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-300 bg-slate-900/60 px-2 py-0.5 rounded-full border border-slate-700">
+                    Tier: {activeDivConfig.minElo}–{activeDivConfig.maxElo} Elo
+                  </span>
+                </div>
+
+                <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                  Student Training Leaderboard
+                </h2>
+
+                <p className="text-xs text-slate-300 max-w-xl">
+                  Compete with fellow academy peers across training points, streak flames, and boss conquests. Top 3 promote on Sunday reset!
+                </p>
+
+                {/* Subtle Live Feed Marquee */}
+                {liveTickerEvents && liveTickerEvents.length > 0 && (
+                  <div className="pt-1 flex items-center gap-2 overflow-hidden text-xs">
+                    <div className="flex items-center gap-1 shrink-0 text-emerald-400 font-extrabold text-[10px] uppercase tracking-wider bg-emerald-950/70 px-2 py-0.5 rounded-lg border border-emerald-500/30">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                      <span>Live</span>
                     </div>
-                    <div className="text-xs font-black text-white">Student (You)</div>
-                    <div className="text-[10px] font-mono text-amber-400 font-bold">
-                      {leaderboardMetric === 'points'
-                        ? `${yourEntry.points} TP`
-                        : leaderboardMetric === 'rating'
-                        ? `${yourEntry.rating} Elo`
-                        : leaderboardMetric === 'streak'
-                        ? `🔥 ${yourEntry.streak}d`
-                        : `Lvl ${yourEntry.bossLevel} Bot`}
+                    <div className="flex items-center gap-5 overflow-x-auto scrollbar-none whitespace-nowrap py-0.5 text-[11px] text-slate-300">
+                      {liveTickerEvents.map((evt) => (
+                        <div key={evt.id} className="flex items-center gap-1.5 shrink-0">
+                          <span>{evt.avatar}</span>
+                          <span className="font-bold text-white">{evt.studentName}</span>
+                          <span className="text-slate-300">{evt.description}</span>
+                          <span className="text-[9px] text-amber-400/90 font-mono">({evt.timestampMinutesAgo}m ago)</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Your Standing Card (Clear, readable, high-contrast) */}
+              <div className="bg-slate-950/90 border border-amber-500/40 rounded-2xl p-3.5 sm:p-4 shadow-xl flex items-center justify-between lg:justify-start gap-4 relative z-10 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-700 flex flex-col items-center justify-center text-white shadow-lg shadow-amber-500/30 border border-amber-400/50">
+                    <span className="text-[9px] font-black uppercase tracking-wider text-amber-200">Rank</span>
+                    <span className="text-xl font-black leading-none">#{yourEntry.rank}</span>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-black text-white">Student (You)</span>
+                      {yourEntry.rank <= 3 ? (
+                        <span className="text-[9px] bg-emerald-500/20 text-emerald-300 font-extrabold px-2 py-0.5 rounded-full border border-emerald-500/40">
+                          🚀 Promotion Zone
+                        </span>
+                      ) : selectedDivision !== 'bronze' && yourEntry.rank > sortedPeers.length - 3 ? (
+                        <span className="text-[9px] bg-rose-500/20 text-rose-300 font-extrabold px-2 py-0.5 rounded-full border border-rose-500/40">
+                          ⚠️ Danger Zone
+                        </span>
+                      ) : (
+                        <span className="text-[9px] bg-slate-800 text-slate-300 font-extrabold px-2 py-0.5 rounded-full border border-slate-700">
+                          🛡️ Safe Zone
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2.5 mt-1 text-[11px]">
+                      <span className="font-mono font-black text-amber-400">
+                        {leaderboardMetric === 'points'
+                          ? `${leaderboardTimeframe === 'weekly' ? yourEntry.weeklyPoints : yourEntry.points} TP`
+                          : leaderboardMetric === 'rating'
+                          ? `${yourEntry.rating} Elo`
+                          : leaderboardMetric === 'streak'
+                          ? `🔥 ${yourEntry.streak}d streak`
+                          : `Lvl ${yourEntry.bossLevel} Bot`}
+                      </span>
+                      <span className="text-slate-600">•</span>
+                      {renderRankDelta(yourEntry.rankDelta)}
                     </div>
                   </div>
                 </div>
 
                 <Link
                   href="/dashboard/student/leaderboard"
-                  className="px-4 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-500/25 flex items-center gap-1.5 shrink-0 active:translate-y-0.5"
+                  className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider transition-all shadow-md shadow-amber-500/20 flex items-center gap-1.5 shrink-0 active:translate-y-0.5"
                 >
-                  <span className="hidden sm:inline">Full Leaderboard Hub</span>
-                  <span className="sm:hidden">Full Hub</span>
+                  <span className="hidden sm:inline">Full Hub</span>
                   <span>➔</span>
                 </Link>
               </div>
             </div>
 
-            {/* Overtake Challenge Notification Bar (if not rank #1) */}
+            {/* 3. OVERTAKE MILESTONE TARGET */}
             {peerAhead && pointsDiffAhead > 0 && (
-              <div className="bg-gradient-to-r from-amber-500/15 via-slate-900 to-amber-500/15 border border-amber-500/30 rounded-2xl p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md">
+              <div className="bg-gradient-to-r from-amber-500/10 via-slate-900 to-amber-500/10 border border-amber-500/30 rounded-2xl p-3 sm:p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md">
                 <div className="flex items-center gap-3 text-xs">
-                  <span className="text-xl animate-pulse">⚡</span>
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-base shrink-0">
+                    ⚡
+                  </div>
                   <div>
-                    <span className="text-slate-300 font-bold">Next Milestone: </span>
-                    <span className="text-white font-black">
-                      Need <strong className="text-amber-400 font-mono">+{pointsDiffAhead} {leaderboardMetric === 'points' ? 'TP' : 'pts'}</strong> to overtake #{peerAhead.rank} {peerAhead.name}!
-                    </span>
-                    <p className="text-[10px] text-slate-400">
-                      Win your next bot battle to earn +75 TP or solve puzzle quests to climb!
+                    <div className="text-white font-extrabold flex items-center gap-1.5 flex-wrap">
+                      <span>Next Target:</span>
+                      <span className="text-amber-400 font-mono font-black">+{pointsDiffAhead} {leaderboardMetric === 'points' ? 'TP' : 'pts'}</span>
+                      <span className="text-slate-400 font-normal">to overtake</span>
+                      <span className="text-amber-300 font-bold">#{peerAhead.rank} {peerAhead.name}</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      Surge ahead by winning bot matches or challenging {peerAhead.name}&apos;s Ghost bot!
                     </p>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('play')}
-                  className="px-4 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs uppercase rounded-xl shadow-md shadow-amber-500/20 active:translate-y-0.5 transition-all shrink-0 cursor-pointer"
-                >
-                  Battle Bot (+75 TP) ⚔️
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleChallengeGhost(peerAhead)}
+                    className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white font-black text-xs uppercase rounded-xl shadow-md active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1"
+                  >
+                    <span>Challenge Ghost</span>
+                    <span>⚔️</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('play')}
+                    className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase rounded-xl shadow-md active:translate-y-0.5 transition-all cursor-pointer"
+                  >
+                    Battle Bot (+75 TP)
+                  </button>
+                </div>
               </div>
             )}
 
-            {/* Metric Selector Tabs & Timeframe Bar */}
-            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3 shadow-xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-              {/* Metric Buttons */}
+            {/* 4. METRIC FILTER & SEARCH TOOLBAR */}
+            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3 shadow-lg flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+              {/* Metric Tabs */}
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
                 {[
-                  { id: 'points', label: '⚡ Training Points', icon: '⚡' },
-                  { id: 'rating', label: '⭐ Elo Rating', icon: '⭐' },
-                  { id: 'streak', label: '🔥 Daily Streak', icon: '🔥' },
-                  { id: 'boss', label: '👑 Bots Conquered', icon: '👑' },
-                  { id: 'badges', label: '🏆 Badges', icon: '🏆' },
+                  { id: 'points', label: '⚡ Points' },
+                  { id: 'rating', label: '⭐ Rating' },
+                  { id: 'streak', label: '🔥 Streak' },
+                  { id: 'boss', label: '👑 Bots' },
+                  { id: 'badges', label: '🏆 Badges' },
                 ].map((m) => (
                   <button
                     key={m.id}
                     type="button"
                     onClick={() => setLeaderboardMetric(m.id as any)}
-                    className={`py-1.5 px-3 rounded-xl text-xs font-black transition-all whitespace-nowrap active:translate-y-0.5 cursor-pointer ${
+                    className={`py-1.5 px-3 rounded-xl text-xs font-black transition-all whitespace-nowrap cursor-pointer active:translate-y-0.5 ${
                       leaderboardMetric === m.id
-                        ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/25 border-b-2 border-amber-700'
-                        : 'bg-slate-950/80 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                        ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/25'
+                        : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
                     }`}
                   >
                     {m.label}
@@ -3679,25 +3896,13 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                 ))}
               </div>
 
-              {/* Timeframe Toggle & Search */}
+              {/* Timeframe & Search */}
               <div className="flex items-center gap-2">
-                {/* Timeframe Switch */}
                 <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 shrink-0">
                   <button
                     type="button"
-                    onClick={() => setLeaderboardTimeframe('all_time')}
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all ${
-                      leaderboardTimeframe === 'all_time'
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
-                        : 'text-slate-500 hover:text-slate-300'
-                    }`}
-                  >
-                    All-Time
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => setLeaderboardTimeframe('weekly')}
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all ${
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all cursor-pointer ${
                       leaderboardTimeframe === 'weekly'
                         ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
                         : 'text-slate-500 hover:text-slate-300'
@@ -3705,10 +3910,20 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                   >
                     Weekly ⚡
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setLeaderboardTimeframe('all_time')}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all cursor-pointer ${
+                      leaderboardTimeframe === 'all_time'
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                  >
+                    All-Time
+                  </button>
                 </div>
 
-                {/* Search Input */}
-                <div className="relative flex-1 md:w-48">
+                <div className="relative flex-1 sm:w-52">
                   <input
                     type="text"
                     value={leaderboardSearch}
@@ -3721,154 +3936,238 @@ ${formattedMoves || '1. e4'} ${game.result}`;
               </div>
             </div>
 
-            {/* 3D GRAND CHAMPIONS PODIUM (TOP 3) */}
-            {topThree.length >= 3 && (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 items-end">
-                {/* 2nd Place: Silver Prodigy (Left) */}
-                <div className="bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 border-2 border-slate-400/40 rounded-3xl p-5 text-center flex flex-col items-center justify-between space-y-3 shadow-xl relative order-2 sm:order-1 hover:scale-[1.02] transition-transform">
-                  <div className="text-3xl filter drop-shadow">🥈</div>
-                  <div className="relative">
-                    <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center text-3xl border-4 border-slate-400/60 shadow-lg shadow-slate-400/20">
-                      {topThree[0].avatar}
-                    </div>
-                    <span className="absolute -bottom-1 -right-1 bg-slate-800 text-slate-300 font-mono text-[9px] font-black px-1.5 py-0.5 rounded-full border border-slate-600">
-                      #2
-                    </span>
-                  </div>
-
-                  <div>
-                    <div className="font-black text-sm text-white flex items-center justify-center gap-1">
-                      <span>{topThree[0].name}</span>
-                      {topThree[0].isYou && (
-                        <span className="text-[8px] bg-amber-500/20 text-amber-300 px-1 py-0.2 rounded font-black uppercase">
-                          YOU
+            {/* 5. 3D GRAND CHAMPIONS PODIUM (Crystal clear hierarchy: #1 in center on desktop, #1 at top on mobile) */}
+            {rank1 && (
+              <div className="pt-2">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-end justify-center gap-3 sm:gap-4">
+                  {/* 2nd Place: Silver (Left on desktop, 2nd on mobile) */}
+                  {rank2 && (
+                    <div className="order-2 sm:order-1 sm:w-1/3 bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 border-2 border-slate-500/40 rounded-3xl p-4 sm:p-5 text-center flex flex-col items-center justify-between space-y-3 shadow-xl hover:border-slate-400 transition-all">
+                      <div className="w-full flex items-center justify-between text-xs">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-300 bg-slate-800/80 px-2.5 py-0.5 rounded-full border border-slate-700">
+                          🥈 2nd Place
                         </span>
-                      )}
-                    </div>
-                    <div className="text-[10px] font-bold text-slate-400">{topThree[0].title}</div>
-                    <div className="text-base font-black font-mono text-slate-200 mt-1">
-                      {leaderboardMetric === 'points'
-                        ? `${topThree[0].points} TP`
-                        : leaderboardMetric === 'rating'
-                        ? `${topThree[0].rating} Elo`
-                        : leaderboardMetric === 'streak'
-                        ? `🔥 ${topThree[0].streak}d`
-                        : `Lvl ${topThree[0].bossLevel}`}
-                    </div>
-                  </div>
+                        <span className="text-xs font-mono font-black text-slate-300">#2</span>
+                      </div>
 
-                  <button
-                    type="button"
-                    onClick={() => setComparisonPeer(topThree[0])}
-                    className="w-full py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer"
-                  >
-                    Compare Stats 📊
-                  </button>
-                </div>
-
-                {/* 1st Place: Gold Academy Champion (Center, Elevated) */}
-                <div className="bg-gradient-to-b from-slate-900 via-amber-950/50 to-slate-900 border-2 border-amber-400/80 rounded-3xl p-6 text-center flex flex-col items-center justify-between space-y-3.5 shadow-2xl shadow-amber-500/20 relative order-1 sm:order-2 sm:-translate-y-2 hover:scale-[1.03] transition-transform">
-                  {/* Glowing Aura Ring */}
-                  <div className="absolute -top-12 left-1/2 -translate-x-1/2 w-48 h-48 bg-amber-500/15 rounded-full blur-2xl pointer-events-none" />
-
-                  <div className="text-4xl animate-bounce filter drop-shadow-md">👑</div>
-                  <div className="relative">
-                    <div className="w-20 h-20 rounded-full bg-gradient-to-br from-amber-400 via-amber-500 to-amber-700 flex items-center justify-center text-4xl shadow-xl shadow-amber-500/40 border-4 border-amber-300">
-                      {topThree[1].avatar}
-                    </div>
-                    <span className="absolute -bottom-1 -right-1 bg-amber-500 text-slate-950 font-mono text-[10px] font-black px-2 py-0.5 rounded-full border border-amber-300 shadow-md">
-                      #1
-                    </span>
-                  </div>
-
-                  <div>
-                    <div className="font-black text-base text-white flex items-center justify-center gap-1.5">
-                      <span>{topThree[1].name}</span>
-                      {topThree[1].isYou && (
-                        <span className="text-[9px] bg-amber-500 text-slate-950 px-1.5 py-0.5 rounded font-black uppercase shadow-sm">
-                          YOU
+                      <div className="relative my-1">
+                        <div className="w-16 h-16 rounded-2xl bg-slate-800 flex items-center justify-center text-3xl border-4 border-slate-400 shadow-lg shadow-slate-500/20">
+                          {rank2.avatar}
+                        </div>
+                        <span className="absolute -bottom-2 -right-1 bg-slate-800 text-slate-300 font-mono text-[9px] font-black px-1.5 py-0.5 rounded-full border border-slate-600">
+                          #2
                         </span>
+                      </div>
+
+                      <div className="space-y-0.5">
+                        <div className="font-black text-sm text-white flex items-center justify-center gap-1.5">
+                          <span>{rank2.name}</span>
+                          {rank2.isYou && (
+                            <span className="text-[8px] bg-amber-500 text-slate-950 px-1.5 py-0.5 rounded font-black uppercase">
+                              YOU
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] font-bold text-slate-400">{rank2.title}</div>
+                        <div className="text-lg font-black font-mono text-slate-200 mt-1">
+                          {leaderboardMetric === 'points'
+                            ? `${leaderboardTimeframe === 'weekly' ? rank2.weeklyPoints : rank2.points} TP`
+                            : leaderboardMetric === 'rating'
+                            ? `${rank2.rating} Elo`
+                            : leaderboardMetric === 'streak'
+                            ? `🔥 ${rank2.streak}d streak`
+                            : `Lvl ${rank2.bossLevel} Bot`}
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-mono">
+                          🔥 {rank2.streak}d · Lvl {rank2.bossLevel} · {rank2.badges} Crests
+                        </div>
+                      </div>
+
+                      <div className="w-full flex items-center gap-2 pt-1">
+                        {!rank2.isYou && (
+                          <button
+                            type="button"
+                            onClick={() => handleChallengeGhost(rank2)}
+                            className="flex-1 py-2 px-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-md flex items-center justify-center gap-1 active:translate-y-0.5"
+                          >
+                            <span>⚔️</span>
+                            <span>Challenge</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setComparisonPeer(rank2)}
+                          className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer border border-slate-700 active:translate-y-0.5 flex items-center justify-center gap-1"
+                          title="Compare Stats"
+                        >
+                          <span>📊</span>
+                          <span className={rank2.isYou ? 'inline' : 'hidden md:inline'}>Stats</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 1st Place: Gold Champion (Center on desktop, 1st on mobile) */}
+                  <div className="order-1 sm:order-2 sm:w-1/3 bg-gradient-to-b from-slate-900 via-amber-950/40 to-slate-900 border-2 border-amber-400 rounded-3xl p-5 sm:p-6 text-center flex flex-col items-center justify-between space-y-3.5 shadow-2xl shadow-amber-500/25 relative sm:-translate-y-3 hover:border-amber-300 transition-all">
+                    <div className="absolute -top-10 left-1/2 -translate-x-1/2 w-40 h-40 bg-amber-500/20 rounded-full blur-2xl pointer-events-none" />
+
+                    <div className="w-full flex items-center justify-between text-xs relative z-10">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-950 bg-gradient-to-r from-amber-400 to-amber-500 px-3 py-0.5 rounded-full shadow-sm">
+                        👑 Champion
+                      </span>
+                      <span className="text-sm font-mono font-black text-amber-400">#1</span>
+                    </div>
+
+                    <div className="relative my-1 z-10">
+                      <div className="text-3xl absolute -top-5 left-1/2 -translate-x-1/2 animate-bounce filter drop-shadow">
+                        👑
+                      </div>
+                      <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-amber-400 via-amber-500 to-amber-700 flex items-center justify-center text-4xl shadow-xl shadow-amber-500/40 border-4 border-amber-300 mt-2">
+                        {rank1.avatar}
+                      </div>
+                      <span className="absolute -bottom-2 -right-1 bg-amber-500 text-slate-950 font-mono text-[10px] font-black px-2 py-0.5 rounded-full border border-amber-300 shadow-md">
+                        #1
+                      </span>
+                    </div>
+
+                    <div className="space-y-0.5 relative z-10">
+                      <div className="font-black text-base text-white flex items-center justify-center gap-1.5">
+                        <span>{rank1.name}</span>
+                        {rank1.isYou && (
+                          <span className="text-[9px] bg-amber-500 text-slate-950 px-1.5 py-0.5 rounded font-black uppercase shadow-sm">
+                            YOU
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs font-bold text-amber-300">{rank1.title}</div>
+                      <div className="text-2xl font-black font-mono text-amber-400 mt-1 drop-shadow-sm">
+                        {leaderboardMetric === 'points'
+                          ? `${leaderboardTimeframe === 'weekly' ? rank1.weeklyPoints : rank1.points} TP`
+                          : leaderboardMetric === 'rating'
+                          ? `${rank1.rating} Elo`
+                          : leaderboardMetric === 'streak'
+                          ? `🔥 ${rank1.streak}d streak`
+                          : `Lvl ${rank1.bossLevel} Bot`}
+                      </div>
+                      <div className="text-[11px] text-amber-200/80 font-mono">
+                        🔥 {rank1.streak}d streak · Lvl {rank1.bossLevel} · {rank1.badges} Badges
+                      </div>
+                    </div>
+
+                    <div className="w-full flex items-center gap-2 pt-1 relative z-10">
+                      {!rank1.isYou && (
+                        <button
+                          type="button"
+                          onClick={() => handleChallengeGhost(rank1)}
+                          className="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-400 hover:to-indigo-500 text-white text-xs font-black uppercase tracking-wider shadow-lg transition-all cursor-pointer flex items-center justify-center gap-1 active:translate-y-0.5"
+                        >
+                          <span>⚔️</span>
+                          <span>Challenge Ghost</span>
+                        </button>
                       )}
-                    </div>
-                    <div className="text-[11px] font-bold text-amber-300">{topThree[1].title}</div>
-                    <div className="text-xl font-black font-mono text-amber-400 mt-1 drop-shadow-sm">
-                      {leaderboardMetric === 'points'
-                        ? `${topThree[1].points} TP`
-                        : leaderboardMetric === 'rating'
-                        ? `${topThree[1].rating} Elo`
-                        : leaderboardMetric === 'streak'
-                        ? `🔥 ${topThree[1].streak}d`
-                        : `Lvl ${topThree[1].bossLevel}`}
-                    </div>
-                    <div className="text-[10px] text-amber-200/80 font-mono">
-                      🔥 {topThree[1].streak}d streak · {topThree[1].badges} Badges
+                      <button
+                        type="button"
+                        onClick={() => setComparisonPeer(rank1)}
+                        className="py-2 px-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black uppercase tracking-wider shadow-md shadow-amber-500/30 transition-all cursor-pointer active:translate-y-0.5 flex items-center justify-center gap-1"
+                        title="Compare Stats"
+                      >
+                        <span>📊</span>
+                        <span>Stats</span>
+                      </button>
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => setComparisonPeer(topThree[1])}
-                    className="w-full py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black uppercase tracking-wider shadow-md shadow-amber-500/30 transition-all cursor-pointer"
-                  >
-                    Compare Stats 📊
-                  </button>
-                </div>
-
-                {/* 3rd Place: Bronze Tactician (Right) */}
-                <div className="bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 border-2 border-amber-800/50 rounded-3xl p-5 text-center flex flex-col items-center justify-between space-y-3 shadow-xl relative order-3 hover:scale-[1.02] transition-transform">
-                  <div className="text-3xl filter drop-shadow">🥉</div>
-                  <div className="relative">
-                    <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center text-3xl border-4 border-amber-700/60 shadow-lg shadow-amber-900/20">
-                      {topThree[2].avatar}
-                    </div>
-                    <span className="absolute -bottom-1 -right-1 bg-amber-950 text-amber-400 font-mono text-[9px] font-black px-1.5 py-0.5 rounded-full border border-amber-700">
-                      #3
-                    </span>
-                  </div>
-
-                  <div>
-                    <div className="font-black text-sm text-white flex items-center justify-center gap-1">
-                      <span>{topThree[2].name}</span>
-                      {topThree[2].isYou && (
-                        <span className="text-[8px] bg-amber-500/20 text-amber-300 px-1 py-0.2 rounded font-black uppercase">
-                          YOU
+                  {/* 3rd Place: Bronze (Right on desktop, 3rd on mobile) */}
+                  {rank3 && (
+                    <div className="order-3 sm:order-3 sm:w-1/3 bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 border-2 border-amber-800/60 rounded-3xl p-4 sm:p-5 text-center flex flex-col items-center justify-between space-y-3 shadow-xl hover:border-amber-700 transition-all">
+                      <div className="w-full flex items-center justify-between text-xs">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 bg-amber-950/60 px-2.5 py-0.5 rounded-full border border-amber-700/60">
+                          🥉 3rd Place
                         </span>
-                      )}
-                    </div>
-                    <div className="text-[10px] font-bold text-slate-400">{topThree[2].title}</div>
-                    <div className="text-base font-black font-mono text-amber-500 mt-1">
-                      {leaderboardMetric === 'points'
-                        ? `${topThree[2].points} TP`
-                        : leaderboardMetric === 'rating'
-                        ? `${topThree[2].rating} Elo`
-                        : leaderboardMetric === 'streak'
-                        ? `🔥 ${topThree[2].streak}d`
-                        : `Lvl ${topThree[2].bossLevel}`}
-                    </div>
-                  </div>
+                        <span className="text-xs font-mono font-black text-amber-500">#3</span>
+                      </div>
 
-                  <button
-                    type="button"
-                    onClick={() => setComparisonPeer(topThree[2])}
-                    className="w-full py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer"
-                  >
-                    Compare Stats 📊
-                  </button>
+                      <div className="relative my-1">
+                        <div className="w-16 h-16 rounded-2xl bg-slate-800 flex items-center justify-center text-3xl border-4 border-amber-700 shadow-lg shadow-amber-900/30">
+                          {rank3.avatar}
+                        </div>
+                        <span className="absolute -bottom-2 -right-1 bg-amber-950 text-amber-400 font-mono text-[9px] font-black px-1.5 py-0.5 rounded-full border border-amber-700">
+                          #3
+                        </span>
+                      </div>
+
+                      <div className="space-y-0.5">
+                        <div className="font-black text-sm text-white flex items-center justify-center gap-1.5">
+                          <span>{rank3.name}</span>
+                          {rank3.isYou && (
+                            <span className="text-[8px] bg-amber-500 text-slate-950 px-1.5 py-0.5 rounded font-black uppercase">
+                              YOU
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] font-bold text-slate-400">{rank3.title}</div>
+                        <div className="text-lg font-black font-mono text-amber-500 mt-1">
+                          {leaderboardMetric === 'points'
+                            ? `${leaderboardTimeframe === 'weekly' ? rank3.weeklyPoints : rank3.points} TP`
+                            : leaderboardMetric === 'rating'
+                            ? `${rank3.rating} Elo`
+                            : leaderboardMetric === 'streak'
+                            ? `🔥 ${rank3.streak}d streak`
+                            : `Lvl ${rank3.bossLevel} Bot`}
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-mono">
+                          🔥 {rank3.streak}d · Lvl {rank3.bossLevel} · {rank3.badges} Crests
+                        </div>
+                      </div>
+
+                      <div className="w-full flex items-center gap-2 pt-1">
+                        {!rank3.isYou && (
+                          <button
+                            type="button"
+                            onClick={() => handleChallengeGhost(rank3)}
+                            className="flex-1 py-2 px-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-md flex items-center justify-center gap-1 active:translate-y-0.5"
+                          >
+                            <span>⚔️</span>
+                            <span>Challenge</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setComparisonPeer(rank3)}
+                          className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer border border-slate-700 active:translate-y-0.5 flex items-center justify-center gap-1"
+                          title="Compare Stats"
+                        >
+                          <span>📊</span>
+                          <span className={rank3.isYou ? 'inline' : 'hidden md:inline'}>Stats</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
-            {/* FULL STUDENT ACADEMY ROSTER TABLE */}
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
-              <div className="flex items-center justify-between">
+            {/* 6. FULL STUDENT ACADEMY ROSTER TABLE */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-xl space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
-                  <h3 className="text-sm font-black text-white">Full Student Academy Roster</h3>
+                  <h3 className="text-sm font-black text-white flex items-center gap-2">
+                    <span>{activeDivConfig.badge}</span>
+                    <span>{activeDivConfig.name} Roster</span>
+                  </h3>
                   <p className="text-xs text-slate-400">
-                    Showing {filteredPeers.length} ranked academy students · Sorted by {leaderboardMetric.toUpperCase()}
+                    Showing {filteredPeers.length} enrolled students · Top 3 in Promotion Zone 🚀 · Bottom 3 in Danger Zone ⚠️
                   </p>
                 </div>
-                <div className="text-[10px] font-mono text-slate-400 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
-                  {leaderboardTimeframe === 'weekly' ? '⚡ Weekly Season' : '🌟 All-Time'}
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/40 px-2.5 py-1 rounded-lg border border-emerald-500/30">
+                    🚀 Top 3: Promotes
+                  </span>
+                  {selectedDivision !== 'bronze' && (
+                    <span className="text-[10px] font-mono text-rose-400 bg-rose-950/40 px-2.5 py-1 rounded-lg border border-rose-500/30">
+                      ⚠️ Bottom 3: Demotes
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -3876,11 +4175,11 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-950 text-slate-400 font-bold uppercase text-[10px]">
                     <tr>
-                      <th className="p-3">Rank</th>
+                      <th className="p-3">Rank & Zone</th>
                       <th className="p-3">Student & Title</th>
                       <th className="p-3 font-black text-amber-400">
                         {leaderboardMetric === 'points'
-                          ? '⚡ Training Points'
+                          ? '⚡ Points'
                           : leaderboardMetric === 'rating'
                           ? '⭐ Elo Rating'
                           : leaderboardMetric === 'streak'
@@ -3893,115 +4192,233 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                       <th className="p-3">Streak</th>
                       <th className="p-3">Max Bot</th>
                       <th className="p-3">Badges</th>
-                      <th className="p-3 text-right">Action</th>
+                      <th className="p-3 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/50">
-                    {filteredPeers.map((student) => (
-                      <tr
-                        key={student.rank + student.name}
-                        className={`transition-colors ${
-                          student.isYou
-                            ? 'bg-amber-500/10 border-l-4 border-amber-500 font-bold'
-                            : 'hover:bg-slate-800/40'
-                        }`}
-                      >
-                        {/* Rank */}
-                        <td className="p-3 font-black text-sm">
-                          <div className="flex items-center gap-1.5">
-                            <span>
-                              {student.rank === 1
-                                ? '🥇'
-                                : student.rank === 2
-                                ? '🥈'
-                                : student.rank === 3
-                                ? '🥉'
-                                : `#${student.rank}`}
-                            </span>
-                            <span
-                              className={`text-[9px] font-mono ${
-                                student.rankDelta.startsWith('+')
-                                  ? 'text-emerald-400 font-bold'
-                                  : student.rankDelta.startsWith('-')
-                                  ? 'text-rose-400'
-                                  : 'text-slate-500'
-                              }`}
-                            >
-                              {student.rankDelta}
-                            </span>
-                          </div>
-                        </td>
+                    {filteredPeers.map((student) => {
+                      const isPromotionZone = student.rank <= 3;
+                      const isDangerZone = selectedDivision !== 'bronze' && student.rank > filteredPeers.length - 3;
 
-                        {/* Student Name & Title */}
-                        <td className="p-3">
-                          <div className="flex items-center gap-2.5">
-                            <span className="text-xl shrink-0">{student.avatar}</span>
-                            <div>
-                              <div className="flex items-center gap-1.5">
-                                <span className={`font-black ${student.isYou ? 'text-amber-300' : 'text-white'}`}>
-                                  {student.name}
+                      return (
+                        <tr
+                          key={student.id || student.rank + student.name}
+                          className={`transition-colors ${
+                            student.isYou
+                              ? 'bg-amber-500/10 border-l-4 border-amber-500 font-bold'
+                              : isPromotionZone
+                              ? 'hover:bg-emerald-950/15'
+                              : isDangerZone
+                              ? 'hover:bg-rose-950/15'
+                              : 'hover:bg-slate-800/40'
+                          }`}
+                        >
+                          {/* Rank & Zone Badge */}
+                          <td className="p-3 font-black text-sm">
+                            <div className="flex items-center gap-2">
+                              <span>
+                                {student.rank === 1
+                                  ? '🥇'
+                                  : student.rank === 2
+                                  ? '🥈'
+                                  : student.rank === 3
+                                  ? '🥉'
+                                  : `#${student.rank}`}
+                              </span>
+                              {renderRankDelta(student.rankDelta)}
+                              {isPromotionZone && (
+                                <span className="hidden sm:inline text-[8px] bg-emerald-500/20 text-emerald-300 font-extrabold px-1.5 py-0.5 rounded border border-emerald-500/30">
+                                  PROMOTION
                                 </span>
-                                {student.isYou && (
-                                  <span className="text-[8px] bg-amber-500 text-slate-950 px-1.5 py-0.2 rounded font-black uppercase">
-                                    YOU
-                                  </span>
-                                )}
-                              </div>
-                              <span className="text-[10px] text-slate-400 block">{student.title}</span>
+                              )}
+                              {isDangerZone && (
+                                <span className="hidden sm:inline text-[8px] bg-rose-500/20 text-rose-300 font-extrabold px-1.5 py-0.5 rounded border border-rose-500/30">
+                                  DANGER
+                                </span>
+                              )}
                             </div>
-                          </div>
-                        </td>
+                          </td>
 
-                        {/* Selected Metric (Highlighted) */}
-                        <td className="p-3 font-mono font-black text-sm text-amber-400">
-                          {leaderboardMetric === 'points'
-                            ? `${leaderboardTimeframe === 'weekly' ? student.weeklyPoints : student.points} TP`
-                            : leaderboardMetric === 'rating'
-                            ? `${student.rating} Elo`
-                            : leaderboardMetric === 'streak'
-                            ? `${student.streak} days`
-                            : leaderboardMetric === 'boss'
-                            ? `Level ${student.bossLevel}`
-                            : `${student.badges} Crests`}
-                        </td>
+                          {/* Student Name & Title */}
+                          <td className="p-3">
+                            <div className="flex items-center gap-2.5">
+                              <span className="text-xl shrink-0">{student.avatar}</span>
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`font-black ${student.isYou ? 'text-amber-300' : 'text-white'}`}>
+                                    {student.name}
+                                  </span>
+                                  {student.isYou && (
+                                    <span className="text-[8px] bg-amber-500 text-slate-950 px-1.5 py-0.2 rounded font-black uppercase">
+                                      YOU
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-[10px] text-slate-400 block">{student.title}</span>
+                              </div>
+                            </div>
+                          </td>
 
-                        {/* Elo Rating */}
-                        <td className="p-3 font-mono font-bold text-slate-300">{student.rating}</td>
+                          {/* Selected Metric (Highlighted) */}
+                          <td className="p-3 font-mono font-black text-sm text-amber-400">
+                            {leaderboardMetric === 'points'
+                              ? `${leaderboardTimeframe === 'weekly' ? student.weeklyPoints : student.points} TP`
+                              : leaderboardMetric === 'rating'
+                              ? `${student.rating} Elo`
+                              : leaderboardMetric === 'streak'
+                              ? `${student.streak} days`
+                              : leaderboardMetric === 'boss'
+                              ? `Level ${student.bossLevel}`
+                              : `${student.badges} Crests`}
+                          </td>
 
-                        {/* Streak */}
-                        <td className="p-3 font-bold text-slate-300">
-                          <span className="flex items-center gap-1">
-                            <span>🔥</span>
-                            <span>{student.streak}d</span>
-                          </span>
-                        </td>
+                          {/* Elo Rating */}
+                          <td className="p-3 font-mono font-bold text-slate-300">{student.rating}</td>
 
-                        {/* Max Bot */}
-                        <td className="p-3 font-bold text-slate-300">
-                          Level {student.bossLevel} ({BOT_LEVELS.find((b) => b.level === student.bossLevel)?.name.replace(/Level \d+ — /, '')})
-                        </td>
+                          {/* Streak */}
+                          <td className="p-3 font-bold text-slate-300">
+                            <span className="flex items-center gap-1">
+                              <span>🔥</span>
+                              <span>{student.streak}d</span>
+                            </span>
+                          </td>
 
-                        {/* Badges */}
-                        <td className="p-3 font-mono font-bold text-purple-300">
-                          {student.badges} 🛡️
-                        </td>
+                          {/* Max Bot */}
+                          <td className="p-3 font-bold text-slate-300">
+                            Level {student.bossLevel} ({BOT_LEVELS.find((b) => b.level === student.bossLevel)?.name.replace(/Level \d+ — /, '') || 'Pawn'})
+                          </td>
 
-                        {/* Action: Compare */}
-                        <td className="p-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => setComparisonPeer(student)}
-                            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[10px] font-bold uppercase transition-all cursor-pointer shadow-sm active:translate-y-0.5"
-                          >
-                            Compare 📊
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                          {/* Badges */}
+                          <td className="p-3 font-mono font-bold text-purple-300">
+                            {student.badges} 🛡️
+                          </td>
+
+                          {/* Actions */}
+                          <td className="p-3 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {!student.isYou && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleChallengeGhost(student)}
+                                  className="px-2.5 py-1 rounded-lg bg-purple-600/80 hover:bg-purple-600 text-white text-[10px] font-bold uppercase transition-all cursor-pointer shadow-sm active:translate-y-0.5 flex items-center gap-1"
+                                  title={`Challenge ${student.name}'s Ghost Sparring Bot`}
+                                >
+                                  <span>Challenge</span>
+                                  <span>⚔️</span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setComparisonPeer(student)}
+                                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[10px] font-bold uppercase transition-all cursor-pointer shadow-sm active:translate-y-0.5"
+                              >
+                                Compare 📊
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             </div>
+
+            {/* SUNDAY SEASON RECAP MODAL */}
+            {showSundayRecap && (
+              <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200">
+                <div className="bg-slate-900 border-2 border-amber-500/50 rounded-3xl max-w-xl w-full p-6 space-y-5 shadow-2xl text-left relative overflow-hidden">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl">🏆</span>
+                      <div>
+                        <h3 className="text-base font-black text-white">Sunday Season Reset & Rules</h3>
+                        <p className="text-xs text-slate-400">Weekly Season #{seasonInfo?.seasonNumber || 4} · Resets every Sunday midnight UTC</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowSundayRecap(false)}
+                      className="text-slate-400 hover:text-white text-xs font-bold cursor-pointer"
+                    >
+                      ✕ Close
+                    </button>
+                  </div>
+
+                  {/* Season Countdown */}
+                  <div className="bg-slate-950 border border-amber-500/30 rounded-2xl p-4 flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] uppercase font-bold text-slate-400">Time Remaining In Season</div>
+                      <div className="text-xl font-black text-amber-400 font-mono mt-0.5">
+                        {seasonInfo
+                          ? `${seasonInfo.daysRemaining} days, ${seasonInfo.hoursRemaining} hours, ${seasonInfo.minutesRemaining} mins`
+                          : '3 days, 14 hours'}
+                      </div>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-2xl">
+                      ⏱️
+                    </div>
+                  </div>
+
+                  {/* Division Rules Breakdown */}
+                  <div className="space-y-3 text-xs">
+                    <div className="font-black text-white uppercase tracking-wider text-[11px]">League Promotion & Demotion Rules</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      <div className="bg-emerald-950/30 border border-emerald-500/40 rounded-xl p-3 space-y-1">
+                        <div className="text-emerald-400 font-black flex items-center gap-1">
+                          <span>🚀</span>
+                          <span>Promotion Zone</span>
+                        </div>
+                        <p className="text-[11px] text-slate-300">
+                          Top 3 students in Bronze, Silver, & Gold promote to the next league and earn the Sunday Crest!
+                        </p>
+                      </div>
+                      <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-1">
+                        <div className="text-slate-300 font-black flex items-center gap-1">
+                          <span>🛡️</span>
+                          <span>Safe Zone</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400">
+                          Students in ranks 4 through N-3 retain their league standing for next week.
+                        </p>
+                      </div>
+                      <div className="bg-rose-950/30 border border-rose-500/40 rounded-xl p-3 space-y-1">
+                        <div className="text-rose-400 font-black flex items-center gap-1">
+                          <span>⚠️</span>
+                          <span>Danger Zone</span>
+                        </div>
+                        <p className="text-[11px] text-slate-300">
+                          Bottom 3 students in Silver, Gold, & Diamond demote to the lower league.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Projected Status for Current User */}
+                  <div className="bg-gradient-to-r from-amber-500/15 via-slate-950 to-amber-500/15 border border-amber-500/30 rounded-2xl p-4 text-xs space-y-1">
+                    <div className="text-amber-300 font-black flex items-center gap-1.5">
+                      <span>👑</span>
+                      <span>Your Projected Season Outcome:</span>
+                    </div>
+                    <p className="text-slate-200">
+                      You are currently <strong className="text-amber-400">Rank #{yourEntry.rank}</strong> in <strong className="text-white">{activeDivConfig.name}</strong>.
+                      {yourEntry.rank <= 3
+                        ? ' 🎉 You are currently on track for PROMOTION to the next league on Sunday!'
+                        : ' Win your next bot games and tactical quests to break into the Top 3 Promotion Zone!'}
+                    </p>
+                  </div>
+
+                  <div className="pt-2 flex justify-end">
+                    <Button
+                      onClick={() => setShowSundayRecap(false)}
+                      className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase rounded-xl cursor-pointer"
+                    >
+                      Got It ⚡
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* HEAD-TO-HEAD COMPARISON MODAL */}
             {comparisonPeer && (
@@ -4015,7 +4432,7 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                     <button
                       type="button"
                       onClick={() => setComparisonPeer(null)}
-                      className="text-slate-400 hover:text-white text-xs font-bold"
+                      className="text-slate-400 hover:text-white text-xs font-bold cursor-pointer"
                     >
                       ✕ Close
                     </button>
@@ -4083,16 +4500,16 @@ ${formattedMoves || '1. e4'} ${game.result}`;
                     })}
                   </div>
 
-                  <div className="pt-2 flex gap-2">
+                  <div className="pt-2 flex flex-col sm:flex-row gap-2">
                     <Button
                       onClick={() => {
+                        const rival = comparisonPeer;
                         setComparisonPeer(null);
-                        setSelectedLevel(comparisonPeer.bossLevel);
-                        setActiveTab('play');
+                        handleChallengeGhost(rival);
                       }}
-                      className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs uppercase rounded-xl shadow-lg shadow-amber-500/20 cursor-pointer"
+                      className="flex-1 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs uppercase rounded-xl shadow-lg cursor-pointer"
                     >
-                      Battle Bot Level {comparisonPeer.bossLevel} ⚔️
+                      Challenge Ghost ({comparisonPeer.name}) ⚔️
                     </Button>
                     <Button
                       variant="outline"

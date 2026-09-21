@@ -218,6 +218,41 @@ export async function listClasses(): Promise<Result<AdminClassRow[]>> {
 }
 
 /**
+ * Normalizes input date strings into a valid ISO 8601 string.
+ * Supports ISO strings, locale datetime formats (DD-MM-YYYY, DD/MM/YYYY, etc.).
+ */
+export function normalizeToIsoDate(dateStr: string): string {
+  if (!dateStr) return new Date().toISOString();
+
+  // Try standard parse
+  const parsed = new Date(dateStr);
+  if (!isNaN(parsed.getTime())) {
+    return parsed.toISOString();
+  }
+
+  // Try DD-MM-YYYY HH:mm or DD/MM/YYYY HH:mm
+  const dmyMatch = dateStr.match(
+    /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:[\sT](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/
+  );
+  if (dmyMatch) {
+    const [, d, m, y, h = '0', min = '0', s = '0'] = dmyMatch;
+    const constructed = new Date(
+      Number(y),
+      Number(m) - 1,
+      Number(d),
+      Number(h),
+      Number(min),
+      Number(s)
+    );
+    if (!isNaN(constructed.getTime())) {
+      return constructed.toISOString();
+    }
+  }
+
+  return dateStr;
+}
+
+/**
  * Creates a new class and links it to multiple students.
  */
 export async function createClass(data: CreateClassInput): Promise<Result<DbClass>> {
@@ -291,6 +326,9 @@ export async function createClass(data: CreateClassInput): Promise<Result<DbClas
     if (isGoogleMeet) {
       finalGoogleMeetUri = data.googleMeetUri || (data.customUrl?.includes('meet.google.com') ? data.customUrl : null);
       finalGoogleMeetSpaceId = data.googleMeetSpaceId || null;
+      // Store in zoom_join_url as well for universal compatibility across all database schemas
+      finalZoomJoinUrl = finalGoogleMeetUri;
+      finalZoomStartUrl = finalGoogleMeetUri;
     } else {
       const videoRes = await createClassMeeting(
         undefined,
@@ -313,10 +351,11 @@ export async function createClass(data: CreateClassInput): Promise<Result<DbClas
       finalZoomMeetingId = videoData.meetingId;
     }
 
-    // Insert class with strict isolated meeting details
+    // Insert class with resilient schema fallback (handles missing columns gracefully)
+    const normalizedStartDate = normalizeToIsoDate(data.scheduledStart);
     const insertPayload: Record<string, unknown> = {
       coach_id: coachProfileId,
-      scheduled_start: data.scheduledStart,
+      scheduled_start: normalizedStartDate,
       duration_minutes: data.durationMinutes,
       class_type: data.classType,
       status: data.status ?? 'SCHEDULED',
@@ -328,14 +367,36 @@ export async function createClass(data: CreateClassInput): Promise<Result<DbClas
       zoom_start_url: finalZoomStartUrl,
     };
 
-    const { data: inserted, error } = await admin
-      .from('classes')
-      .insert(insertPayload)
-      .select()
-      .single();
+    let inserted: any = null;
+    let insertError: any = null;
 
-    if (error || !inserted) {
-      return { success: false, error: new DatabaseError('Failed to create class in database', error) };
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const { data: insData, error: insErr } = await admin
+        .from('classes')
+        .insert(insertPayload)
+        .select()
+        .single();
+
+      if (!insErr && insData) {
+        inserted = insData;
+        insertError = null;
+        break;
+      }
+
+      if (insErr?.code === 'PGRST204') {
+        const match = insErr.message.match(/Could not find the '([^']+)' column/);
+        if (match && match[1]) {
+          delete insertPayload[match[1]];
+          continue;
+        }
+      }
+
+      insertError = insErr;
+      break;
+    }
+
+    if (!inserted) {
+      return { success: false, error: new DatabaseError('Failed to create class in database', insertError) };
     }
 
     // Save recording in class_recordings table if provided
@@ -457,7 +518,8 @@ export function generateRecurringDates(
   daysOfWeek: number[], // 0 = Sun, 1 = Mon, ..., 6 = Sat
   totalWeeks: number
 ): string[] {
-  const initialDate = new Date(initialDateStr);
+  const normalizedStr = normalizeToIsoDate(initialDateStr);
+  const initialDate = new Date(normalizedStr);
   if (isNaN(initialDate.getTime())) return [initialDateStr];
 
   const dates: string[] = [];
@@ -501,11 +563,12 @@ export async function createBatchClasses(
           input.recurringDays!,
           input.recurringWeeks || 4
         )
-      : [input.scheduledStart];
+      : [normalizeToIsoDate(input.scheduledStart)];
 
     const createdClasses: DbClass[] = [];
     let primaryMeetingUrl = '';
     let primaryMeetingId = '';
+    let lastError: BaseError | null = null;
 
     for (const dateStr of datesToSchedule) {
       const res = await createClass({
@@ -519,15 +582,19 @@ export async function createBatchClasses(
           primaryMeetingUrl = res.data.zoom_join_url || '';
           primaryMeetingId = res.data.zoom_meeting_id || '';
         }
+      } else if (!res.success && res.error) {
+        lastError = res.error;
       }
     }
 
     if (createdClasses.length === 0) {
       return {
         success: false,
-        error: new InternalServerError(
-          'Failed to schedule class sessions. Please check the dates and try again.'
-        ),
+        error:
+          lastError ||
+          new InternalServerError(
+            'Failed to schedule class sessions. Please check the details and try again.'
+          ),
       };
     }
 

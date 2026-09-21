@@ -1,5 +1,13 @@
 import { createSupabaseAdmin } from '../supabase/admin';
 import { BaseError, DatabaseError, InternalServerError, type Result } from '../errors';
+import {
+  buildDynamicAcademyCohort,
+  DIVISIONS,
+  type DivisionTier,
+  type SimulatedStudentPeer,
+  type LiveTickerEvent,
+  type SeasonInfo,
+} from './leaderboardSimulation';
 
 export type LeaderboardCategory = 'xp' | 'tactics' | 'homework' | 'rating';
 
@@ -27,11 +35,16 @@ export interface LeaderboardResponse {
     homework: LeaderboardEntry[];
     rating: LeaderboardEntry[];
   };
+  divisions: Record<DivisionTier, SimulatedStudentPeer[]>;
+  tickerEvents: LiveTickerEvent[];
+  seasonInfo: SeasonInfo;
   yourStanding: {
     xp: { rank: number; score: number };
     tactics: { rank: number; score: number };
     homework: { rank: number; score: number };
     rating: { rank: number; score: number };
+    division: DivisionTier;
+    divisionRank: number;
   } | null;
   totalStudents: number;
   lastUpdated: string;
@@ -226,12 +239,35 @@ export async function getAcademyLeaderboard(currentUserId?: string): Promise<Res
     const yourHomeworkEntry = sortedByHomework.find((e) => e.isYou);
     const yourRatingEntry = sortedByRating.find((e) => e.isYou);
 
+    // 3. Build Dynamic Academy Cohort with 4 Division Leagues & Live Ticker
+    const { cohort, divisions, tickerEvents, seasonInfo } = buildDynamicAcademyCohort(
+      rawList.map((r) => ({
+        id: r.id,
+        userId: r.userId,
+        name: r.name,
+        username: r.username,
+        avatar: r.avatar,
+        rating: r.rating,
+        trainingPoints: r.xp,
+        streak: r.streak,
+        botLevel: r.botLevel,
+        isYou: r.isYou,
+      })),
+      currentUserId
+    );
+
+    const currentUserDivisionPeer = cohort.find((c) => c.isYou);
+    const currentUserDivision = currentUserDivisionPeer?.division || 'bronze';
+    const currentUserDivisionRank = currentUserDivisionPeer?.rank || 1;
+
     const yourStanding = yourXpEntry
       ? {
           xp: { rank: yourXpEntry.rank, score: yourXpEntry.xp },
           tactics: { rank: yourTacticsEntry?.rank || yourXpEntry.rank, score: yourTacticsEntry?.tacticsSolved || 0 },
           homework: { rank: yourHomeworkEntry?.rank || yourXpEntry.rank, score: yourHomeworkEntry?.homeworkCompleted || 0 },
           rating: { rank: yourRatingEntry?.rank || yourXpEntry.rank, score: yourRatingEntry?.rating || 400 },
+          division: currentUserDivision,
+          divisionRank: currentUserDivisionRank,
         }
       : null;
 
@@ -244,8 +280,11 @@ export async function getAcademyLeaderboard(currentUserId?: string): Promise<Res
           homework: sortedByHomework,
           rating: sortedByRating,
         },
+        divisions,
+        tickerEvents,
+        seasonInfo,
         yourStanding,
-        totalStudents: rawList.length,
+        totalStudents: cohort.length,
         lastUpdated: new Date().toISOString(),
       },
     };

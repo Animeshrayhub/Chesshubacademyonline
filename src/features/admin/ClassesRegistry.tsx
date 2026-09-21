@@ -18,6 +18,7 @@ import type {
   ClassType,
   VideoProvider,
 } from '@/lib/classes';
+import { generateRecurringDates, normalizeToIsoDate } from '@/lib/classes';
 import {
   createClassAction,
   createBatchClassesAction,
@@ -102,9 +103,99 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
   const [recurringWeeks, setRecurringWeeks] = useState(4);
   const [createdBatchResult, setCreatedBatchResult] = useState<CreateBatchClassesResult | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedWhatsapp, setCopiedWhatsapp] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState(false);
+
+  // Dynamic quick-time pills for 1-click scheduling
+  const getSmartTimePills = () => {
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const formatDt = (d: Date) =>
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+    // 1. Today +1 hr (rounded to next 15 min)
+    const plus1 = new Date(now.getTime() + 60 * 60 * 1000);
+    plus1.setMinutes(Math.ceil(plus1.getMinutes() / 15) * 15, 0, 0);
+
+    // 2. Today 5:00 PM
+    const today5PM = new Date(now);
+    today5PM.setHours(17, 0, 0, 0);
+
+    // 3. Tomorrow 10:00 AM
+    const tom10AM = new Date(now);
+    tom10AM.setDate(tom10AM.getDate() + 1);
+    tom10AM.setHours(10, 0, 0, 0);
+
+    // 4. Tomorrow 5:00 PM
+    const tom5PM = new Date(now);
+    tom5PM.setDate(tom5PM.getDate() + 1);
+    tom5PM.setHours(17, 0, 0, 0);
+
+    // 5. This Saturday 11:00 AM
+    const sat = new Date(now);
+    const dayDiff = (6 - now.getDay() + 7) % 7 || 7;
+    sat.setDate(sat.getDate() + dayDiff);
+    sat.setHours(11, 0, 0, 0);
+
+    return [
+      { label: '⚡ Today +1 hr', val: formatDt(plus1) },
+      { label: '🌆 Today 5 PM', val: formatDt(today5PM) },
+      { label: '🌅 Tomorrow 10 AM', val: formatDt(tom10AM) },
+      { label: '🌇 Tomorrow 5 PM', val: formatDt(tom5PM) },
+      { label: '♟️ This Sat 11 AM', val: formatDt(sat) },
+    ];
+  };
+
+  // Smart conflict detection against existing classes
+  const conflictWarning = React.useMemo(() => {
+    if (!formData.scheduledStart || !formData.coachUserId) return null;
+    const startMs = new Date(normalizeToIsoDate(formData.scheduledStart)).getTime();
+    if (isNaN(startMs)) return null;
+    const endMs = startMs + (formData.durationMinutes || 60) * 60 * 1000;
+
+    for (const c of classes) {
+      if (editClass && c.id === editClass.id) continue;
+      if (c.status === 'CANCELLED' || c.status === 'COMPLETED') continue;
+      const cStartMs = new Date(c.scheduled_start).getTime();
+      const cEndMs = cStartMs + (c.duration_minutes || 60) * 60 * 1000;
+
+      // Check overlap
+      if (startMs < cEndMs && endMs > cStartMs) {
+        const isCoachConflict = c.coach?.id === formData.coachUserId || (c as any).coach_id === formData.coachUserId;
+        const conflictingStudent = c.students?.find((s) => formData.studentUserIds.includes(s.id));
+
+        const nextFreeDate = new Date(cEndMs + 15 * 60 * 1000);
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        const formattedNextFree = `${nextFreeDate.getFullYear()}-${pad(nextFreeDate.getMonth() + 1)}-${pad(nextFreeDate.getDate())}T${pad(nextFreeDate.getHours())}:${pad(nextFreeDate.getMinutes())}`;
+
+        if (isCoachConflict) {
+          return {
+            type: 'COACH',
+            message: `Coach already has a class "${c.class_type}" scheduled at this time (${new Date(c.scheduled_start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`,
+            suggestedNextTime: formattedNextFree,
+            suggestedNextTimeLabel: nextFreeDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          };
+        }
+        if (conflictingStudent) {
+          return {
+            type: 'STUDENT',
+            message: `Learner ${conflictingStudent.first_name} is already enrolled in a class at this time (${new Date(c.scheduled_start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`,
+            suggestedNextTime: formattedNextFree,
+            suggestedNextTimeLabel: nextFreeDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          };
+        }
+      }
+    }
+    return null;
+  }, [formData.scheduledStart, formData.durationMinutes, formData.coachUserId, formData.studentUserIds, classes, editClass]);
+
+  // Interactive recurring schedule preview
+  const recurringPreviewDates = React.useMemo(() => {
+    if (!isRecurring || recurringDays.length === 0 || !formData.scheduledStart) return [];
+    return generateRecurringDates(formData.scheduledStart, recurringDays, recurringWeeks);
+  }, [isRecurring, recurringDays, recurringWeeks, formData.scheduledStart]);
 
   // Quick Google Meet Modal state
   const [isMeetModalOpen, setIsMeetModalOpen] = useState(false);
@@ -245,7 +336,14 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
       const updated = isSelected
         ? prev.studentUserIds.filter((item) => item !== id)
         : [...prev.studentUserIds, id];
-      return { ...prev, studentUserIds: updated };
+
+      // Smart auto-adjust Class Type based on selected students count
+      let autoType: ClassType = prev.classType;
+      if (updated.length === 1) autoType = 'PRIVATE';
+      else if (updated.length === 2) autoType = 'BUDDY';
+      else if (updated.length >= 3) autoType = 'GROUP';
+
+      return { ...prev, studentUserIds: updated, classType: autoType };
     });
   };
 
@@ -337,7 +435,7 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
       const isGoogleMeet = formData.videoProvider === 'GOOGLE_MEET';
       const payload: CreateClassInput = {
         coachUserId: formData.coachUserId,
-        scheduledStart: new Date(formData.scheduledStart).toISOString(),
+        scheduledStart: normalizeToIsoDate(formData.scheduledStart),
         durationMinutes: formData.durationMinutes,
         classType: formData.classType,
         status: formData.status,
@@ -718,9 +816,24 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
               </div>
             </div>
 
-            {/* WhatsApp Share Button */}
+            {/* WhatsApp Share Button & Copy Message */}
             {createdBatchResult.whatsappShareText && (
-              <div className="pt-2">
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between text-xs font-bold text-text-primary">
+                  <span>📱 Parent & Student WhatsApp Invite</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const text = decodeURIComponent(createdBatchResult.whatsappShareText || '');
+                      navigator.clipboard.writeText(text);
+                      setCopiedWhatsapp(true);
+                      setTimeout(() => setCopiedWhatsapp(false), 2000);
+                    }}
+                    className="text-[11px] text-emerald-700 hover:text-emerald-800 font-bold underline cursor-pointer"
+                  >
+                    {copiedWhatsapp ? '✓ Message Copied!' : '📋 Copy WhatsApp Message'}
+                  </button>
+                </div>
                 <a
                   href={`https://api.whatsapp.com/send?text=${
                     createdBatchResult.whatsappShareText.startsWith('%')
@@ -729,19 +842,26 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
                   }`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition"
+                  className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition cursor-pointer"
                 >
                   <span className="text-base">📱</span>
-                  <span>Share Schedule & Link on WhatsApp</span>
+                  <span>Open & Share on WhatsApp</span>
                 </a>
               </div>
             )}
 
-            <div className="pt-3 border-t border-border flex justify-end">
+            <div className="pt-3 border-t border-border flex items-center justify-between">
+              <button
+                type="button"
+                onClick={openCreate}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer"
+              >
+                + Schedule Another Class
+              </button>
               <button
                 type="button"
                 onClick={handleCloseModal}
-                className="px-5 py-2.5 bg-primary hover:bg-primary-dark text-white rounded-xl text-xs font-bold transition"
+                className="px-5 py-2 bg-primary hover:bg-primary-dark text-white rounded-xl text-xs font-bold transition cursor-pointer"
               >
                 Done
               </button>
@@ -1001,15 +1121,63 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
               </div>
             </div>
 
-            {/* Scheduled Start */}
-            <Input
-              id="class-start"
-              label="Scheduled Start"
-              type="datetime-local"
-              value={formData.scheduledStart}
-              onChange={(e) => setFormData((p) => ({ ...p, scheduledStart: e.target.value }))}
-              required
-            />
+            {/* Scheduled Start with Quick-Time Pills, Timezone, and Conflict Warning */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold text-text-primary">
+                  Scheduled Start <span className="text-red-500">*</span>
+                </label>
+                <span className="text-[10px] font-mono text-text-muted bg-slate-100 px-2 py-0.5 rounded">
+                  🌍 {Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local Time'}
+                </span>
+              </div>
+
+              {/* Quick-Time Preset Pills */}
+              <div className="flex flex-wrap gap-1.5">
+                {getSmartTimePills().map((pill) => (
+                  <button
+                    key={pill.label}
+                    type="button"
+                    onClick={() => setFormData((p) => ({ ...p, scheduledStart: pill.val }))}
+                    className="px-2.5 py-1 bg-slate-100 hover:bg-primary/10 hover:text-primary text-slate-700 text-[11px] font-semibold rounded-lg border border-slate-200 transition active:scale-95 cursor-pointer"
+                  >
+                    {pill.label}
+                  </button>
+                ))}
+              </div>
+
+              <Input
+                id="class-start"
+                label=""
+                type="datetime-local"
+                value={formData.scheduledStart}
+                onChange={(e) => setFormData((p) => ({ ...p, scheduledStart: e.target.value }))}
+                required
+              />
+
+              {/* Conflict Warning Banner */}
+              {conflictWarning && (
+                <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs space-y-1.5 animate-in fade-in duration-200">
+                  <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                    <span>⚠️ Schedule Overlap Detected</span>
+                  </div>
+                  <p className="text-amber-800 text-[11px]">{conflictWarning.message}</p>
+                  {conflictWarning.suggestedNextTime && (
+                    <div className="pt-1 flex items-center gap-2">
+                      <span className="text-[11px] text-amber-900 font-semibold">Suggested free slot:</span>
+                      <button
+                        type="button"
+                        onClick={() => setFormData((p) => ({ ...p, scheduledStart: conflictWarning.suggestedNextTime! }))}
+                        className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] rounded-lg transition active:scale-95 cursor-pointer flex items-center gap-1 shadow-sm"
+                      >
+                        <span>Adopt {conflictWarning.suggestedNextTimeLabel}</span>
+                        <span>➔</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Recurring Weekly Schedule Section (Only for new classes) */}
             {!editClass && (
@@ -1099,6 +1267,38 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
                         </div>
                       </div>
                     </div>
+
+                    {/* Interactive Recurring Session Preview */}
+                    {recurringPreviewDates.length > 0 && (
+                      <div className="space-y-1.5 p-3 bg-slate-100/70 border border-slate-200 rounded-xl text-xs">
+                        <div className="text-[11px] font-bold text-slate-700 mb-1 flex items-center justify-between">
+                          <span>🗓️ Batch Schedule Preview ({recurringPreviewDates.length} sessions):</span>
+                        </div>
+                        <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
+                          {recurringPreviewDates.map((dStr, idx) => {
+                            const d = new Date(dStr);
+                            return (
+                              <div
+                                key={dStr + idx}
+                                className="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 shadow-2xs"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="w-5 h-5 rounded-full bg-primary/10 text-primary font-bold text-[10px] flex items-center justify-center">
+                                    {idx + 1}
+                                  </span>
+                                  <span className="font-semibold text-slate-800">
+                                    {d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                                  </span>
+                                </div>
+                                <span className="font-mono text-slate-500 text-[11px]">
+                                  {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1204,13 +1404,28 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
               </div>
             </div>
 
-            {/* Admin Custom Meeting URLs */}
+            {/* Admin Custom Meeting URLs with 1-Click Generator */}
             <div className="space-y-3">
               {formData.videoProvider === 'GOOGLE_MEET' ? (
                 <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-semibold text-text-primary">
+                      Google Meet Space Link (Auto-generated or custom)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const rand = `${Math.random().toString(36).substring(2, 5)}-${Math.random().toString(36).substring(2, 6)}-${Math.random().toString(36).substring(2, 5)}`;
+                        setFormData((p) => ({ ...p, googleMeetUri: `https://meet.google.com/${rand}` }));
+                      }}
+                      className="px-2.5 py-1 text-[11px] font-bold bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-lg transition cursor-pointer flex items-center gap-1"
+                    >
+                      <span>⚡ 1-Click Generate Meet Link</span>
+                    </button>
+                  </div>
                   <Input
                     id="google-meet-uri"
-                    label="Google Meet Space Link (Optional — auto-generated or custom)"
+                    label=""
                     placeholder="https://meet.google.com/xyz-abc-def"
                     value={formData.googleMeetUri}
                     onChange={(e) => {
@@ -1219,7 +1434,38 @@ export default function ClassesRegistry({ classes, coaches, students }: ClassesR
                     }}
                   />
                   <p className="text-[10px] text-text-secondary mt-1">
-                    💡 If left blank, Coach can generate a Google Meet space with 1-click on their dashboard or upon starting.
+                    💡 Published directly to the student classroom and parent WhatsApp invite for 1-click joining.
+                  </p>
+                </div>
+              ) : formData.videoProvider === 'JITSI' ? (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-semibold text-text-primary">
+                      Jitsi Classroom Room Link (Embedded Free Platform)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const room = `ChessHub-Academy-${Math.random().toString(36).substring(2, 8)}`;
+                        setFormData((p) => ({ ...p, zoomJoinUrl: `https://meet.jit.si/${room}` }));
+                      }}
+                      className="px-2.5 py-1 text-[11px] font-bold bg-green-100 hover:bg-green-200 text-green-900 rounded-lg transition cursor-pointer flex items-center gap-1"
+                    >
+                      <span>⚡ 1-Click Generate Jitsi Room</span>
+                    </button>
+                  </div>
+                  <Input
+                    id="jitsi-join-url"
+                    label=""
+                    placeholder="https://meet.jit.si/ChessHub-Academy-..."
+                    value={formData.zoomJoinUrl}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFormData((p) => ({ ...p, zoomJoinUrl: val }));
+                    }}
+                  />
+                  <p className="text-[10px] text-text-secondary mt-1">
+                    💡 100% Free, embedded directly into ChessHub classroom with no account required.
                   </p>
                 </div>
               ) : (
