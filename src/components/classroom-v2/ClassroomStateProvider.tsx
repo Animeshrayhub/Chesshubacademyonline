@@ -171,7 +171,7 @@ export function ClassroomStateProvider({
   const clearPuzzleAttemptResult = useCallback(() => setPuzzleAttemptResult(null), []);
 
   const isCoach = role === 'coach' || role === 'admin';
-  const canMove = canUserMoveBoard(role, userId, snapshot.permissions);
+  const canMove = canUserMoveBoard(role, userId, snapshot.permissions) && connectionState !== 'disconnected';
   const allowedColor = getUserAllowedColor(role, userId, snapshot.permissions);
   const isBoardLocked = snapshot.permissions.isBoardLocked;
 
@@ -182,6 +182,9 @@ export function ClassroomStateProvider({
   // Synchronous mutation & version tracking refs (immune to React re-renders)
   const localVersionRef = useRef(initialSnapshot.version);
   const localCurrentMoveIndexRef = useRef(initialSnapshot.board.currentMoveIndex);
+  const localFenRef = useRef(initialSnapshot.board.fen);
+  const localMovesRef = useRef<MoveData[]>(initialSnapshot.board.moves);
+  const moveQueueRef = useRef<Promise<any>>(Promise.resolve());
   const lastProcessedMoveIdRef = useRef<string | null>(null);
   const processedMoveIdsSet = useRef<Set<string>>(new Set());
 
@@ -203,12 +206,26 @@ export function ClassroomStateProvider({
     try {
       const res = await getCanonicalClassroomSnapshotAction(classId, sessionId);
       if (res.success && res.data) {
-        localVersionRef.current = Math.max(localVersionRef.current, res.data.version);
-        localCurrentMoveIndexRef.current = Math.max(localCurrentMoveIndexRef.current, res.data.board.currentMoveIndex);
-        setSnapshot((prev) => ({
-          ...res.data!,
-          version: Math.max(prev.version, res.data!.version),
-        }));
+        // Only update board if server is at or ahead of local state
+        if (res.data.board.currentMoveIndex >= localCurrentMoveIndexRef.current) {
+          localFenRef.current = res.data.board.fen;
+          localMovesRef.current = res.data.board.moves;
+          localCurrentMoveIndexRef.current = res.data.board.currentMoveIndex;
+          localVersionRef.current = Math.max(localVersionRef.current, res.data.version);
+
+          setSnapshot((prev) => ({
+            ...res.data!,
+            version: Math.max(prev.version, res.data!.version),
+          }));
+        } else {
+          // Keep local board, but sync non-board properties (permissions, participants, etc.)
+          setSnapshot((prev) => ({
+            ...prev,
+            permissions: res.data!.permissions,
+            status: res.data!.status,
+            version: Math.max(prev.version, res.data!.version),
+          }));
+        }
       }
     } catch (err) {
       console.warn('[Snapshot Reconcile Error]', err);
@@ -262,7 +279,7 @@ export function ClassroomStateProvider({
         },
       });
 
-      // Redundant PostgreSQL replication listener: updates board state immediately upon DB write
+      // PostgreSQL replication listener: ensures eventual consistency if a client drops broadcast packets
       channel.on(
         'postgres_changes',
         {
@@ -277,34 +294,50 @@ export function ClassroomStateProvider({
           const rawMoves = Array.isArray(row.moves) ? row.moves : [];
           const moveIdx = row.current_move_index ?? (rawMoves.length - 1);
 
-          setSnapshot((current) => {
-            // If we are already at or ahead of this move index, and FEN matches, do not rewrite board
-            if (moveIdx <= current.board.currentMoveIndex && row.fen === current.board.fen) {
-              return current;
-            }
-            if (moveIdx > localCurrentMoveIndexRef.current) {
-              localCurrentMoveIndexRef.current = moveIdx;
-            }
+          // CRITICAL: If client is strictly ahead of this DB change, NEVER roll back!
+          if (moveIdx < localCurrentMoveIndexRef.current) {
+            return;
+          }
+
+          // If move index and FEN match what we already have, only sync permissions without touching board
+          if (moveIdx === localCurrentMoveIndexRef.current && row.fen === localFenRef.current) {
             const parsedPerms = parseBoardControllers(row.board_controller_id || '');
-            return {
+            setSnapshot((current) => ({
               ...current,
-              board: {
-                ...current.board,
-                fen: row.fen || current.board.fen,
-                moves: rawMoves.length > 0 ? rawMoves : current.board.moves,
-                currentMoveIndex: moveIdx,
-                allowIllegalMoves: Boolean(row.allow_illegal_moves),
-                sideToMove: ((row.fen?.split(' ')[1] as 'w' | 'b') || current.board.sideToMove),
-                isBoardLocked: parsedPerms.isBoardLocked,
-              },
               permissions: {
                 ...current.permissions,
                 boardControllers: parsedPerms.boardControllers,
                 studentPermissions: parsedPerms.studentPermissions,
                 isBoardLocked: parsedPerms.isBoardLocked,
               },
-            };
-          });
+            }));
+            return;
+          }
+
+          // Client fell behind (e.g. missed broadcast) -> safely catch up to canonical DB row
+          localFenRef.current = row.fen || DEFAULT_INITIAL_FEN;
+          localMovesRef.current = rawMoves;
+          localCurrentMoveIndexRef.current = moveIdx;
+          const parsedPerms = parseBoardControllers(row.board_controller_id || '');
+
+          setSnapshot((current) => ({
+            ...current,
+            board: {
+              ...current.board,
+              fen: row.fen || current.board.fen,
+              moves: rawMoves.length > 0 ? rawMoves : current.board.moves,
+              currentMoveIndex: moveIdx,
+              allowIllegalMoves: Boolean(row.allow_illegal_moves),
+              sideToMove: ((row.fen?.split(' ')[1] as 'w' | 'b') || current.board.sideToMove),
+              isBoardLocked: parsedPerms.isBoardLocked,
+            },
+            permissions: {
+              ...current.permissions,
+              boardControllers: parsedPerms.boardControllers,
+              studentPermissions: parsedPerms.studentPermissions,
+              isBoardLocked: parsedPerms.isBoardLocked,
+            },
+          }));
         }
       );
 
@@ -327,7 +360,7 @@ export function ClassroomStateProvider({
           return;
         }
 
-        // Dedicated sub-second move handler with echo prevention
+        // Dedicated sub-second move handler with echo prevention & monotonic ordering
         if (payload.type === 'MOVE_PLAYED') {
           const moveEventId = payload.eventId || payload.moveId;
           const isMyMove =
@@ -356,12 +389,32 @@ export function ClassroomStateProvider({
           }
 
           // Move from another participant:
-          if (moveEventId) processedMoveIdsSet.current.add(moveEventId);
-          if (payload.version) {
-            localVersionRef.current = Math.max(localVersionRef.current, payload.version);
+          if (moveEventId && processedMoveIdsSet.current.has(moveEventId)) {
+            return; // Duplicate event ignored!
+          }
+          if (moveEventId) {
+            processedMoveIdsSet.current.add(moveEventId);
+            if (processedMoveIdsSet.current.size > 200) {
+              const items = Array.from(processedMoveIdsSet.current);
+              processedMoveIdsSet.current = new Set(items.slice(-100));
+            }
+          }
+
+          // Discard out-of-order older moves
+          if (payload.currentMoveIndex !== undefined && payload.currentMoveIndex < localCurrentMoveIndexRef.current) {
+            return;
+          }
+
+          // Synchronize local in-memory tracking refs
+          if (payload.fen) localFenRef.current = payload.fen;
+          if (payload.move) {
+            localMovesRef.current = [...localMovesRef.current.slice(0, payload.currentMoveIndex), payload.move];
           }
           if (payload.currentMoveIndex !== undefined) {
-            localCurrentMoveIndexRef.current = Math.max(localCurrentMoveIndexRef.current, payload.currentMoveIndex);
+            localCurrentMoveIndexRef.current = payload.currentMoveIndex;
+          }
+          if (payload.version) {
+            localVersionRef.current = Math.max(localVersionRef.current, payload.version);
           }
 
           setSnapshot((current) => classroomReducer(current, payload));
@@ -377,6 +430,13 @@ export function ClassroomStateProvider({
             reconcileSnapshotRef.current();
           }
           return;
+        }
+
+        if (payload.type === 'BOARD_STATE_UPDATED') {
+          if (payload.fen) localFenRef.current = payload.fen;
+          if (payload.moves) localMovesRef.current = payload.moves;
+          if (payload.currentMoveIndex !== undefined) localCurrentMoveIndexRef.current = payload.currentMoveIndex;
+          if (payload.version) localVersionRef.current = Math.max(localVersionRef.current, payload.version);
         }
 
         // Apply reducer for other events (puzzle, quiz, etc.)
@@ -563,7 +623,10 @@ export function ClassroomStateProvider({
     };
 
     const handleFocus = () => {
-      reconcileSnapshotRef.current();
+      // Avoid full DB fetch on simple tab focus unless realtime channel is disconnected
+      if (activeChannelRef.current?.state !== 'joined') {
+        reconcileSnapshotRef.current();
+      }
     };
 
     window.addEventListener('online', handleOnline);
@@ -645,7 +708,7 @@ export function ClassroomStateProvider({
       const perfStart = performance.now();
 
       if (!canMove || isBoardLocked) {
-        // Silently reject — the board's FEN prop stays unchanged, piece snaps back naturally.
+        // Silently reject — the piece snaps back naturally.
         return false;
       }
 
@@ -657,11 +720,11 @@ export function ClassroomStateProvider({
         }
       }
 
-      // Optimistic Validation & Update
+      // Validate against the SYNCHRONOUS local FEN (handles rapid moves without React render delay)
+      const currentBoardFen = localFenRef.current || snapshotRef.current.board.fen;
       const allowIllegalMoves = Boolean(snapshotRef.current?.board?.allowIllegalMoves);
-      const validation = validateChessMove(snapshotRef.current.board.fen, { from, to, promotion }, allowIllegalMoves);
+      const validation = validateChessMove(currentBoardFen, { from, to, promotion }, allowIllegalMoves);
       if (!validation.valid || !validation.newFen) {
-        // Silent return — no error banner. Invalid moves snap back via FEN prop naturally.
         return false;
       }
 
@@ -675,18 +738,21 @@ export function ClassroomStateProvider({
         }
       }
 
-      const previousSnapshot = snapshotRef.current;
-      const expectedVersion = previousSnapshot.version;
-      const mutationId = `move_${Date.now()}_${from}_${to}`;
+      const expectedVersion = localVersionRef.current;
+      const nextVersion = expectedVersion + 1;
+      const mutationId = `m_${Date.now()}_${Math.random().toString(36).slice(2, 7)}_${from}_${to}`;
 
       // Synchronously record this move in local tracking refs BEFORE broadcasting or saving
       lastProcessedMoveIdRef.current = mutationId;
       processedMoveIdsSet.current.add(mutationId);
-      localVersionRef.current = expectedVersion + 1;
-      localCurrentMoveIndexRef.current = previousSnapshot.board.moves.length;
+      if (processedMoveIdsSet.current.size > 200) {
+        const items = Array.from(processedMoveIdsSet.current);
+        processedMoveIdsSet.current = new Set(items.slice(-100));
+      }
 
+      const nextMoveIndex = localMovesRef.current.length;
       const newMoveData: MoveData = {
-        moveNumber: Math.floor(previousSnapshot.board.moves.length / 2) + 1,
+        moveNumber: Math.floor(nextMoveIndex / 2) + 1,
         san: validation.san || '',
         from,
         to,
@@ -699,24 +765,32 @@ export function ClassroomStateProvider({
         timestamp: new Date().toISOString(),
       };
 
-      // Optimistic UI state (<1ms local board update)
+      // Advance synchronous local references immediately
+      localFenRef.current = validation.newFen;
+      localMovesRef.current = [...localMovesRef.current, newMoveData];
+      localCurrentMoveIndexRef.current = nextMoveIndex;
+      localVersionRef.current = nextVersion;
+
+      // Optimistic UI state (<1ms local board and notation update)
       setSnapshot((current) => ({
         ...current,
-        version: current.version + 1,
+        version: nextVersion,
         board: {
           ...current.board,
           fen: validation.newFen!,
-          moves: [...current.board.moves, newMoveData],
-          currentMoveIndex: current.board.moves.length,
+          moves: localMovesRef.current,
+          currentMoveIndex: nextMoveIndex,
           sideToMove: validation.color === 'w' ? 'b' : 'w',
           arrows: [],
           highlights: [],
         },
       }));
 
-      const localApplyMs = performance.now() - perfStart;
+      // Instant audio feedback
+      const moveSan = validation.san || '';
+      playChessSound(moveSan.includes('+') || moveSan.includes('#') ? 'check' : moveSan.includes('x') ? 'capture' : 'move');
 
-      // Instant client-side WebSocket broadcast (<30ms peer sync)
+      // Instant direct client-side WebSocket broadcast (<30ms peer sync)
       try {
         activeChannelRef.current?.send({
           type: 'broadcast',
@@ -724,11 +798,12 @@ export function ClassroomStateProvider({
           payload: {
             sessionId,
             eventId: mutationId,
+            moveId: mutationId,
             type: 'MOVE_PLAYED',
             move: newMoveData,
             fen: validation.newFen!,
-            currentMoveIndex: previousSnapshot.board.moves.length,
-            version: expectedVersion + 1,
+            currentMoveIndex: nextMoveIndex,
+            version: nextVersion,
             timestamp: new Date().toISOString(),
           },
         });
@@ -736,44 +811,44 @@ export function ClassroomStateProvider({
         console.warn('[onMakeMove Direct Broadcast Notice]', err);
       }
 
-      // Local player move sound
-      const moveSan = validation.san || '';
-      playChessSound(moveSan.includes('+') || moveSan.includes('#') ? 'check' : moveSan.includes('x') ? 'capture' : 'move');
+      const localApplyMs = performance.now() - perfStart;
 
-      // Server-Authoritative Persist & Broadcast in background
-      const serverReqStart = performance.now();
-      const res = await mutateClassroomMoveAction(
-        sessionId,
-        { from, to, promotion },
-        expectedVersion,
-        mutationId
-      );
-      const serverRoundtripMs = performance.now() - serverReqStart;
+      // Queue Server-Authoritative Persist & Broadcast in sequential background FIFO queue
+      moveQueueRef.current = moveQueueRef.current.then(async () => {
+        const serverReqStart = performance.now();
+        try {
+          const res = await mutateClassroomMoveAction(
+            sessionId,
+            { from, to, promotion },
+            expectedVersion,
+            mutationId
+          );
+          const serverRoundtripMs = performance.now() - serverReqStart;
 
-      // Performance Telemetry Debugging
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[BOARD PERFORMANCE]', {
-          move_id: mutationId,
-          source: from,
-          target: to,
-          local_apply_ms: Math.round(localApplyMs * 10) / 10,
-          server_roundtrip_ms: Math.round(serverRoundtripMs * 10) / 10,
-          version: localVersionRef.current,
-          connection_status: connectionState,
-        });
-      }
+          if (process.env.NODE_ENV === 'development') {
+            console.log('[BOARD PERFORMANCE]', {
+              move_id: mutationId,
+              source: from,
+              target: to,
+              local_apply_ms: Math.round(localApplyMs * 10) / 10,
+              server_roundtrip_ms: Math.round(serverRoundtripMs * 10) / 10,
+              version: nextVersion,
+              connection_status: connectionState,
+            });
+          }
 
-      if (!res.success) {
-        // Rollback on rejection
-        console.warn('[onMakeMove] Move rejected by server, rolling back:', res.error);
-        setSnapshot(previousSnapshot);
-        localVersionRef.current = previousSnapshot.version;
-        localCurrentMoveIndexRef.current = previousSnapshot.board.currentMoveIndex;
-        setErrorMessage(res.error || 'Move rejected by server.');
-        reconcileSnapshotRef.current();
-        return false;
-      }
+          if (!res.success) {
+            console.warn('[onMakeMove] Move rejected by server, recovering canonical state:', res.error);
+            setErrorMessage(res.error || 'Move rejected by server.');
+            await reconcileSnapshotRef.current();
+          }
+        } catch (err) {
+          console.error('[onMakeMove] Server mutation error:', err);
+          await reconcileSnapshotRef.current();
+        }
+      });
 
+      // Synchronously return true so react-chessboard drops the piece cleanly
       return true;
     },
     [canMove, isBoardLocked, isCoach, role, sessionId, userId, connectionState]
@@ -799,6 +874,31 @@ export function ClassroomStateProvider({
 
   const onToggleBoardLock = useCallback(
     async (isLocked: boolean): Promise<boolean> => {
+      // Optimistic update
+      setSnapshot((current) => ({
+        ...current,
+        permissions: { ...current.permissions, isBoardLocked: isLocked },
+        board: { ...current.board, isBoardLocked: isLocked },
+      }));
+
+      // Instant peer broadcast
+      try {
+        activeChannelRef.current?.send({
+          type: 'broadcast',
+          event: 'PERMISSIONS_CHANGED',
+          payload: {
+            sessionId,
+            eventId: `perm_${Date.now()}`,
+            type: 'PERMISSIONS_CHANGED',
+            boardControllers: snapshotRef.current.permissions.boardControllers,
+            studentPermissions: snapshotRef.current.permissions.studentPermissions,
+            isBoardLocked: isLocked,
+            version: localVersionRef.current + 1,
+            timestamp: new Date().toISOString(),
+          },
+        });
+      } catch {}
+
       const res = await mutateClassroomLockAction(sessionId, isLocked, snapshotRef.current.version);
       if (!res.success) {
         setErrorMessage(res.error || 'Failed to update board lock.');
@@ -837,13 +937,16 @@ export function ClassroomStateProvider({
         resolvedPerm = enable;
       }
 
+      let nextControllers: string[] = [];
+      let nextStudentPerms: Record<string, StudentBoardColorPermission> = {};
+
       setSnapshot((current) => {
-        const nextControllers =
+        nextControllers =
           resolvedPerm !== 'none'
             ? Array.from(new Set([...current.permissions.boardControllers, targetStudentId]))
             : current.permissions.boardControllers.filter((id) => id !== targetStudentId);
 
-        const nextStudentPerms: Record<string, StudentBoardColorPermission> = {
+        nextStudentPerms = {
           ...(current.permissions.studentPermissions || {}),
         };
 
@@ -863,6 +966,24 @@ export function ClassroomStateProvider({
         };
       });
 
+      // Instant peer broadcast
+      try {
+        activeChannelRef.current?.send({
+          type: 'broadcast',
+          event: 'PERMISSIONS_CHANGED',
+          payload: {
+            sessionId,
+            eventId: `perm_${Date.now()}`,
+            type: 'PERMISSIONS_CHANGED',
+            boardControllers: nextControllers,
+            studentPermissions: nextStudentPerms,
+            isBoardLocked: snapshotRef.current.permissions.isBoardLocked,
+            version: localVersionRef.current + 1,
+            timestamp: new Date().toISOString(),
+          },
+        });
+      } catch {}
+
       const res = await mutateClassroomPermissionAction(
         sessionId,
         targetStudentId,
@@ -878,6 +999,7 @@ export function ClassroomStateProvider({
     },
     [sessionId, reconcileSnapshot]
   );
+
 
   const onLoadPuzzle = useCallback(
     async (puzzle: CanonicalPuzzleState): Promise<boolean> => {

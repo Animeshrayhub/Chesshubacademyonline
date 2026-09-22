@@ -283,6 +283,10 @@ export async function getCanonicalClassroomSnapshot(
   };
 }
 
+// Per-session sequential move queue to prevent race conditions during rapid moves
+const sessionMoveQueues = new Map<string, Promise<any>>();
+const lastCoachMoveTimestamps = new Map<string, number>();
+
 /**
  * Server-authoritative move submission with optimistic concurrency and Coach priority.
  */
@@ -299,6 +303,47 @@ export async function mutateClassroomMove(
   snapshot?: ClassroomSnapshot;
   moveData?: MoveData;
 }> {
+  const previousQueue = sessionMoveQueues.get(sessionId) || Promise.resolve();
+  let release: () => void;
+  const nextQueue = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  sessionMoveQueues.set(sessionId, nextQueue);
+
+  try {
+    await previousQueue;
+    return await executeClassroomMoveInternal(sessionId, userId, userRole, moveInput, expectedVersion, mutationId);
+  } finally {
+    release!();
+  }
+}
+
+async function executeClassroomMoveInternal(
+  sessionId: string,
+  userId: string,
+  userRole: UserRole,
+  moveInput: { from: string; to: string; promotion?: string } | string,
+  expectedVersion?: number,
+  mutationId?: string
+): Promise<{
+  success: boolean;
+  error?: string;
+  snapshot?: ClassroomSnapshot;
+  moveData?: MoveData;
+}> {
+  const isCoach = userRole === 'coach' || userRole === 'admin';
+  if (isCoach) {
+    lastCoachMoveTimestamps.set(sessionId, Date.now());
+  } else {
+    const lastCoachMove = lastCoachMoveTimestamps.get(sessionId) || 0;
+    if (Date.now() - lastCoachMove < 600) {
+      return {
+        success: false,
+        error: 'Coach has priority: A move was just played by the Coach.',
+      };
+    }
+  }
+
   const admin = createSupabaseAdmin();
   const boardRow = await ensureBoardStateRow(admin, sessionId);
 
@@ -342,9 +387,8 @@ export async function mutateClassroomMove(
   }
 
   // 2. Concurrency check: Coach always has priority. For students, ensure board hasn't progressed past expected move.
-  const canonicalBoardMoveCount = currentMoves.length;
-  if (expectedVersion !== undefined && expectedVersion <= canonicalBoardMoveCount) {
-    if (userRole !== 'coach' && userRole !== 'admin') {
+  if (!isCoach) {
+    if (expectedVersion !== undefined && (expectedVersion < currentVersion || expectedVersion <= currentMoves.length)) {
       return {
         success: false,
         error: 'State conflict: A new move was made on the board. Resynchronizing…',

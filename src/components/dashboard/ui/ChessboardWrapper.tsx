@@ -215,7 +215,11 @@ export function wrapChessboard(CB: any) {
       merged.customArrowColor = merged.arrowColor;
     }
 
-    return <CB options={merged} />;
+    if (merged.animationDuration === undefined) {
+      merged.animationDuration = 150;
+    }
+
+    return <CB options={merged} {...merged} />;
   };
 }
 
