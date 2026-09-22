@@ -63,6 +63,11 @@ const nextConfig = {
         destination: '/privacy-policy',
         permanent: true,
       },
+      {
+        source: '/demo',
+        destination: '/book-demo',
+        permanent: true,
+      },
     ];
   },
   async headers() {
