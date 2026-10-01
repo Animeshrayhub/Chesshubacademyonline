@@ -49,30 +49,28 @@ export async function middleware(request: NextRequest) {
         .from('users')
         .select('role, is_active')
         .eq('id', user.id)
-        .single(),
+        .maybeSingle(),
     ]);
 
     const isMaintenanceActive = maintRes.data?.value === 'true';
     const profile = profileRes.data;
 
-    const userEmail = (user.email || '').toLowerCase();
-    const userMetaRole = (user.user_metadata?.role || '').toString().toUpperCase();
-    let role = (profile?.role || user.app_metadata?.role || user.user_metadata?.role || '').toString().toUpperCase(); // 'ADMIN' | 'COACH' | 'STUDENT'
-
-    // Designated administrator and coach override guarantee
-    if (
-      userEmail === 'royduguu786@gmail.com' ||
-      userEmail === 'admin@chesshub.com' ||
-      userEmail.startsWith('admin@')
-    ) {
-      role = 'ADMIN';
-    } else if (
-      userEmail === 'animesh@gmail.com' ||
-      userEmail === 'coach.alex@chesshub.com' ||
-      userEmail.startsWith('coach@')
-    ) {
-      role = 'COACH';
+    // Reject if no profile exists in public.users
+    if (!profile) {
+      const unauthUrl = new URL('/unauthorized', request.url);
+      unauthUrl.searchParams.set('reason', 'profile_not_found');
+      return redirectWithCookies(unauthUrl);
     }
+
+    // Reject inactive, disabled, or non-active accounts
+    const isUserActive = profile.is_active === true;
+    if (!isUserActive) {
+      const disabledUrl = new URL('/unauthorized', request.url);
+      disabledUrl.searchParams.set('reason', 'account_disabled');
+      return redirectWithCookies(disabledUrl);
+    }
+
+    const role = (profile.role || '').toString().toUpperCase();
 
     if (!['ADMIN', 'COACH', 'STUDENT'].includes(role)) {
       return redirectWithCookies(new URL('/unauthorized', request.url));
@@ -89,6 +87,10 @@ export async function middleware(request: NextRequest) {
     }
 
     // Strict Role-Based Route Protection
+    if (pathname.startsWith('/dashboard/admin') && role !== 'ADMIN') {
+      return redirectWithCookies(new URL('/unauthorized', request.url));
+    }
+
     if (role === 'COACH' && pathname.startsWith('/dashboard/') && !pathname.startsWith('/dashboard/coach')) {
       return redirectWithCookies(new URL('/unauthorized', request.url));
     }

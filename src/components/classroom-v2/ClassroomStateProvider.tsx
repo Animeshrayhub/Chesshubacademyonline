@@ -436,7 +436,27 @@ export function ClassroomStateProvider({
             localVersionRef.current = Math.max(localVersionRef.current, payload.version);
           }
 
+          const perfT3 = typeof performance !== 'undefined' ? performance.timeOrigin + performance.now() : Date.now();
+
           setSnapshot((current) => classroomReducer(current, payload));
+
+          if (process.env.NODE_ENV === 'development' && payload.perf_t0) {
+            requestAnimationFrame(() => {
+              const perfT4 = typeof performance !== 'undefined' ? performance.timeOrigin + performance.now() : Date.now();
+              console.log('[REMOTE MOVE PERFORMANCE]', {
+                move_id: moveEventId,
+                t0: payload.perf_t0,
+                t1: payload.perf_t1,
+                t2: payload.perf_t2,
+                t3: perfT3,
+                t4: perfT4,
+                localUpdateLatency: Math.max(0, Math.round((payload.perf_t1 - payload.perf_t0) * 10) / 10),
+                networkLatency: Math.max(0, Math.round((perfT3 - payload.perf_t2) * 10) / 10),
+                remoteRenderLatency: Math.max(0, Math.round((perfT4 - perfT3) * 10) / 10),
+                totalRemoteLatency: Math.max(0, Math.round((perfT4 - payload.perf_t0) * 10) / 10),
+              });
+            });
+          }
 
           const san = payload.move?.san || '';
           const isCapture = san.includes('x');
@@ -840,8 +860,11 @@ export function ClassroomStateProvider({
       const moveSan = validation.san || '';
       playChessSound(moveSan.includes('+') || moveSan.includes('#') ? 'check' : moveSan.includes('x') ? 'capture' : 'move');
 
+      const perfT1 = typeof performance !== 'undefined' ? performance.timeOrigin + performance.now() : Date.now();
+
       // Instant direct client-side WebSocket broadcast (<30ms peer sync)
       try {
+        const perfT2 = typeof performance !== 'undefined' ? performance.timeOrigin + performance.now() : Date.now();
         activeChannelRef.current?.send({
           type: 'broadcast',
           event: 'MOVE_PLAYED',
@@ -855,6 +878,9 @@ export function ClassroomStateProvider({
             currentMoveIndex: nextMoveIndex,
             version: nextVersion,
             timestamp: new Date().toISOString(),
+            perf_t0: typeof performance !== 'undefined' ? performance.timeOrigin + perfStart : Date.now(),
+            perf_t1: perfT1,
+            perf_t2: perfT2,
           },
         });
       } catch (err) {

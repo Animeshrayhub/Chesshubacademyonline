@@ -40,9 +40,6 @@ export default defineConfig({
     actionTimeout: 15000,
     navigationTimeout: 30000,
     ignoreHTTPSErrors: true,
-    extraHTTPHeaders: {
-      'x-playwright-test': 'true',
-    },
   },
 
   /* Configure projects for major browsers and mobile viewports */

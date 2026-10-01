@@ -14,6 +14,7 @@ import {
 } from './types';
 import { type ClassroomRealtimePayload } from './events';
 import { DEFAULT_INITIAL_FEN } from './constants';
+import { buildPgnFromMoves } from './validation';
 
 export function createDefaultSnapshot(
   classId: string,
@@ -125,6 +126,7 @@ export function classroomReducer(
           ...state.board,
           fen: action.fen,
           moves: newMoves,
+          pgn: buildPgnFromMoves(newMoves),
           currentMoveIndex: targetIndex,
           sideToMove,
           arrows: [],
@@ -134,7 +136,8 @@ export function classroomReducer(
       };
     }
 
-    case 'BOARD_STATE_UPDATED':
+    case 'BOARD_STATE_UPDATED': {
+      const nextMoves = action.moves || state.board.moves;
       return {
         ...state,
         version: nextVersion,
@@ -142,13 +145,15 @@ export function classroomReducer(
           ...state.board,
           fen: action.fen,
           currentMoveIndex: action.currentMoveIndex,
-          moves: action.moves || state.board.moves,
+          moves: nextMoves,
+          pgn: (action as any).pgn || buildPgnFromMoves(nextMoves),
           mode: (action.mode as any) || state.board.mode,
           arrows: action.arrows || [],
           highlights: action.highlights || [],
         },
         updatedAt: action.timestamp,
       };
+    }
 
     case 'PERMISSIONS_CHANGED':
       return {

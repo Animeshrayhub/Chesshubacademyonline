@@ -13,6 +13,7 @@ export interface UserSessionProfile {
   lastName: string;
   role: UserRole;
   isActive: boolean;
+  status?: string;
 }
 
 /**

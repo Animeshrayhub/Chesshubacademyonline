@@ -86,7 +86,7 @@ export default function ClassroomNotation({
               {/* White Move */}
               <button
                 type="button"
-                disabled={!isCoach && !onNavigateMove}
+                disabled={!onNavigateMove}
                 onClick={() => pair.whiteIndex !== undefined && onNavigateMove?.(pair.whiteIndex)}
                 className={`text-left px-2 py-0.5 rounded font-bold transition-colors ${
                   currentMoveIndex === pair.whiteIndex
@@ -101,7 +101,7 @@ export default function ClassroomNotation({
               {pair.blackMove ? (
                 <button
                   type="button"
-                  disabled={!isCoach && !onNavigateMove}
+                  disabled={!onNavigateMove}
                   onClick={() => pair.blackIndex !== undefined && onNavigateMove?.(pair.blackIndex)}
                   className={`text-left px-2 py-0.5 rounded font-bold transition-colors ${
                     currentMoveIndex === pair.blackIndex
@@ -119,8 +119,8 @@ export default function ClassroomNotation({
         )}
       </div>
 
-      {/* Navigation Controls for Coach */}
-      {isCoach && (
+      {/* Navigation Controls */}
+      {Boolean(onNavigateMove) && (
         <div className="h-10 bg-slate-950 border-t border-slate-800 px-2 flex items-center justify-center gap-1">
           <button
             type="button"

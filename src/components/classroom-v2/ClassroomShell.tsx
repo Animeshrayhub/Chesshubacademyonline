@@ -1369,7 +1369,7 @@ export default function ClassroomShell({
               <ClassroomNotation
                 moves={snapshot.board.moves}
                 currentMoveIndex={snapshot.board.currentMoveIndex}
-                onNavigateMove={isCoach ? onNavigateMove : undefined}
+                onNavigateMove={onNavigateMove}
                 isCoach={isCoach}
                 className="w-full h-full border-none rounded-none"
               />

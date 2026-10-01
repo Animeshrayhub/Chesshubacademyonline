@@ -20,6 +20,14 @@ const getEnv = () => ({
     if (!val || val.length < 20) {
       throw new Error('Supabase configuration is missing or invalid.');
     }
+    const parts = val.split('.');
+    if (parts.length === 3 && parts[2].length < 40) {
+      console.error(
+        '[CRITICAL CONFIG ERROR] NEXT_PUBLIC_SUPABASE_ANON_KEY signature is truncated (' +
+          parts[2].length +
+          ' chars instead of 43). Supabase Realtime WebSockets will reject connections.'
+      );
+    }
     return val;
   },
   get SUPABASE_SERVICE_ROLE_KEY() {

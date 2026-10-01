@@ -43,9 +43,8 @@ function getSideToMoveFromFen(fen: string): 'w' | 'b' {
 
 /**
  * Broadcasts an event to the single canonical Supabase Realtime channel for this session.
- * IMPORTANT: Only broadcast to ONE topic. The Supabase Realtime REST API maps
- * `realtime:live-session:${sessionId}` to the channel that clients subscribe to as
- * `live-session:${sessionId}`. Broadcasting to both would cause double delivery.
+ * IMPORTANT: Broadcasts to the exact channel topic that clients subscribe to:
+ * `live-session:${sessionId}`.
  */
 export async function broadcastToLiveSession(
   sessionId: string,
@@ -66,9 +65,8 @@ export async function broadcastToLiveSession(
         body: JSON.stringify({
           messages: [
             {
-              // Supabase Realtime canonical topic format: clients subscribe as 'live-session:X'
-              // and the server-side REST API uses the 'realtime:' prefix internally.
-              topic: `realtime:live-session:${sessionId}`,
+              // Supabase Realtime REST API broadcast topic must match client subscription topic: 'live-session:${sessionId}'
+              topic: `live-session:${sessionId}`,
               event: payload.type,
               payload,
             },

@@ -187,3 +187,22 @@ export function parsePgnToMoves(pgnText: string, playedByUserId: string): { move
     return { moves: [], finalFen: DEFAULT_INITIAL_FEN };
   }
 }
+
+/**
+ * Builds standard algebraic PGN move text from an array of MoveData objects.
+ */
+export function buildPgnFromMoves(moves: MoveData[]): string {
+  if (!moves || moves.length === 0) return '';
+  const parts: string[] = [];
+  for (let i = 0; i < moves.length; i += 2) {
+    const moveNumber = Math.floor(i / 2) + 1;
+    const whiteSan = moves[i]?.san || '';
+    const blackSan = moves[i + 1]?.san || '';
+    if (blackSan) {
+      parts.push(`${moveNumber}. ${whiteSan} ${blackSan}`);
+    } else if (whiteSan) {
+      parts.push(`${moveNumber}. ${whiteSan}`);
+    }
+  }
+  return parts.join(' ');
+}
