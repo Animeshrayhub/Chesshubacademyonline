@@ -293,15 +293,18 @@ export function ClassroomStateProvider({
           if (!row) return;
           const rawMoves = Array.isArray(row.moves) ? row.moves : [];
           const moveIdx = row.current_move_index ?? (rawMoves.length - 1);
+          const parsedPerms = parseBoardControllers(row.board_controller_id || '');
 
-          // CRITICAL: If client is strictly ahead of this DB change, NEVER roll back!
-          if (moveIdx < localCurrentMoveIndexRef.current) {
-            return;
-          }
+          // CRITICAL: If client is strictly ahead for a FORWARD move, NEVER roll back.
+          // However, for navigation events (coach reviewing history), always accept.
+          // We detect navigation by checking if the FEN is different from what we expect
+          // at that move index in our local moves array.
+          const isAheadForward = moveIdx < localCurrentMoveIndexRef.current &&
+            rawMoves.length <= localMovesRef.current.length;
 
-          // If move index and FEN match what we already have, only sync permissions without touching board
-          if (moveIdx === localCurrentMoveIndexRef.current && row.fen === localFenRef.current) {
-            const parsedPerms = parseBoardControllers(row.board_controller_id || '');
+          if (isAheadForward) {
+            // Client has more moves than server db row — likely optimistic update not yet persisted.
+            // Only sync permissions, never roll back the board.
             setSnapshot((current) => ({
               ...current,
               permissions: {
@@ -314,11 +317,24 @@ export function ClassroomStateProvider({
             return;
           }
 
-          // Client fell behind (e.g. missed broadcast) -> safely catch up to canonical DB row
+          // If move index and FEN exactly match, only sync permissions.
+          if (moveIdx === localCurrentMoveIndexRef.current && row.fen === localFenRef.current) {
+            setSnapshot((current) => ({
+              ...current,
+              permissions: {
+                ...current.permissions,
+                boardControllers: parsedPerms.boardControllers,
+                studentPermissions: parsedPerms.studentPermissions,
+                isBoardLocked: parsedPerms.isBoardLocked,
+              },
+            }));
+            return;
+          }
+
+          // Client fell behind or coach navigated (forward or backward) -> sync to canonical DB state.
           localFenRef.current = row.fen || DEFAULT_INITIAL_FEN;
-          localMovesRef.current = rawMoves;
+          if (rawMoves.length > 0) localMovesRef.current = rawMoves;
           localCurrentMoveIndexRef.current = moveIdx;
-          const parsedPerms = parseBoardControllers(row.board_controller_id || '');
 
           setSnapshot((current) => ({
             ...current,
@@ -405,6 +421,9 @@ export function ClassroomStateProvider({
             return;
           }
 
+          // Gap detection: MUST snapshot version BEFORE updating localVersionRef to detect gaps.
+          const priorVersion = localVersionRef.current;
+
           // Synchronize local in-memory tracking refs
           if (payload.fen) localFenRef.current = payload.fen;
           if (payload.move) {
@@ -424,25 +443,38 @@ export function ClassroomStateProvider({
           const isCheck = san.includes('+') || san.includes('#');
           playChessSound(isCheck ? 'check' : isCapture ? 'capture' : 'move');
 
-          // Gap detection: Only reconcile if an external event skips a version
-          if (payload.version && payload.version > localVersionRef.current + 1) {
-            console.warn('[Realtime Gap] Received version', payload.version, 'while at', localVersionRef.current, '- Reconciling in background');
+          // Gap detection: reconcile if the incoming version skips ahead by more than 1
+          if (payload.version && payload.version > priorVersion + 1) {
+            console.warn('[Realtime Gap] Received version', payload.version, 'while at', priorVersion, '- Reconciling in background');
             reconcileSnapshotRef.current();
           }
           return;
         }
 
         if (payload.type === 'BOARD_STATE_UPDATED') {
+          // Gap detection for non-move board events (undo, reset, navigation, puzzle load, etc.)
+          const priorVersionForBoard = localVersionRef.current;
           if (payload.fen) localFenRef.current = payload.fen;
           if (payload.moves) localMovesRef.current = payload.moves;
           if (payload.currentMoveIndex !== undefined) localCurrentMoveIndexRef.current = payload.currentMoveIndex;
           if (payload.version) localVersionRef.current = Math.max(localVersionRef.current, payload.version);
+
+          // Apply reducer
+          setSnapshot((current) => classroomReducer(current, payload));
+
+          // Gap detection BEFORE version was updated
+          if (payload.version && payload.version > priorVersionForBoard + 1) {
+            reconcileSnapshotRef.current();
+          }
+          return;
         }
 
-        // Apply reducer for other events (puzzle, quiz, etc.)
+        // Apply reducer for other events (puzzle, quiz, permissions, etc.)
+        const priorVersionOther = localVersionRef.current;
+        if (payload.version) localVersionRef.current = Math.max(localVersionRef.current, payload.version);
         setSnapshot((current) => classroomReducer(current, payload));
 
-        if (payload.version && payload.version > localVersionRef.current + 1) {
+        if (payload.version && payload.version > priorVersionOther + 1) {
           reconcileSnapshotRef.current();
         }
 
@@ -664,14 +696,32 @@ export function ClassroomStateProvider({
   }, [sessionId, classId]);
 
   // ── Compute Participants List ─────────────────────────────────────────────
+  // Track whether presence has synced at least once to prevent false-positive "coach reconnecting" on load
+  const presenceEstablishedRef = useRef(false);
+  useEffect(() => {
+    if (onlineUserIds.size > 0) {
+      presenceEstablishedRef.current = true;
+    }
+  }, [onlineUserIds]);
+
   const participants: ParticipantInfo[] = useMemo(() => {
+    const coachId = snapshot.permissions.coachId || '';
+    // Coach is online if: (a) they are the current user, (b) their coachId is in the presence set,
+    // OR (c) presence hasn't synced yet (avoid false-positive banner on load).
+    const isCoachCurrentUser = (role === 'coach' || role === 'admin') && userId === coachId;
+    const isCoachInPresence = coachId ? onlineUserIds.has(coachId) : false;
+    // If no coachId available, fall back to checking any coach/admin presence key
+    const hasAnyCoachPresence = !coachId ? false :
+      Array.from(onlineUserIds).some(id => id === coachId);
+    const isCoachOnlineFromPresence = isCoachCurrentUser || isCoachInPresence || hasAnyCoachPresence;
+
     const list: ParticipantInfo[] = [
       {
-        userId: snapshot.permissions.coachId || 'coach',
+        userId: coachId || 'coach',
         firstName: coachName,
         lastName: '',
         role: 'coach',
-        isOnline: true,
+        isOnline: isCoachOnlineFromPresence,
         hasBoardControl: true,
         raisedHand: false,
       },
@@ -699,7 +749,7 @@ export function ClassroomStateProvider({
     }
 
     return list;
-  }, [students, coachName, onlineUserIds, snapshot.permissions.boardControllers, snapshot.permissions.studentPermissions, snapshot.permissions.coachId, raisedHandUserIds]);
+  }, [students, coachName, onlineUserIds, snapshot.permissions.boardControllers, snapshot.permissions.studentPermissions, snapshot.permissions.coachId, raisedHandUserIds, role, userId]);
 
   // ── Action Handlers ───────────────────────────────────────────────────────
 
@@ -1068,11 +1118,61 @@ export function ClassroomStateProvider({
 
   const onNavigateMove = useCallback(
     async (moveIndex: number): Promise<boolean> => {
-      const res = await mutateClassroomNavigateMoveAction(sessionId, moveIndex, snapshotRef.current.version);
-      if (!res.success) {
-        setErrorMessage(res.error || 'Failed to navigate move.');
-        return false;
+      const currentMoves = snapshotRef.current.board.moves;
+      const clampedIndex = Math.max(-1, Math.min(moveIndex, currentMoves.length - 1));
+
+      // Compute the FEN at the target history index (purely from local move array)
+      let targetFen: string;
+      if (clampedIndex < 0) {
+        targetFen = snapshotRef.current.board.initialFen || DEFAULT_INITIAL_FEN;
+      } else {
+        targetFen = currentMoves[clampedIndex]?.fenAfter || DEFAULT_INITIAL_FEN;
       }
+
+      // 1. Apply locally and instantly (0ms) — always, for both coach and student
+      setSnapshot((current) => ({
+        ...current,
+        board: {
+          ...current.board,
+          fen: targetFen,
+          currentMoveIndex: clampedIndex,
+        },
+      }));
+
+      // Coaches: persist and broadcast to all students (so everyone reviews the same position)
+      if (isCoachRef.current) {
+        // Optimistic update to local refs so new moves correctly compute expectedVersion
+        localCurrentMoveIndexRef.current = clampedIndex;
+        localFenRef.current = targetFen;
+
+        // Direct client broadcast for sub-50ms peer sync
+        try {
+          activeChannelRef.current?.send({
+            type: 'broadcast',
+            event: 'BOARD_STATE_UPDATED',
+            payload: {
+              type: 'BOARD_STATE_UPDATED',
+              sessionId,
+              eventId: `nav_${Date.now()}`,
+              fen: targetFen,
+              currentMoveIndex: clampedIndex,
+              moves: currentMoves,
+              mode: snapshotRef.current.board.mode,
+              arrows: [],
+              highlights: [],
+              version: localVersionRef.current,
+              timestamp: new Date().toISOString(),
+            },
+          });
+        } catch (err) {
+          console.warn('[onNavigateMove Broadcast Error]', err);
+        }
+
+        // Background server persist (does not block the UI)
+        mutateClassroomNavigateMoveAction(sessionId, clampedIndex, snapshotRef.current.version).catch(() => {});
+      }
+      // Students: local-only board navigation (history review mode, does NOT touch canonical state)
+
       return true;
     },
     [sessionId]
@@ -1383,7 +1483,10 @@ export function ClassroomStateProvider({
   );
 
   const isCoachOnline = participants.some((p) => (p.role === 'coach' || p.role === 'admin') && p.isOnline);
-  const isCoachReconnecting = !isCoachOnline && snapshot.isLive && role === 'student';
+  // Only show "coach reconnecting" banner AFTER presence has synced at least once.
+  // This prevents a false-positive banner from briefly flashing on initial page load
+  // before the Supabase Presence 'sync' event has fired.
+  const isCoachReconnecting = !isCoachOnline && snapshot.isLive && role === 'student' && presenceEstablishedRef.current;
 
   const onSendReaction = useCallback(
     async (emoji: string): Promise<boolean> => {
