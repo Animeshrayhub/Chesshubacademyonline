@@ -58,3 +58,19 @@ export async function rescheduleBookingAction(bookingId: string, newPreferredTim
   }
   return JSON.parse(JSON.stringify(result));
 }
+
+export async function convertInquiryToDemoBookingAction(
+  bookingId: string,
+  data: {
+    student_name: string;
+    student_age: number;
+    preferred_time: string;
+  }
+) {
+  const result = await bookingsService.convertInquiryToDemoBooking(bookingId, data);
+  if (result.success) {
+    revalidatePath('/dashboard/admin/bookings');
+    revalidatePath('/dashboard/admin');
+  }
+  return JSON.parse(JSON.stringify(result));
+}

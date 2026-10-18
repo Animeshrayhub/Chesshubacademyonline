@@ -8,12 +8,14 @@
  */
 
 export type PackageId = 'starter' | 'standard' | 'premium';
+export type CurrencyCode = 'INR' | 'USD';
 
 export interface CoachingPackage {
   id: PackageId;
   name: string;
   sessions: number;
   amount: number; // Stored in exact integer INR (e.g. 7200 for ₹7,200)
+  amountUsd: number; // Stored in exact integer USD (e.g. 99 for $99)
   currency: 'INR';
   description: string;
   features: string[];
@@ -27,6 +29,7 @@ export const COACHING_PACKAGES: Record<PackageId, CoachingPackage> = {
     name: 'Starter Package',
     sessions: 12,
     amount: 7200,
+    amountUsd: 99,
     currency: 'INR',
     description: 'Perfect for beginners building solid foundational skills and early tactical awareness.',
     features: [
@@ -43,6 +46,7 @@ export const COACHING_PACKAGES: Record<PackageId, CoachingPackage> = {
     name: 'Standard Package',
     sessions: 24,
     amount: 13800,
+    amountUsd: 189,
     currency: 'INR',
     description: 'Ideal for intermediate players seeking tournament preparation, opening depth, and deep strategic calculation.',
     features: [
@@ -60,6 +64,7 @@ export const COACHING_PACKAGES: Record<PackageId, CoachingPackage> = {
     name: 'Premium Package',
     sessions: 48,
     amount: 26400,
+    amountUsd: 349,
     currency: 'INR',
     description: 'Intensive mastery program designed for ambitious competitors targeting high ratings and title norms.',
     features: [
@@ -98,4 +103,21 @@ export function getPackageById(id: string): CoachingPackage | null {
     return COACHING_PACKAGES[id];
   }
   return null;
+}
+
+/**
+ * Format package price according to selected currency
+ */
+export function formatPackagePrice(pkg: CoachingPackage, currency: CurrencyCode = 'INR'): string {
+  if (currency === 'USD') {
+    return `$${pkg.amountUsd.toLocaleString('en-US')}`;
+  }
+  return `₹${pkg.amount.toLocaleString('en-IN')}`;
+}
+
+/**
+ * Get numerical price for package in selected currency
+ */
+export function getPackagePriceByCurrency(pkg: CoachingPackage, currency: CurrencyCode = 'INR'): number {
+  return currency === 'USD' ? pkg.amountUsd : pkg.amount;
 }

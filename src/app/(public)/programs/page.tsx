@@ -7,8 +7,7 @@ import JsonLd from '@/components/seo/JsonLd';
 import BookDemoCTASection from '@/features/home/BookDemoCTASection';
 import FAQItem from '@/features/faq/FAQItem';
 import { PROGRAMS } from '@/constants/PROGRAMS';
-import { COACHING_PACKAGES_LIST } from '@/constants/PRICING';
-import CashfreeCheckoutButton from '@/components/payment/CashfreeCheckoutButton';
+import ProgramsPricingSection from '@/features/programs/ProgramsPricingSection';
 import { SITE_URL, SITE_OG_IMAGE } from '@/constants/SITE';
 
 export const metadata: Metadata = {
@@ -99,92 +98,8 @@ export default function ProgramsPage() {
         </Container>
       </section>
 
-      {/* Coaching Packages & Pricing Section */}
-      <section id="packages" className="py-20 bg-slate-950 text-white relative overflow-hidden" aria-label="Coaching packages">
-        <div className="absolute inset-0 chess-bg opacity-40 pointer-events-none" aria-hidden="true" />
-        <Container className="relative z-10">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <span className="inline-block mb-3 text-xs font-bold tracking-widest uppercase text-accent bg-accent/10 px-3 py-1 rounded-full border border-accent/20">
-              Coaching Packages
-            </span>
-            <h2 className="font-heading text-4xl lg:text-5xl font-extrabold text-white mb-4">
-              Flexible 1-on-1 Coaching <span className="text-gradient-gold">Packages</span>
-            </h2>
-            <p className="text-white/70 text-base lg:text-lg">
-              Choose the package that fits your child&apos;s goals. All packages include personalized 1-on-1 Grandmaster-led live Zoom classes, interactive analysis, and progress tracking.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-stretch">
-            {COACHING_PACKAGES_LIST.map((pkg) => (
-              <div
-                key={pkg.id}
-                className={`relative rounded-3xl p-8 flex flex-col justify-between transition-all duration-300 ${
-                  pkg.featured
-                    ? 'bg-gradient-to-b from-primary-dark/90 to-surface-dark border-2 border-accent shadow-2xl scale-105 z-10'
-                    : 'bg-white/5 border border-white/10 hover:border-white/20'
-                }`}
-              >
-                {pkg.badge && (
-                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full text-xs font-bold bg-accent text-surface-dark uppercase tracking-wider shadow-md">
-                    {pkg.badge}
-                  </div>
-                )}
-
-                <div>
-                  <h3 className="font-heading text-2xl font-bold text-white mb-2">
-                    {pkg.name}
-                  </h3>
-                  <p className="text-white/60 text-xs mb-6 min-h-[36px]">
-                    {pkg.description}
-                  </p>
-
-                  <div className="mb-6 p-4 rounded-2xl bg-white/5 border border-white/10">
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-4xl font-extrabold text-white">
-                        ₹{pkg.amount.toLocaleString('en-IN')}
-                      </span>
-                      <span className="text-white/50 text-xs">/ package</span>
-                    </div>
-                    <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent/20 text-accent text-xs font-bold">
-                      <span>♟️</span>
-                      <span>{pkg.sessions} Live Sessions</span>
-                    </div>
-                  </div>
-
-                  <ul className="space-y-3 mb-8">
-                    {pkg.features.map((feature, idx) => (
-                      <li key={idx} className="flex items-start gap-2.5 text-xs text-white/80">
-                        <svg className="w-4 h-4 text-accent flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                        </svg>
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div>
-                  <CashfreeCheckoutButton
-                    packageId={pkg.id}
-                    packageName={pkg.name}
-                    amount={pkg.amount}
-                    sessions={pkg.sessions}
-                    className={`w-full py-3.5 px-6 rounded-xl font-bold text-sm text-center transition-all duration-200 ${
-                      pkg.featured
-                        ? 'bg-accent hover:bg-accent-hover text-surface-dark shadow-gold'
-                        : 'bg-primary hover:bg-primary-dark text-white'
-                    }`}
-                  />
-                  <p className="text-[10px] text-white/40 text-center mt-3">
-                    Instant entitlement activation • 100% Secure Checkout
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Container>
-      </section>
+      {/* Coaching Packages & Pricing Section with Dual Currency Toggle & Geo-detection */}
+      <ProgramsPricingSection />
 
       {/* Programs Detail */}
       <section className="py-20 bg-surface-light" aria-label="Program details">

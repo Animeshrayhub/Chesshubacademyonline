@@ -376,3 +376,47 @@ export async function rescheduleBooking(
     };
   }
 }
+
+/**
+ * Converts a contact web inquiry into a structured, scheduled Demo Booking request.
+ */
+export async function convertInquiryToDemoBooking(
+  bookingId: string,
+  data: {
+    student_name: string;
+    student_age: number;
+    preferred_time: string;
+  }
+): Promise<Result<DbBooking>> {
+  try {
+    await assertAdmin();
+    const admin = createSupabaseAdmin();
+
+    const { data: updated, error } = await admin
+      .from('bookings')
+      .update({
+        student_name: data.student_name.trim(),
+        student_age: data.student_age,
+        preferred_time: data.preferred_time.trim(),
+        status: 'pending',
+      })
+      .eq('id', bookingId)
+      .select()
+      .single();
+
+    if (error || !updated) {
+      return {
+        success: false,
+        error: new DatabaseError('Failed to convert inquiry to demo booking', error),
+      };
+    }
+
+    return { success: true, data: updated };
+  } catch (error) {
+    if (error instanceof BaseError) return { success: false, error };
+    return {
+      success: false,
+      error: new InternalServerError(error instanceof Error ? error.message : 'Unknown error'),
+    };
+  }
+}

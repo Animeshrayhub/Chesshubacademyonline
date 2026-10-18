@@ -34,21 +34,40 @@ export async function POST(req: Request) {
       );
     }
 
+    const selectedCurrency: 'INR' | 'USD' = body.currency === 'USD' ? 'USD' : 'INR';
+    const amount = selectedCurrency === 'USD' ? pkg.amountUsd : pkg.amount;
+
     const orderId = `order_ch_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+
+    // Build return and notify URLs
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://chesshubacademy.online';
+    const returnUrl = `${baseUrl}/payment/status?order_id={order_id}`;
+    const notifyUrl = `${baseUrl}/api/payment/webhook`;
 
     // Call Cashfree API
     const cashfreeOrder = await createCashfreeOrder({
       order_id: orderId,
-      order_amount: pkg.amount,
-      order_currency: 'INR',
+      order_amount: amount,
+      order_currency: selectedCurrency,
       customer_details: {
         customer_id: user.id,
         customer_name: `${user.firstName || 'Student'} ${user.lastName || ''}`.trim(),
         customer_email: user.email,
         customer_phone: '9876543210',
       },
+      order_meta: {
+        return_url: returnUrl,
+        notify_url: notifyUrl,
+      },
       order_note: `Enrollment in ${pkg.name} (${pkg.sessions} Live Sessions)`,
     });
+
+    const isProd = process.env.CASHFREE_ENV === 'PRODUCTION';
+    const hostedCheckoutUrl = cashfreeOrder.payment_session_id
+      ? isProd
+        ? `https://payments.cashfree.com/order/#${cashfreeOrder.payment_session_id}`
+        : `https://payments-test.cashfree.com/order/#${cashfreeOrder.payment_session_id}`
+      : `${baseUrl}/payment/status?order_id=${orderId}`;
 
     // Save order in database
     const admin = createSupabaseAdmin();
@@ -59,8 +78,8 @@ export async function POST(req: Request) {
       package_id: pkg.id,
       package_name: pkg.name,
       session_count: pkg.sessions,
-      order_amount: pkg.amount,
-      order_currency: 'INR',
+      order_amount: amount,
+      order_currency: selectedCurrency,
       payment_session_id: cashfreeOrder.payment_session_id,
       order_status: 'PENDING',
       created_at: new Date().toISOString(),
@@ -71,8 +90,9 @@ export async function POST(req: Request) {
       success: true,
       orderId,
       paymentSessionId: cashfreeOrder.payment_session_id,
-      amount: pkg.amount,
-      currency: 'INR',
+      hostedCheckoutUrl,
+      amount,
+      currency: selectedCurrency,
       packageName: pkg.name,
       sessions: pkg.sessions,
     });

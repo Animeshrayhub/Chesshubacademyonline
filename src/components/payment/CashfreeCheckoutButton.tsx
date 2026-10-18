@@ -10,6 +10,7 @@ interface CashfreeCheckoutButtonProps {
   packageName: string;
   amount: number;
   sessions: number;
+  currency?: 'INR' | 'USD';
   className?: string;
   buttonText?: string;
   onSuccess?: () => void;
@@ -20,6 +21,7 @@ export default function CashfreeCheckoutButton({
   packageName,
   amount,
   sessions,
+  currency = 'INR',
   className = '',
   buttonText,
   onSuccess,
@@ -43,7 +45,7 @@ export default function CashfreeCheckoutButton({
 
       if (!session) {
         // Preserve package in redirect url
-        const targetUrl = `/programs?package=${encodeURIComponent(packageId)}`;
+        const targetUrl = `/programs?package=${encodeURIComponent(packageId)}&currency=${currency}`;
         router.push(`/login?redirectTo=${encodeURIComponent(targetUrl)}`);
         return;
       }
@@ -54,7 +56,7 @@ export default function CashfreeCheckoutButton({
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ packageId }),
+        body: JSON.stringify({ packageId, currency }),
       });
 
       const data = await response.json();
@@ -64,8 +66,14 @@ export default function CashfreeCheckoutButton({
         return;
       }
 
-      // If Cashfree Dropin is available in window
-      if (typeof window !== 'undefined' && (window as any).Cashfree) {
+      // Seamless redirect to Cashfree Hosted Checkout page
+      if (data.hostedCheckoutUrl) {
+        window.location.href = data.hostedCheckoutUrl;
+        return;
+      }
+
+      // Fallback to JS SDK modal if URL not returned
+      if (typeof window !== 'undefined' && (window as any).Cashfree && data.paymentSessionId) {
         const cashfree = (window as any).Cashfree({
           mode: process.env.NEXT_PUBLIC_CASHFREE_MODE === 'production' ? 'production' : 'sandbox',
         });
@@ -78,14 +86,11 @@ export default function CashfreeCheckoutButton({
           }
           if (result.paymentDetails) {
             onSuccess?.();
-            router.refresh();
+            router.push(`/payment/status?order_id=${data.orderId}`);
           }
         });
       } else {
-        // Fallback: Notify success or redirect to billing/checkout confirmation
-        if (data.paymentSessionId) {
-          onSuccess?.();
-        }
+        router.push(`/payment/status?order_id=${data.orderId}`);
       }
     } catch (err: any) {
       console.error('[CashfreeCheckoutButton] Error:', err);

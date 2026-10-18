@@ -1,6 +1,7 @@
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { getPackageById, PackageId } from '@/constants/PRICING';
 import type { StudentSessionEntitlementRecord } from '@/types/cashfree';
+import { sendPaymentConfirmationEmail } from '@/lib/email';
 
 /**
  * Grants session entitlement to a student upon verified payment.
@@ -50,11 +51,36 @@ export async function grantStudentEntitlement(
       return { success: false, error: error.message };
     }
 
-    // Mark payment order as PAID
-    await admin
+    // Mark payment order as PAID and retrieve customer details
+    const { data: updatedOrder } = await admin
       .from('payment_orders')
       .update({ order_status: 'PAID', updated_at: new Date().toISOString() })
-      .eq('order_id', orderId);
+      .eq('order_id', orderId)
+      .select('order_amount, order_currency, customer_name, customer_email, user_id')
+      .maybeSingle();
+
+    // Trigger confirmation email & in-app notification non-blockingly
+    const { data: userRec } = await admin
+      .from('users')
+      .select('email, first_name, last_name')
+      .eq('id', studentId)
+      .maybeSingle();
+
+    const studentEmail = updatedOrder?.customer_email || userRec?.email;
+    const studentName = updatedOrder?.customer_name || `${userRec?.first_name || 'Student'} ${userRec?.last_name || ''}`.trim();
+
+    if (studentEmail) {
+      sendPaymentConfirmationEmail({
+        studentId,
+        studentEmail,
+        studentName,
+        packageName,
+        sessions,
+        amount: updatedOrder?.order_amount || (pkg?.amount ?? 7200),
+        currency: (updatedOrder?.order_currency as 'INR' | 'USD') || 'INR',
+        orderId,
+      }).catch((e) => console.error('[sendPaymentConfirmationEmail] background error:', e));
+    }
 
     return { success: true, entitlement: data };
   } catch (err: any) {

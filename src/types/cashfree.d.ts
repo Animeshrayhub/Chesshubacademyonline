@@ -46,7 +46,7 @@ export interface CashfreeOrderMeta {
 export interface CashfreeCreateOrderRequest {
   order_id: string;
   order_amount: number;
-  order_currency: 'INR';
+  order_currency: 'INR' | 'USD';
   customer_details: CashfreeCustomerDetails;
   order_meta?: CashfreeOrderMeta;
   order_note?: string;
