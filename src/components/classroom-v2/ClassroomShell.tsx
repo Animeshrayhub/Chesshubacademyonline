@@ -15,6 +15,7 @@ import { type BoardOrientation, type CanonicalPuzzleState, type CanonicalCurricu
 import { DEFAULT_INITIAL_FEN } from '@/lib/classroom-v2/constants';
 import { getPuzzleBankAction } from '@/actions/puzzles';
 import { fetchCurriculumHierarchyAction } from '@/actions/curriculum';
+import { getAllHomeworkChaptersAction } from '@/actions/homework';
 
 // ── Board Theme Definitions ──────────────────────────────────────────────────
 const BOARD_THEMES = {
@@ -290,6 +291,10 @@ export default function ClassroomShell({
   const [studentFeedbackMap, setStudentFeedbackMap] = useState<Record<string, string>>({});
   const [isEndingSession, setIsEndingSession] = useState(false);
   const [customDurationMins, setCustomDurationMins] = useState<number | ''>('');
+  const [recordingUrlInput, setRecordingUrlInput] = useState('');
+  const [selectedHomeworkChapterId, setSelectedHomeworkChapterId] = useState('');
+  const [homeworkChaptersList, setHomeworkChaptersList] = useState<Array<{ id: string; title: string; workbookTitle?: string }>>([]);
+  const [isLoadingChapters, setIsLoadingChapters] = useState(false);
   const conductedMinutes = typeof customDurationMins === 'number' && customDurationMins > 0
     ? customDurationMins
     : Math.max(1, Math.round(elapsedSeconds / 60));
@@ -512,6 +517,24 @@ export default function ClassroomShell({
     setShowCurriculumModal(false);
   };
 
+  // Open End Class Modal & Pre-fetch homework chapters
+  const openEndModal = async () => {
+    setShowEndModal(true);
+    if (homeworkChaptersList.length === 0) {
+      setIsLoadingChapters(true);
+      try {
+        const res = await getAllHomeworkChaptersAction();
+        if (res.success && res.data) {
+          setHomeworkChaptersList(res.data);
+        }
+      } catch (err) {
+        console.warn('[Fetch Chapters Error]', err);
+      } finally {
+        setIsLoadingChapters(false);
+      }
+    }
+  };
+
   // Confirm End Class with Attendance & Review
   const handleConfirmEndClass = async () => {
     setIsEndingSession(true);
@@ -524,7 +547,13 @@ export default function ClassroomShell({
       status: attendanceRecords[student.userId]?.status || (student.isOnline ? 'PRESENT' : 'ABSENT'),
       feedback: studentFeedbackMap[student.userId] || attendanceRecords[student.userId]?.notes || '',
     }));
-    await onEndClass(records, learnedTopics, conductedMinutes);
+    await onEndClass(
+      records,
+      learnedTopics,
+      conductedMinutes,
+      recordingUrlInput.trim() || undefined,
+      selectedHomeworkChapterId.trim() || undefined
+    );
     setIsEndingSession(false);
   };
 
@@ -538,7 +567,13 @@ export default function ClassroomShell({
       feedback: 'Attended live classroom session.',
     }));
     const autoMins = Math.max(1, Math.round(elapsedSeconds / 60));
-    await onEndClass(records, learnedTopics || 'Live session completed.', autoMins);
+    await onEndClass(
+      records,
+      learnedTopics || 'Live session completed.',
+      autoMins,
+      recordingUrlInput.trim() || undefined,
+      selectedHomeworkChapterId.trim() || undefined
+    );
     setIsEndingSession(false);
   };
 
@@ -778,8 +813,8 @@ export default function ClassroomShell({
               </button>
               <button
                 type="button"
-                onClick={() => setShowEndModal(true)}
-                className="px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-md transition-all flex items-center gap-1"
+                onClick={openEndModal}
+                className="px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-md transition-all flex items-center gap-1 cursor-pointer"
                 title="End Classroom Session"
               >
                 <span>⏹</span>
@@ -1516,11 +1551,16 @@ export default function ClassroomShell({
 
             {/* Attendance & Per-Student Feedback */}
             <div className="space-y-2">
-              <label className="text-xs font-extrabold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                <span>👥</span> STUDENT ATTENDANCE & COACH FEEDBACK
+              <label className="text-xs font-extrabold uppercase tracking-wider text-slate-300 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <span>👥</span> STRICT STUDENT ROLL-CALL & FEEDBACK
+                </span>
+                <span className="text-[10px] text-slate-400 font-semibold lowercase">
+                  (select present or absent)
+                </span>
               </label>
 
-              <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
+              <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
                 {participants
                   .filter((p) => p.role === 'student')
                   .map((student) => {
@@ -1550,7 +1590,7 @@ export default function ClassroomShell({
                                     [student.userId]: { ...record, status: st },
                                   }))
                                 }
-                                className={`px-2 py-0.5 rounded-md transition-colors ${
+                                className={`px-2 py-0.5 rounded-md transition-colors cursor-pointer ${
                                   record.status === st
                                     ? st === 'PRESENT'
                                       ? 'bg-emerald-600 text-white font-bold'
@@ -1588,6 +1628,48 @@ export default function ClassroomShell({
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Homework Assignment Handoff (Q10 Blueprint) */}
+            <div className="space-y-1.5 pt-1 border-t border-slate-800">
+              <label className="text-xs font-extrabold uppercase tracking-wider text-slate-300 flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-indigo-400">
+                  <span>📚</span> ASSIGN NEXT HOMEWORK CHAPTER (OPTIONAL)
+                </span>
+                {isLoadingChapters && <span className="text-[10px] text-slate-400">Loading chapters…</span>}
+              </label>
+              <select
+                value={selectedHomeworkChapterId}
+                onChange={(e) => setSelectedHomeworkChapterId(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-750 focus:border-indigo-500 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none transition-colors"
+              >
+                <option value="">-- No homework to assign --</option>
+                {homeworkChaptersList.map((ch) => (
+                  <option key={ch.id} value={ch.id}>
+                    {ch.workbookTitle ? `[${ch.workbookTitle}] ` : ''}{ch.title}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[10px] text-slate-400">
+                Instantly assigns chapter puzzles to all enrolled students for post-class practice.
+              </p>
+            </div>
+
+            {/* Cloud Video Recording URL (Q9 Blueprint) */}
+            <div className="space-y-1.5 pt-1 border-t border-slate-800">
+              <label className="text-xs font-extrabold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                <span>📹</span> CLOUD VIDEO RECORDING LINK (OPTIONAL)
+              </label>
+              <input
+                type="url"
+                value={recordingUrlInput}
+                onChange={(e) => setRecordingUrlInput(e.target.value)}
+                placeholder="Zoom Cloud / Google Drive replay URL (e.g. https://zoom.us/rec/...)"
+                className="w-full bg-slate-950 border border-slate-750 focus:border-indigo-500 rounded-xl px-3 py-2 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none transition-colors"
+              />
+              <p className="text-[10px] text-slate-400">
+                Students can re-watch the video recording anytime from their Student Recordings dashboard.
+              </p>
             </div>
 
             <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800">

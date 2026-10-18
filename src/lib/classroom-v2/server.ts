@@ -1584,7 +1584,9 @@ export async function endClassroomSession(
   userRole: UserRole,
   attendanceRecords?: Array<{ studentProfileId: string; status: 'PRESENT' | 'ABSENT' | 'LATE' | 'LEFT_EARLY'; feedback?: string }>,
   reviewNotes?: string,
-  actualDurationMinutesParam?: number
+  actualDurationMinutesParam?: number,
+  recordingUrl?: string,
+  homeworkChapterId?: string
 ): Promise<{ success: boolean; error?: string }> {
   if (!isCoachOrAdmin(userRole)) {
     return { success: false, error: 'Only coach or admin can end the class.' };
@@ -1764,14 +1766,61 @@ export async function endClassroomSession(
     console.warn('[End Class] Attendance logging warning:', attErr);
   }
 
-  // 6. Delete ephemeral live classroom chat
+  // 6. Save cloud recording URL if provided
+  if (recordingUrl && recordingUrl.trim()) {
+    try {
+      await admin.from('class_recordings').upsert(
+        {
+          class_id: classId,
+          recording_url: recordingUrl.trim(),
+          recording_source: 'ZOOM_CLOUD',
+          recorded_date: endedAt.split('T')[0],
+          duration_seconds: actualDurationMinutes * 60,
+          updated_at: endedAt,
+        },
+        { onConflict: 'class_id' }
+      );
+      await admin.from('classes').update({
+        status: 'RECORDING_AVAILABLE',
+        updated_at: endedAt,
+      }).eq('id', classId);
+    } catch (recErr) {
+      console.warn('[End Class] Recording URL save warning:', recErr);
+    }
+  }
+
+  // 6b. Assign next homework chapter to class students if selected by coach
+  if (homeworkChapterId && homeworkChapterId.trim()) {
+    try {
+      const { assignChapterToClass } = await import('@/lib/homework');
+      // Resolve coach profile ID
+      let coachProfId = cls?.coach_id;
+      if (!coachProfId) {
+        const { data: cp } = await admin
+          .from('coach_profiles')
+          .select('id')
+          .eq('user_id', userId)
+          .maybeSingle();
+        coachProfId = cp?.id || userId;
+      }
+      await assignChapterToClass({
+        chapterId: homeworkChapterId.trim(),
+        classId,
+        coachProfileId: coachProfId,
+      });
+    } catch (hwErr) {
+      console.warn('[End Class] Homework auto-assignment warning:', hwErr);
+    }
+  }
+
+  // 7. Delete ephemeral live classroom chat
   try {
     await admin.from('classroom_chat').delete().eq('class_id', classId);
   } catch (chatDelErr) {
     console.warn('[End Class] Ephemeral chat cleanup warning:', chatDelErr);
   }
 
-  // 7. Log milestone and security audit event
+  // 8. Log milestone and security audit event
   await logClassroomAudit({
     classId,
     sessionId,

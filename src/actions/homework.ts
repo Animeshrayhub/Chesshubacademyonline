@@ -848,3 +848,28 @@ export async function assignPracticeGameToStudentAction(data: {
   }
   return serializeResult(res);
 }
+
+export async function getAllHomeworkChaptersAction() {
+  try {
+    const { createSupabaseAdmin } = await import('@/lib/supabase/admin');
+    const admin = createSupabaseAdmin();
+    const { data, error } = await admin
+      .from('homework_chapters')
+      .select('id, title, workbook_id, homework_workbooks (title)')
+      .order('title', { ascending: true })
+      .limit(100);
+
+    if (error) throw error;
+
+    const formatted = (data || []).map((ch: any) => ({
+      id: ch.id,
+      title: ch.title,
+      workbookTitle: ch.homework_workbooks?.title || 'Workbook',
+    }));
+
+    return { success: true, data: formatted };
+  } catch (err: any) {
+    console.warn('[getAllHomeworkChaptersAction error]', err);
+    return { success: false, error: { message: err?.message || 'Failed to list chapters' } };
+  }
+}

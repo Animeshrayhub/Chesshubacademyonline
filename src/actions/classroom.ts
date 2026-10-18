@@ -449,7 +449,9 @@ export async function endClassroomSessionAction(
   attendanceRecords?: Array<{ studentProfileId: string; status: 'PRESENT' | 'ABSENT' | 'LATE' | 'LEFT_EARLY'; feedback?: string }>,
   mutationId?: string,
   reviewNotes?: string,
-  actualDurationMinutes?: number
+  actualDurationMinutes?: number,
+  recordingUrl?: string,
+  homeworkChapterId?: string
 ) {
   if (mutationId) {
     const cached = await checkProcessedMutation(mutationId);
@@ -459,7 +461,17 @@ export async function endClassroomSessionAction(
   const auth = await getAuthContext();
   if (!auth) return { success: false, error: 'Unauthorized' };
 
-  const res = await endClassroomSession(classId, sessionId, auth.userId, auth.userRole, attendanceRecords, reviewNotes, actualDurationMinutes);
+  const res = await endClassroomSession(
+    classId,
+    sessionId,
+    auth.userId,
+    auth.userRole,
+    attendanceRecords,
+    reviewNotes,
+    actualDurationMinutes,
+    recordingUrl,
+    homeworkChapterId
+  );
   if (mutationId && res.success) {
     await recordProcessedMutation(mutationId, res, sessionId, 'end_class');
   }

@@ -126,9 +126,10 @@ export default function ClassroomPositionLoaderModal({
   onClose,
   onLoadGame,
 }: ClassroomPositionLoaderModalProps) {
-  const [activeTab, setActiveTab] = useState<'paste' | 'openings' | 'curriculum'>('paste');
+  const [activeTab, setActiveTab] = useState<'paste' | 'openings' | 'curriculum' | 'lichess'>('paste');
   const [customInput, setCustomInput] = useState('');
   const [gameTitle, setGameTitle] = useState('');
+  const [lichessUrl, setLichessUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -160,6 +161,43 @@ export default function ClassroomPositionLoaderModal({
   }, [customInput]);
 
   if (!isOpen) return null;
+
+  const handleFetchLichessStudy = async () => {
+    const trimmed = lichessUrl.trim();
+    if (!trimmed || isLoading) return;
+    setIsLoading(true);
+    setErrorMessage(null);
+    try {
+      // Extract study ID or chapter ID from URL e.g. https://lichess.org/study/xxxxxxx
+      const studyMatch = trimmed.match(/study\/([a-zA-Z0-9]+)/);
+      const studyId = studyMatch ? studyMatch[1] : trimmed.replace(/[^a-zA-Z0-9]/g, '');
+
+      if (!studyId) {
+        throw new Error('Please enter a valid Lichess study URL (e.g. https://lichess.org/study/xxxxxxx)');
+      }
+
+      // Fetch study PGN from Lichess public API
+      const res = await fetch(`https://lichess.org/api/study/${studyId}.pgn`);
+      if (!res.ok) {
+        throw new Error(`Failed to fetch study from Lichess (${res.status}). Ensure the study is public.`);
+      }
+      const pgnText = await res.text();
+      if (!pgnText || !pgnText.trim()) {
+        throw new Error('No moves found in this Lichess study.');
+      }
+
+      const success = await onLoadGame(pgnText.trim(), gameTitle.trim() || `Lichess Study (${studyId})`);
+      if (success) {
+        onClose();
+      } else {
+        setErrorMessage('Failed to load Lichess study onto live classroom board.');
+      }
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Error fetching Lichess study.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleLoadCustom = async () => {
     if (!customInput.trim() || isLoading) return;
@@ -275,6 +313,17 @@ export default function ClassroomPositionLoaderModal({
             }`}
           >
             📚 Academy Studies ({CURRICULUM_STUDIES.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('lichess')}
+            className={`px-3 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer ${
+              activeTab === 'lichess'
+                ? 'bg-slate-900 text-amber-400 border-t-2 border-amber-500 shadow-xs'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            ♟️ Import Lichess Study
           </button>
         </div>
 
@@ -453,6 +502,58 @@ export default function ClassroomPositionLoaderModal({
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* TAB 4: IMPORT LICHESS STUDY */}
+          {activeTab === 'lichess' && (
+            <div className="space-y-4">
+              <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1.5">
+                <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                  <span>⚡</span> Import Any Public Lichess Study
+                </span>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Paste the URL of any public Lichess study (e.g.{' '}
+                  <code className="text-slate-300 font-mono">https://lichess.org/study/xxxxxxx</code>). The
+                  game moves and annotated variations will be fetched and synced directly to the live classroom
+                  board for all students.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                  Lichess Study URL or ID
+                </label>
+                <input
+                  type="text"
+                  value={lichessUrl}
+                  onChange={(e) => setLichessUrl(e.target.value)}
+                  placeholder="https://lichess.org/study/RjKXaR5C or RjKXaR5C"
+                  className="w-full bg-slate-950 border border-slate-750 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none transition-colors font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">
+                  Lesson Title (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={gameTitle}
+                  onChange={(e) => setGameTitle(e.target.value)}
+                  placeholder="e.g. Masterclass Tactical Study"
+                  className="w-full bg-slate-950 border border-slate-750 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none transition-colors"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={handleFetchLichessStudy}
+                disabled={!lichessUrl.trim() || isLoading}
+                className="w-full py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 disabled:opacity-40 text-white rounded-xl text-xs font-black shadow-lg shadow-amber-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <span>{isLoading ? '⏳ Fetching Study PGN…' : '📥 Import Study & Broadcast to Class'}</span>
+              </button>
             </div>
           )}
         </div>

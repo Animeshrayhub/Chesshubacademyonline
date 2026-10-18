@@ -20,7 +20,8 @@ export default function ClassroomChat({
   participants = [],
   className = '',
 }: ClassroomChatProps) {
-  const [activeTab, setActiveTab] = useState<'public' | 'private'>('public');
+  const isStudent = currentUserRole === 'student';
+  const [activeTab, setActiveTab] = useState<'public' | 'private'>(isStudent ? 'private' : 'public');
   const [inputVal, setInputVal] = useState('');
   const [selectedRecipientId, setSelectedRecipientId] = useState<string>('');
   const [isSending, setIsSending] = useState(false);
@@ -28,19 +29,21 @@ export default function ClassroomChat({
 
   // Filter messages based on active tab and privacy
   const filteredMessages = messages.filter((m) => {
+    if (isStudent) {
+      // Students see coach broadcasts or their direct whisper with the coach
+      if (!m.isPrivate) return m.senderRole === 'coach' || m.senderRole === 'admin';
+      return m.senderId === currentUserId || m.recipientId === currentUserId;
+    }
+
     if (activeTab === 'public') {
       return !m.isPrivate;
     }
-    // Private messages tab
+    // Private messages tab for Coach/Admin
     if (!m.isPrivate) return false;
-    if (currentUserRole === 'coach' || currentUserRole === 'admin') {
-      if (selectedRecipientId) {
-        return m.senderId === selectedRecipientId || m.recipientId === selectedRecipientId;
-      }
-      return true;
+    if (selectedRecipientId) {
+      return m.senderId === selectedRecipientId || m.recipientId === selectedRecipientId;
     }
-    // Student sees only their private conversation with Coach
-    return m.senderId === currentUserId || m.recipientId === currentUserId;
+    return true;
   });
 
   useEffect(() => {
@@ -58,8 +61,9 @@ export default function ClassroomChat({
     setIsSending(true);
 
     try {
-      const isPrivate = activeTab === 'private';
-      const recipientId = isPrivate ? selectedRecipientId || undefined : undefined;
+      // For students, all messages are strictly private whispers to the coach
+      const isPrivate = isStudent ? true : activeTab === 'private';
+      const recipientId = isStudent ? undefined : (isPrivate ? selectedRecipientId || undefined : undefined);
       await onSendMessage(text, isPrivate, recipientId);
     } finally {
       setIsSending(false);
@@ -69,34 +73,42 @@ export default function ClassroomChat({
   return (
     <div className={`flex flex-col h-full bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden ${className}`}>
       {/* Tab Header */}
-      <div className="h-9 bg-slate-950/80 px-2 border-b border-slate-800 flex items-center justify-between">
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setActiveTab('public')}
-            className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
-              activeTab === 'public'
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-            }`}
-          >
-            Class Chat
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('private')}
-            className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
-              activeTab === 'private'
-                ? 'bg-purple-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-            }`}
-          >
+      <div className="h-9 bg-slate-950/80 px-2.5 border-b border-slate-800 flex items-center justify-between select-none">
+        {isStudent ? (
+          <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
             <span>🔒</span>
-            <span>Private</span>
-          </button>
-        </div>
+            <span>Direct Line to Coach</span>
+            <span className="text-[10px] text-slate-400 font-normal hidden sm:inline">(Whispers only)</span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setActiveTab('public')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
+                activeTab === 'public'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              Broadcast
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('private')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
+                activeTab === 'private'
+                  ? 'bg-purple-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <span>🔒</span>
+              <span>Whispers</span>
+            </button>
+          </div>
+        )}
 
-        {activeTab === 'private' && (currentUserRole === 'coach' || currentUserRole === 'admin') && (
+        {!isStudent && activeTab === 'private' && (
           <select
             value={selectedRecipientId}
             onChange={(e) => setSelectedRecipientId(e.target.value)}
