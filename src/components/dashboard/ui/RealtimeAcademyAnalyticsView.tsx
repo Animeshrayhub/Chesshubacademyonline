@@ -5,30 +5,25 @@ import StatCard from '@/components/dashboard/ui/StatCard';
 import type { StatCardData } from '@/types/dashboard';
 import { createSupabaseClient } from '@/lib/supabase/client';
 
+import type { OverviewReportData, KPIAnalyticsRow } from '@/lib/reports';
+
 interface RealtimeAcademyAnalyticsViewProps {
-  initialStats: {
-    studentCount: number;
-    attendanceRate: number;
-    homeworkRate: number;
-    totalHours: number;
-    monthlyTrend: Array<{ label: string; value: number }>;
-    classesTypeTrend: Array<{ label: string; value: number }>;
-  };
-  initialKpiRows: Array<{ metric: string; value: string; period: string }>;
+  initialStats: OverviewReportData;
+  initialKpiRows: KPIAnalyticsRow[];
 }
 
 export default function RealtimeAcademyAnalyticsView({
   initialStats,
   initialKpiRows,
 }: RealtimeAcademyAnalyticsViewProps) {
-  const [stats, setStats] = useState(initialStats);
+  const [stats, setStats] = useState<OverviewReportData>(initialStats);
   const [kpiRows, setKpiRows] = useState(initialKpiRows);
 
   // Filters & State
   const [dateRange, setDateRange] = useState<'today' | '7d' | '30d' | 'month' | 'all'>('month');
   const [selectedCohortType, setSelectedCohortType] = useState<'all' | 'group' | 'buddy' | 'private'>('all');
   const [isLiveSyncActive, setIsLiveSyncActive] = useState(true);
-  const [onlinePresenceCount, setOnlinePresenceCount] = useState(14);
+  const [onlinePresenceCount, setOnlinePresenceCount] = useState(0);
   const [growthChartView, setGrowthChartView] = useState<'area' | 'bar' | 'table'>('area');
   const [distributionView, setDistributionView] = useState<'donut' | 'table'>('donut');
   const [showPayoutModal, setShowPayoutModal] = useState(false);
@@ -38,17 +33,15 @@ export default function RealtimeAcademyAnalyticsView({
 
   // AI Insights State
   const [aiReportGenerating, setAiReportGenerating] = useState(false);
-  const [aiExecutiveSummary, setAiExecutiveSummary] = useState<string>(
-    '⚡ AI Growth Analysis: Student enrollment is up +14% this month, driven by strong conversion in Group (1v5) cohorts. Classroom fill rate is optimal at 88.5%. Recommended Action: 2 Thursday evening 1v5 sessions are at 100% capacity — consider opening 1 new slot.'
-  );
+  const [aiExecutiveSummary, setAiExecutiveSummary] = useState<string>(() => {
+    if (initialStats.studentCount === 0) {
+      return '📊 Academy Status: No active students currently enrolled. Promote programs or schedule free demo classes to begin tracking academy performance.';
+    }
+    return `📊 Academy Performance Summary: ${initialStats.studentCount} active enrolled students across ${initialStats.cohortDistribution?.total ?? 0} active cohort slots. Live attendance rate sits at ${initialStats.attendanceRate}% and homework completion rate is ${initialStats.homeworkRate}%. ${initialStats.completedClassesCount ?? 0} class sessions completed (${initialStats.totalHours}h instruction logged).`;
+  });
 
   // Live Activity Ticker Feed
-  const [liveActivities, setLiveActivities] = useState<Array<{ id: string; time: string; text: string; tag: string }>>([
-    { id: '1', time: 'Just now', text: 'Arjun K. completed Daily Puzzle #142 (+50 XP)', tag: 'PUZZLE' },
-    { id: '2', time: '2m ago', text: 'Coach Alex marked attendance for Group Cohort A (5/5 Present)', tag: 'ATTENDANCE' },
-    { id: '3', time: '5m ago', text: 'Maya S. submitted Chapter 4 Tactical Exercises', tag: 'HOMEWORK' },
-    { id: '4', time: '12m ago', text: 'New Demo Booking from Website Chatbot (Parent: Sarah T.)', tag: 'DEMO' },
-  ]);
+  const [liveActivities, setLiveActivities] = useState<Array<{ id: string; time: string; text: string; tag: string }>>([]);
 
   // Real-time Supabase Subscription
   useEffect(() => {
@@ -58,27 +51,22 @@ export default function RealtimeAcademyAnalyticsView({
     const channel = supabase
       .channel('academy-analytics-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'classes' }, () => {
+        // Increment classes
         setStats((prev) => ({
           ...prev,
-          totalHours: prev.totalHours + 1,
+          completedClassesCount: (prev.completedClassesCount || 0) + 1,
         }));
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'class_attendance' }, () => {
-        setStats((prev) => ({
-          ...prev,
-          attendanceRate: Math.min(99, prev.attendanceRate + 1),
-        }));
+        // Real attendance update
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'homework_assignments' }, () => {
-        setStats((prev) => ({
-          ...prev,
-          homeworkRate: Math.min(100, prev.homeworkRate + 1),
-        }));
+        // Real homework update
       })
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState();
         const count = Object.keys(state).length;
-        if (count > 0) setOnlinePresenceCount(count + 12);
+        setOnlinePresenceCount(count);
       })
       .subscribe();
 
@@ -111,10 +99,10 @@ export default function RealtimeAcademyAnalyticsView({
     setAiReportGenerating(true);
     setTimeout(() => {
       setAiExecutiveSummary(
-        `📈 Updated AI Summary (${new Date().toLocaleTimeString()}): High engagement detected in Daily Puzzle Battles (78% DAU). Student retention sits at 94.2%. 2 students in Beginner Cohort B have missed 2 consecutive classes — AI retention automated alert dispatched to parent email.`
+        `📈 Updated Academy Analysis (${new Date().toLocaleTimeString()}): ${stats.studentCount} enrolled students. Attendance rate: ${stats.attendanceRate}% (${stats.attendancePresentCount}/${stats.attendanceTotalRecords || 0} sessions). Homework rate: ${stats.homeworkRate}% (${stats.homeworkCompletedCount}/${stats.homeworkTotalCount || 0} assignments). Total coaching hours: ${stats.totalHours}h.`
       );
       setAiReportGenerating(false);
-    }, 1200);
+    }, 600);
   };
 
   const statCards: StatCardData[] = [
@@ -122,32 +110,38 @@ export default function RealtimeAcademyAnalyticsView({
       label: 'Active Students Count',
       value: String(stats.studentCount),
       iconKey: 'users',
-      trend: 'up',
-      trendValue: `+14% this month • 🟢 ${onlinePresenceCount} Live Online`,
+      trend: stats.studentCount > 0 ? 'up' : 'neutral',
+      trendValue: `${stats.studentCount} enrolled student${stats.studentCount === 1 ? '' : 's'}${onlinePresenceCount > 0 ? ` • 🟢 ${onlinePresenceCount} Live Online` : ''}`,
       colorScheme: 'blue',
     },
     {
       label: 'Average Attendance Rate',
       value: `${stats.attendanceRate}%`,
       iconKey: 'checkSquare',
-      trend: 'up',
-      trendValue: 'Coach-marked live classes',
+      trend: (stats.attendanceTotalRecords || 0) > 0 ? (stats.attendanceRate >= 75 ? 'up' : 'down') : 'neutral',
+      trendValue: (stats.attendanceTotalRecords || 0) > 0
+        ? `${stats.attendancePresentCount}/${stats.attendanceTotalRecords} attended`
+        : '0 class sessions marked yet',
       colorScheme: 'green',
     },
     {
       label: 'Homework Completion Rate',
       value: `${stats.homeworkRate}%`,
       iconKey: 'bookOpen',
-      trend: 'up',
-      trendValue: '65% AI-graded • 11% Coach-reviewed',
+      trend: (stats.homeworkTotalCount || 0) > 0 ? (stats.homeworkRate >= 70 ? 'up' : 'down') : 'neutral',
+      trendValue: (stats.homeworkTotalCount || 0) > 0
+        ? `${stats.homeworkCompletedCount}/${stats.homeworkTotalCount} completed`
+        : '0 assignments assigned yet',
       colorScheme: 'purple',
     },
     {
       label: 'Coach Hours Logged',
       value: `${stats.totalHours}h`,
       iconKey: 'graduationCap',
-      trend: 'up',
-      trendValue: 'WebRTC/Zoom session duration',
+      trend: stats.totalHours > 0 ? 'up' : 'neutral',
+      trendValue: (stats.completedClassesCount || 0) > 0
+        ? `${stats.completedClassesCount} session${stats.completedClassesCount === 1 ? '' : 's'} completed`
+        : '0 completed sessions',
       colorScheme: 'blue',
     },
   ];
@@ -284,19 +278,31 @@ export default function RealtimeAcademyAnalyticsView({
           {aiExecutiveSummary}
         </div>
 
-        {/* Actionable Recommendations Pills */}
+        {/* Actionable Recommendations Driven by Live Database State */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="bg-emerald-950/40 border border-emerald-700/40 p-3 rounded-xl">
-            <p className="text-[10px] font-extrabold text-emerald-400 uppercase tracking-wider mb-1">💡 Cohort Optimization</p>
-            <p className="text-xs text-emerald-100 font-medium">Friday 6PM Group Cohort is at 2/5 capacity. Re-balance 2 students from Thursday 7PM to maximize fill rate.</p>
+            <p className="text-[10px] font-extrabold text-emerald-400 uppercase tracking-wider mb-1">💡 Cohort Distribution</p>
+            <p className="text-xs text-emerald-100 font-medium">
+              {stats.cohortDistribution?.total > 0
+                ? `${stats.cohortDistribution.group} Group, ${stats.cohortDistribution.buddy} Buddy, and ${stats.cohortDistribution.private} Private cohort slots configured.`
+                : 'No cohort batches created yet. Add new batches in Teaching Curriculum to begin group assignments.'}
+            </p>
           </div>
           <div className="bg-amber-950/40 border border-amber-700/40 p-3 rounded-xl">
-            <p className="text-[10px] font-extrabold text-amber-400 uppercase tracking-wider mb-1">⚠️ At-Risk Student Warning</p>
-            <p className="text-xs text-amber-100 font-medium">2 students in Intermediate Cohort C missed last 2 sessions. Automated parent check-in email queued.</p>
+            <p className="text-[10px] font-extrabold text-amber-400 uppercase tracking-wider mb-1">⚠️ Class Attendance Status</p>
+            <p className="text-xs text-amber-100 font-medium">
+              {stats.attendanceTotalRecords > 0
+                ? `Attendance rate is ${stats.attendanceRate}% across ${stats.attendanceTotalRecords} total class check-in entries.`
+                : '0 attendance records logged yet. Coach roll-call during live WebRTC sessions will update this automatically.'}
+            </p>
           </div>
           <div className="bg-purple-950/40 border border-purple-700/40 p-3 rounded-xl">
-            <p className="text-[10px] font-extrabold text-purple-400 uppercase tracking-wider mb-1">🚀 Lead Pipeline Velocity</p>
-            <p className="text-xs text-purple-100 font-medium">Demo Chatbot generated 42 leads this month (+35%). 28 demo classes scheduled for next week.</p>
+            <p className="text-[10px] font-extrabold text-purple-400 uppercase tracking-wider mb-1">🚀 Enrollment & Instruction</p>
+            <p className="text-xs text-purple-100 font-medium">
+              {stats.studentCount > 0
+                ? `${stats.studentCount} registered students in the academy. Total coaching logged: ${stats.totalHours}h across ${stats.completedClassesCount || 0} completed sessions.`
+                : 'No active student accounts registered yet. Promote demo booking on the homepage to acquire new learners.'}
+            </p>
           </div>
         </div>
       </div>
@@ -414,74 +420,103 @@ export default function RealtimeAcademyAnalyticsView({
 
           {distributionView === 'donut' ? (
             <div className="space-y-4 pt-2">
-              <div className="grid grid-cols-3 gap-3">
-                <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl text-center">
-                  <p className="text-[10px] font-extrabold text-emerald-700 uppercase">Group (1v5)</p>
-                  <p className="text-xl font-black text-emerald-800">18 cohorts</p>
-                  <p className="text-[10px] text-emerald-600 font-semibold">92% fill rate</p>
-                </div>
-                <div className="bg-blue-50 border border-blue-200 p-3 rounded-xl text-center">
-                  <p className="text-[10px] font-extrabold text-blue-700 uppercase">Buddy (1v2)</p>
-                  <p className="text-xl font-black text-blue-800">12 cohorts</p>
-                  <p className="text-[10px] text-blue-600 font-semibold">86% fill rate</p>
-                </div>
-                <div className="bg-purple-50 border border-purple-200 p-3 rounded-xl text-center">
-                  <p className="text-[10px] font-extrabold text-purple-700 uppercase">Private (1v1)</p>
-                  <p className="text-xl font-black text-purple-800">8 cohorts</p>
-                  <p className="text-[10px] text-purple-600 font-semibold">100% fill rate</p>
-                </div>
-              </div>
+              {(() => {
+                const groupCohorts = stats.cohortDistribution?.group ?? 0;
+                const buddyCohorts = stats.cohortDistribution?.buddy ?? 0;
+                const privateCohorts = stats.cohortDistribution?.private ?? 0;
+                const totalCohorts = stats.cohortDistribution?.total ?? 0;
+                const groupPct = totalCohorts > 0 ? Math.round((groupCohorts / totalCohorts) * 100) : 0;
+                const buddyPct = totalCohorts > 0 ? Math.round((buddyCohorts / totalCohorts) * 100) : 0;
+                const privatePct = totalCohorts > 0 ? Math.max(0, 100 - groupPct - buddyPct) : 0;
 
-              {/* Stacked Progress Bar */}
-              <div className="space-y-1.5 pt-2">
-                <div className="flex justify-between text-xs font-bold text-text-secondary">
-                  <span>Cohort Share</span>
-                  <span>38 Total Active Cohorts</span>
-                </div>
-                <div className="h-4 w-full bg-slate-100 rounded-full overflow-hidden flex shadow-inner">
-                  <div className="h-full bg-emerald-500 w-[47%]" title="Group 1v5: 47%" />
-                  <div className="h-full bg-blue-500 w-[32%]" title="Buddy 1v2: 32%" />
-                  <div className="h-full bg-purple-500 w-[21%]" title="Private 1v1: 21%" />
-                </div>
-                <div className="flex justify-between text-[11px] text-text-secondary font-semibold pt-1">
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Group (47%)</span>
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500" /> Buddy (32%)</span>
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-500" /> Private (21%)</span>
-                </div>
-              </div>
+                return (
+                  <>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl text-center">
+                        <p className="text-[10px] font-extrabold text-emerald-700 uppercase">Group (1v5)</p>
+                        <p className="text-xl font-black text-emerald-800">{groupCohorts} cohorts</p>
+                        <p className="text-[10px] text-emerald-600 font-semibold">{totalCohorts > 0 ? `${groupPct}% share` : 'No cohorts'}</p>
+                      </div>
+                      <div className="bg-blue-50 border border-blue-200 p-3 rounded-xl text-center">
+                        <p className="text-[10px] font-extrabold text-blue-700 uppercase">Buddy (1v2)</p>
+                        <p className="text-xl font-black text-blue-800">{buddyCohorts} cohorts</p>
+                        <p className="text-[10px] text-blue-600 font-semibold">{totalCohorts > 0 ? `${buddyPct}% share` : 'No cohorts'}</p>
+                      </div>
+                      <div className="bg-purple-50 border border-purple-200 p-3 rounded-xl text-center">
+                        <p className="text-[10px] font-extrabold text-purple-700 uppercase">Private (1v1)</p>
+                        <p className="text-xl font-black text-purple-800">{privateCohorts} cohorts</p>
+                        <p className="text-[10px] text-purple-600 font-semibold">{totalCohorts > 0 ? `${privatePct}% share` : 'No cohorts'}</p>
+                      </div>
+                    </div>
+
+                    {/* Stacked Progress Bar */}
+                    <div className="space-y-1.5 pt-2">
+                      <div className="flex justify-between text-xs font-bold text-text-secondary">
+                        <span>Cohort Share</span>
+                        <span>{totalCohorts} Total Active Cohorts</span>
+                      </div>
+                      {totalCohorts > 0 ? (
+                        <div className="h-4 w-full bg-slate-100 rounded-full overflow-hidden flex shadow-inner">
+                          {groupPct > 0 && <div style={{ width: `${groupPct}%` }} className="h-full bg-emerald-500" title={`Group 1v5: ${groupPct}%`} />}
+                          {buddyPct > 0 && <div style={{ width: `${buddyPct}%` }} className="h-full bg-blue-500" title={`Buddy 1v2: ${buddyPct}%`} />}
+                          {privatePct > 0 && <div style={{ width: `${privatePct}%` }} className="h-full bg-purple-500" title={`Private 1v1: ${privatePct}%`} />}
+                        </div>
+                      ) : (
+                        <div className="h-4 w-full bg-slate-100 rounded-full flex items-center justify-center text-[10px] text-slate-400 font-medium">
+                          No classes scheduled yet
+                        </div>
+                      )}
+                      <div className="flex justify-between text-[11px] text-text-secondary font-semibold pt-1">
+                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Group ({groupPct}%)</span>
+                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500" /> Buddy ({buddyPct}%)</span>
+                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-500" /> Private ({privatePct}%)</span>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-surface-light text-text-secondary uppercase font-bold border-b border-border">
-                  <tr>
-                    <th className="p-2.5">Class Format</th>
-                    <th className="p-2.5">Active Cohorts</th>
-                    <th className="p-2.5">Students Enrolled</th>
-                    <th className="p-2.5">Capacity Utilization</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border font-medium">
-                  <tr className="hover:bg-slate-50">
-                    <td className="p-2.5 font-bold text-emerald-700">Group (1v5 Max)</td>
-                    <td className="p-2.5 font-bold">18 cohorts</td>
-                    <td className="p-2.5">83 students</td>
-                    <td className="p-2.5 font-bold text-emerald-600">92.2% (Optimal)</td>
-                  </tr>
-                  <tr className="hover:bg-slate-50">
-                    <td className="p-2.5 font-bold text-blue-700">Buddy (1v2 Max)</td>
-                    <td className="p-2.5 font-bold">12 cohorts</td>
-                    <td className="p-2.5">21 students</td>
-                    <td className="p-2.5 font-bold text-blue-600">87.5%</td>
-                  </tr>
-                  <tr className="hover:bg-slate-50">
-                    <td className="p-2.5 font-bold text-purple-700">Private (1v1)</td>
-                    <td className="p-2.5 font-bold">8 cohorts</td>
-                    <td className="p-2.5">8 students</td>
-                    <td className="p-2.5 font-bold text-purple-600">100.0% (Full)</td>
-                  </tr>
-                </tbody>
-              </table>
+              {(() => {
+                const groupCohorts = stats.cohortDistribution?.group ?? 0;
+                const buddyCohorts = stats.cohortDistribution?.buddy ?? 0;
+                const privateCohorts = stats.cohortDistribution?.private ?? 0;
+                const totalCohorts = stats.cohortDistribution?.total ?? 0;
+
+                return (
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-surface-light text-text-secondary uppercase font-bold border-b border-border">
+                      <tr>
+                        <th className="p-2.5">Class Format</th>
+                        <th className="p-2.5">Active Cohorts</th>
+                        <th className="p-2.5">Enrolled Pool</th>
+                        <th className="p-2.5">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border font-medium">
+                      <tr className="hover:bg-slate-50">
+                        <td className="p-2.5 font-bold text-emerald-700">Group (1v5 Max)</td>
+                        <td className="p-2.5 font-bold">{groupCohorts} cohorts</td>
+                        <td className="p-2.5">{stats.studentCount} students registered</td>
+                        <td className="p-2.5 font-bold text-emerald-600">{groupCohorts > 0 ? 'Active' : 'Not configured'}</td>
+                      </tr>
+                      <tr className="hover:bg-slate-50">
+                        <td className="p-2.5 font-bold text-blue-700">Buddy (1v2 Max)</td>
+                        <td className="p-2.5 font-bold">{buddyCohorts} cohorts</td>
+                        <td className="p-2.5">{stats.studentCount} students registered</td>
+                        <td className="p-2.5 font-bold text-blue-600">{buddyCohorts > 0 ? 'Active' : 'Not configured'}</td>
+                      </tr>
+                      <tr className="hover:bg-slate-50">
+                        <td className="p-2.5 font-bold text-purple-700">Private (1v1)</td>
+                        <td className="p-2.5 font-bold">{privateCohorts} cohorts</td>
+                        <td className="p-2.5">{stats.studentCount} students registered</td>
+                        <td className="p-2.5 font-bold text-purple-600">{privateCohorts > 0 ? 'Active' : 'Not configured'}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                );
+              })()}
             </div>
           )}
         </div>
@@ -495,10 +530,10 @@ export default function RealtimeAcademyAnalyticsView({
           <div className="flex items-center justify-between border-b border-border pb-3">
             <div>
               <h4 className="text-base font-bold text-text-primary">Platform Key Health Indicators</h4>
-              <p className="text-xs text-text-secondary mt-0.5">Real-time metrics tracking retention, fill rate, NPS, and engagement</p>
+              <p className="text-xs text-text-secondary mt-0.5">Real-time metrics tracking retention, attendance, reviews, and lead velocity</p>
             </div>
-            <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-              🟢 Health Score: 96 / 100
+            <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-300">
+              🟢 Live Database Verified
             </span>
           </div>
 
@@ -508,7 +543,7 @@ export default function RealtimeAcademyAnalyticsView({
                 <tr>
                   <th className="p-3">Key Performance Metric</th>
                   <th className="p-3">Current Score</th>
-                  <th className="p-3">Quarterly Target & Growth</th>
+                  <th className="p-3">Database Metric Context</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -535,15 +570,22 @@ export default function RealtimeAcademyAnalyticsView({
           </div>
 
           <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-            {liveActivities.map((act) => (
-              <div key={act.id} className="p-2.5 rounded-xl bg-surface-light border border-border text-xs space-y-1">
-                <div className="flex items-center justify-between text-[10px]">
-                  <span className="font-bold text-primary uppercase tracking-wider">{act.tag}</span>
-                  <span className="text-text-secondary">{act.time}</span>
-                </div>
-                <p className="font-medium text-text-primary text-[11px] leading-snug">{act.text}</p>
+            {liveActivities.length === 0 ? (
+              <div className="p-6 text-center text-xs text-text-secondary border border-dashed border-border rounded-xl">
+                <p className="font-semibold text-text-primary">Waiting for live activity...</p>
+                <p className="text-[11px] text-slate-400 mt-1">Real-time attendance roll-calls, homework submissions, and student logins will stream here.</p>
               </div>
-            ))}
+            ) : (
+              liveActivities.map((act) => (
+                <div key={act.id} className="p-2.5 rounded-xl bg-surface-light border border-border text-xs space-y-1">
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="font-bold text-primary uppercase tracking-wider">{act.tag}</span>
+                    <span className="text-text-secondary">{act.time}</span>
+                  </div>
+                  <p className="font-medium text-text-primary text-[11px] leading-snug">{act.text}</p>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
@@ -571,27 +613,23 @@ export default function RealtimeAcademyAnalyticsView({
             </div>
 
             <div className="space-y-3 text-xs">
-              <div className="p-3 bg-surface-light rounded-xl border border-border flex justify-between items-center">
-                <div>
-                  <p className="font-bold text-text-primary">Coach Alex (FIDE Master)</p>
-                  <p className="text-[10px] text-text-secondary">24 Sessions Conducted • 24.5 hrs</p>
+              <div className="p-4 bg-surface-light rounded-xl border border-border space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-text-primary">Total Verified Class Hours</span>
+                  <span className="font-extrabold text-primary text-sm">{stats.totalHours} hrs</span>
                 </div>
-                <span className="font-extrabold text-emerald-600 text-sm">$858.00</span>
-              </div>
-              <div className="p-3 bg-surface-light rounded-xl border border-border flex justify-between items-center">
-                <div>
-                  <p className="font-bold text-text-primary">Coach Elena (Grandmaster)</p>
-                  <p className="text-[10px] text-text-secondary">18 Sessions Conducted • 18.0 hrs</p>
+                <div className="flex justify-between items-center">
+                  <span className="text-text-secondary">Completed Live Sessions</span>
+                  <span className="font-bold text-text-primary">{stats.completedClassesCount || 0} sessions</span>
                 </div>
-                <span className="font-extrabold text-emerald-600 text-sm">$990.00</span>
-              </div>
-              <div className="p-3 bg-surface-light rounded-xl border border-border flex justify-between items-center">
-                <div>
-                  <p className="font-bold text-text-primary">Coach Rahul (Int. Master)</p>
-                  <p className="text-[10px] text-text-secondary">10 Sessions Conducted • 10.0 hrs</p>
+                <div className="flex justify-between items-center pt-1 border-t border-border/60">
+                  <span className="text-text-secondary">Tracked From</span>
+                  <span className="text-text-secondary font-medium">Supabase classes table</span>
                 </div>
-                <span className="font-extrabold text-emerald-600 text-sm font-mono">$450.00</span>
               </div>
+              <p className="text-[11px] text-text-secondary leading-relaxed">
+                Coach hours and payroll are computed exclusively from completed classes marked in the system. Full coach-by-coach breakdown is available in the <a href="/dashboard/admin/reports/coaches" className="text-primary font-bold hover:underline">Coach Performance Tab →</a>
+              </p>
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
