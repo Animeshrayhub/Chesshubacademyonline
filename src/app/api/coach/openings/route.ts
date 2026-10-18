@@ -88,6 +88,25 @@ export async function POST(request: NextRequest) {
 
     const adminSupabase = createSupabaseAdmin();
 
+    // If caller is COACH, verify assignment and restrict global reassignments to ADMIN
+    if (user.role === 'COACH') {
+      if (['assign_student', 'assign_unassigned_students', 'unassign_student'].includes(action)) {
+        return NextResponse.json({ error: 'Action requires administrator privileges.' }, { status: 403 });
+      }
+
+      if (student_id) {
+        const { data: st } = await adminSupabase
+          .from('students')
+          .select('assigned_coach_id')
+          .eq('id', student_id)
+          .maybeSingle();
+
+        if (!st || st.assigned_coach_id !== user.id) {
+          return NextResponse.json({ error: 'You can only manage students assigned to you.' }, { status: 403 });
+        }
+      }
+    }
+
     switch (action) {
       case 'assign_student': {
         if (!student_id) return NextResponse.json({ error: 'Missing student_id' }, { status: 400 });

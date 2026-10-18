@@ -4,11 +4,11 @@ test.describe('Section 7: Coach Dashboard', () => {
   test.beforeEach(async ({ loginPage, coachDashboardPage }) => {
     await loginPage.navigate();
     await loginPage.login('coach@chesshubacademy.online', 'CoachPassword123!');
-    await coachDashboardPage.navigate();
+    await loginPage.verifyLoginSuccess(/\/dashboard\/coach/);
   });
 
   test('✓ Student List', async ({ coachDashboardPage }) => {
-    await expect(coachDashboardPage.studentListTable.or(coachDashboardPage.page.locator('body'))).toBeVisible();
+    await expect(coachDashboardPage.studentListTable).toBeVisible();
   });
 
   test('✓ Homework Creation', async ({ coachDashboardPage }) => {

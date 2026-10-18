@@ -4,6 +4,9 @@ import { getStudentActivities } from '@/lib/activity';
 import { getCurrentUser } from '@/lib/supabase/auth';
 import { getLatestPublishedAnnouncement } from '@/lib/announcements';
 import { getAcademyTournaments } from '@/lib/tournaments';
+import { getDashboardEvents } from '@/lib/events';
+import { computeEventDisplayStatus } from '@/types/events';
+import type { TournamentItem } from '@/components/dashboard/ui/LichessTournamentManager';
 import StudentDashboardClient from '@/features/student/StudentDashboardClient';
 import type { ActivityItem } from '@/types/dashboard';
 
@@ -11,13 +14,37 @@ export const dynamic = 'force-dynamic';
 
 export default async function StudentOverviewPage() {
   const user = await getCurrentUser();
-  const [statsRes, homeworkRes, activeAnnouncement, tournaments, activitiesRes] = await Promise.all([
+  const [statsRes, homeworkRes, activeAnnouncement, legacyTournaments, newEvents, activitiesRes] = await Promise.all([
     getStudentDashboardStats(),
     getStudentHomework(),
     getLatestPublishedAnnouncement(),
     getAcademyTournaments(),
+    getDashboardEvents({ forStudent: true }),
     getStudentActivities(user?.id || '', 8),
   ]);
+
+  const mappedNewEvents: TournamentItem[] = newEvents.map((e) => {
+    const displayStatus = computeEventDisplayStatus(e.status, e.start_at, e.end_at, e.raw_import_data);
+    return {
+      id: e.id,
+      title: e.title,
+      lichessUrl: e.external_url || `/chess-events/${e.id}`,
+      date: e.start_at
+        ? new Date(e.start_at).toLocaleDateString('en-IN', {
+            weekday: 'short',
+            day: 'numeric',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZone: e.timezone || 'Asia/Kolkata',
+          })
+        : 'Upcoming',
+      timeControl: e.time_control || 'Standard',
+      status: displayStatus === 'LIVE' ? 'LIVE' : displayStatus === 'COMPLETED' ? 'ENDED' : 'UPCOMING',
+    };
+  });
+
+  const mergedTournaments = [...mappedNewEvents, ...(legacyTournaments || [])];
 
   const stats = statsRes.success && statsRes.data ? statsRes.data : {
     completedHomework: 0,
@@ -89,7 +116,7 @@ export default async function StudentOverviewPage() {
       stats={stats}
       assignments={assignments}
       activities={activities}
-      tournaments={tournaments || []}
+      tournaments={mergedTournaments}
       activeAnnouncement={activeAnnouncement || null}
     />
   );

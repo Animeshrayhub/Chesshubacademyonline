@@ -24,13 +24,13 @@ test.describe('Section 5: Book Demo Tests', () => {
   test('✓ Email Validation', async ({ bookDemoPage }) => {
     await bookDemoPage.fillDemoForm(INVALID_EMAIL_DEMO_DATA);
     await bookDemoPage.submitForm();
-    await expect(bookDemoPage.emailValidationMsg.or(bookDemoPage.submitButton)).toBeVisible();
+    await expect(bookDemoPage.emailValidationMsg).toBeVisible();
   });
 
   test('✓ Mobile Number Validation', async ({ bookDemoPage }) => {
     await bookDemoPage.fillDemoForm(INVALID_PHONE_DEMO_DATA);
     await bookDemoPage.submitForm();
-    await expect(bookDemoPage.mobileValidationMsg.or(bookDemoPage.submitButton)).toBeVisible();
+    await expect(bookDemoPage.mobileValidationMsg).toBeVisible();
   });
 
   test('✓ Success Message & Database Entry Created', async ({ bookDemoPage, dbHelper }) => {

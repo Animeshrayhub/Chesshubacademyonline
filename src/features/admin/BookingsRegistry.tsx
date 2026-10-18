@@ -203,21 +203,42 @@ export default function BookingsRegistry({ bookings, coaches }: BookingsRegistry
 
     const coachObj = coaches.find((c) => c.id === b.assigned_coach_id);
 
+    const isInquiry = b.student_name?.startsWith('[Inquiry:') || b.student_name?.includes('Inquiry:');
+    const inquirySubjectMatch = b.student_name?.match(/\[Inquiry:\s*([^\]]+)\]/);
+    const subject = inquirySubjectMatch ? inquirySubjectMatch[1] : 'Inquiry';
+
     return {
       parent: (
         <div className="flex flex-col">
           <span className="font-bold text-text-primary text-xs">{b.parent_name}</span>
           <span className="text-[10px] text-text-secondary">{b.parent_email}</span>
-          <span className="text-[10px] text-text-secondary">{b.parent_phone}</span>
+          {b.parent_phone && b.parent_phone !== 'N/A' && (
+            <span className="text-[10px] text-text-secondary">{b.parent_phone}</span>
+          )}
         </div>
       ),
       student: (
         <div className="flex flex-col">
-          <span className="font-semibold text-text-primary text-xs">{b.student_name}</span>
-          <span className="text-[10px] text-text-secondary">{b.student_age} years old</span>
+          {isInquiry ? (
+            <div className="flex flex-col gap-1 items-start">
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200 uppercase tracking-wide">
+                Query: {subject}
+              </span>
+              <span className="text-[10px] text-text-secondary">Web Contact Form</span>
+            </div>
+          ) : (
+            <>
+              <span className="font-semibold text-text-primary text-xs">{b.student_name}</span>
+              <span className="text-[10px] text-text-secondary">{b.student_age} years old</span>
+            </>
+          )}
         </div>
       ),
-      preferred: <span className="text-xs text-text-primary font-semibold">{b.preferred_time}</span>,
+      preferred: (
+        <span className="text-xs text-text-primary font-medium line-clamp-2 max-w-[200px]" title={b.preferred_time}>
+          {b.preferred_time}
+        </span>
+      ),
       coach: coachObj ? (
         <span className="text-xs font-semibold text-text-primary">
           GM/Coach {coachObj.first_name} {coachObj.last_name}
@@ -286,45 +307,83 @@ export default function BookingsRegistry({ bookings, coaches }: BookingsRegistry
       <Modal
         isOpen={!!reviewBooking}
         onClose={() => setReviewBooking(null)}
-        title="Demo Booking Request Details"
+        title={
+          reviewBooking?.student_name?.startsWith('[Inquiry:')
+            ? "Contact Query & Inquiry Details"
+            : "Demo Booking Request Details"
+        }
       >
-        {reviewBooking && (
-          <div className="space-y-4 text-xs">
-            <div className="p-3 bg-surface-light rounded-xl border border-border space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="font-bold text-text-secondary uppercase text-[10px]">Booking Reference</span>
-                <StatusBadge status={reviewBooking.status} />
-              </div>
-              <p className="font-mono text-xs font-bold text-text-primary">ID: {reviewBooking.id}</p>
-            </div>
+        {reviewBooking && (() => {
+          const isInquiry = reviewBooking.student_name?.startsWith('[Inquiry:') || reviewBooking.student_name?.includes('Inquiry:');
+          const inquirySubjectMatch = reviewBooking.student_name?.match(/\[Inquiry:\s*([^\]]+)\]/);
+          const subject = inquirySubjectMatch ? inquirySubjectMatch[1] : 'Inquiry';
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
-                <p className="text-[10px] font-extrabold text-slate-500 uppercase">Parent Name</p>
-                <p className="font-bold text-text-primary">{reviewBooking.parent_name}</p>
-                <p className="text-text-secondary text-[11px]">{reviewBooking.parent_email}</p>
-                <p className="text-text-secondary text-[11px]">{reviewBooking.parent_phone}</p>
+          return (
+            <div className="space-y-4 text-xs">
+              <div className="p-3 bg-surface-light rounded-xl border border-border space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-text-secondary uppercase text-[10px]">Reference</span>
+                  <StatusBadge status={reviewBooking.status} />
+                </div>
+                <p className="font-mono text-xs font-bold text-text-primary">ID: {reviewBooking.id}</p>
               </div>
 
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
-                <p className="text-[10px] font-extrabold text-slate-500 uppercase">Student Name</p>
-                <p className="font-bold text-text-primary">{reviewBooking.student_name}</p>
-                <p className="text-text-secondary text-[11px]">Age: {reviewBooking.student_age} years</p>
-                <p className="text-text-secondary text-[11px]">Preferred: {reviewBooking.preferred_time}</p>
+              {isInquiry ? (
+                <div className="space-y-3">
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-600 text-white uppercase tracking-wide">
+                        Inquiry Subject
+                      </span>
+                      <span className="font-bold text-blue-900">{subject}</span>
+                    </div>
+                    <div className="pt-2 text-text-primary">
+                      <p className="text-[10px] font-extrabold text-blue-800 uppercase">Sender Information</p>
+                      <p className="font-bold text-text-primary text-sm">{reviewBooking.parent_name}</p>
+                      <p className="text-text-secondary">Email: <a href={`mailto:${reviewBooking.parent_email}`} className="text-primary hover:underline">{reviewBooking.parent_email}</a></p>
+                      {reviewBooking.parent_phone && reviewBooking.parent_phone !== 'N/A' && (
+                        <p className="text-text-secondary">Phone: <a href={`tel:${reviewBooking.parent_phone}`} className="text-primary hover:underline">{reviewBooking.parent_phone}</a></p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                    <p className="text-[10px] font-extrabold text-slate-500 uppercase">Message Content</p>
+                    <p className="text-text-primary whitespace-pre-wrap leading-relaxed text-xs">
+                      {reviewBooking.preferred_time?.replace(/^Subject:\s*[^|]+\|\s*Message:\s*/i, '') || reviewBooking.preferred_time}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                    <p className="text-[10px] font-extrabold text-slate-500 uppercase">Parent Name</p>
+                    <p className="font-bold text-text-primary">{reviewBooking.parent_name}</p>
+                    <p className="text-text-secondary text-[11px]">{reviewBooking.parent_email}</p>
+                    <p className="text-text-secondary text-[11px]">{reviewBooking.parent_phone}</p>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                    <p className="text-[10px] font-extrabold text-slate-500 uppercase">Student Name</p>
+                    <p className="font-bold text-text-primary">{reviewBooking.student_name}</p>
+                    <p className="text-text-secondary text-[11px]">Age: {reviewBooking.student_age} years</p>
+                    <p className="text-text-secondary text-[11px]">Preferred: {reviewBooking.preferred_time}</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => setReviewBooking(null)}
+                  className="px-4 py-2 bg-primary text-white font-bold rounded-xl text-xs"
+                >
+                  Close Details
+                </button>
               </div>
             </div>
-
-            <div className="flex justify-end pt-2">
-              <button
-                type="button"
-                onClick={() => setReviewBooking(null)}
-                className="px-4 py-2 bg-primary text-white font-bold rounded-xl text-xs"
-              >
-                Close Details
-              </button>
-            </div>
-          </div>
-        )}
+          );
+        })()}
       </Modal>
 
       {/* ── MODAL: RESCHEDULE DEMO TIME ─────────────────────────────────────── */}

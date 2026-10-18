@@ -312,3 +312,76 @@ img, iframe, canvas, video, .protect-media {
   transform: none !important;
 }
 
+/* ─── Sparkling Purple & Twinkle Animations ───────────────────────────────── */
+@keyframes sparkle-twinkle {
+  0%, 100% {
+    opacity: 0.25;
+    transform: scale(0.8) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.18) rotate(12deg);
+  }
+}
+
+@keyframes sparkle-shimmer {
+  0% {
+    transform: translateX(-100%) skewX(-20deg);
+  }
+  60%, 100% {
+    transform: translateX(250%) skewX(-20deg);
+  }
+}
+
+@keyframes purple-glow-pulse {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.08);
+  }
+}
+
+.animate-sparkle-twinkle {
+  animation: sparkle-twinkle 3s ease-in-out infinite;
+}
+
+.animate-sparkle-twinkle-delayed {
+  animation: sparkle-twinkle 3.5s ease-in-out infinite 1.2s;
+}
+
+.animate-sparkle-twinkle-slow {
+  animation: sparkle-twinkle 4s ease-in-out infinite 0.7s;
+}
+
+.animate-purple-glow {
+  animation: purple-glow-pulse 4s ease-in-out infinite;
+}
+
+.shimmer-purple-sweep {
+  position: relative;
+  overflow: hidden;
+}
+
+.shimmer-purple-sweep::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 45%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(216, 180, 254, 0.08),
+    rgba(233, 213, 255, 0.22),
+    rgba(192, 132, 252, 0.12),
+    transparent
+  );
+  transform: translateX(-100%) skewX(-20deg);
+  animation: sparkle-shimmer 7s infinite ease-in-out;
+  pointer-events: none;
+}
+

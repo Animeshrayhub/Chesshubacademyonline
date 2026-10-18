@@ -4,7 +4,7 @@ test.describe('Section 6: Student Dashboard', () => {
   test.beforeEach(async ({ loginPage, studentDashboardPage }) => {
     await loginPage.navigate();
     await loginPage.login('student@chesshubacademy.online', 'StudentPassword123!');
-    await studentDashboardPage.navigate();
+    await loginPage.verifyLoginSuccess(/\/dashboard\/student/);
   });
 
   test('✓ Homework List', async ({ studentDashboardPage }) => {

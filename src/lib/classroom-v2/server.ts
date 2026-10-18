@@ -25,7 +25,7 @@ import {
   type StudentBoardColorPermission,
 } from './types';
 import { type ClassroomRealtimePayload } from './events';
-import { validateChessMove, parsePgnToMoves, validateFen } from './validation';
+import { validateChessMove, parsePgnToMoves, validateFen, buildPgnFromMoves } from './validation';
 import {
   canUserMoveBoard,
   isCoachOrAdmin,
@@ -167,8 +167,9 @@ export async function getCanonicalClassroomSnapshot(
 
   const className = cls?.class_type ? `${cls.class_type} Chess Class` : 'Live Chess Classroom';
 
-  // 2. Fetch coach name
+  // 2. Fetch coach details cleanly (resolving actual auth user_id)
   let coachName = 'Academy Coach';
+  let coachUserId = '';
   if (cls?.coach_id) {
     const { data: cp } = await admin
       .from('coach_profiles')
@@ -176,6 +177,7 @@ export async function getCanonicalClassroomSnapshot(
       .eq('id', cls.coach_id)
       .maybeSingle();
     const targetUserId = cp?.user_id || cls.coach_id;
+    coachUserId = targetUserId;
     const { data: cu } = await admin
       .from('users')
       .select('first_name, last_name')
@@ -210,10 +212,12 @@ export async function getCanonicalClassroomSnapshot(
   );
 
   // Overlay states (Puzzle, Curriculum, Game, Quiz, Arrows)
-  const overlay = getOverlayState(effectiveSessionId, rawMoves.length);
-  const version = Math.max(overlay.version, rawMoves.length + 1);
+  // Hydrates from authoritative DB overlay_state if present, falling back to in-memory overlay
+  const persistedOverlay = (boardRow as any)?.overlay_state;
+  const overlay = persistedOverlay || getOverlayState(effectiveSessionId, rawMoves.length);
+  const version = Math.max(overlay.version || 1, rawMoves.length + 1);
 
-  let activePuzzle: CanonicalPuzzleState | null = overlay.puzzle;
+  let activePuzzle: CanonicalPuzzleState | null = overlay.puzzle || null;
   // Security: scrub puzzle solution for students
   if (activePuzzle && userRole === 'student' && activePuzzle.status !== 'solved') {
     activePuzzle = {
@@ -222,11 +226,11 @@ export async function getCanonicalClassroomSnapshot(
     };
   }
 
-  const activeGame: CanonicalGameState | null = overlay.game;
-  const activeCurriculum: CanonicalCurriculumState | null = overlay.curriculum;
+  const activeGame: CanonicalGameState | null = overlay.game || null;
+  const activeCurriculum: CanonicalCurriculumState | null = overlay.curriculum || null;
 
   // Security: scrub quiz correct index for students
-  let quizState: ClassroomQuizState | null = overlay.quiz;
+  let quizState: ClassroomQuizState | null = overlay.quiz || null;
   if (quizState && userRole === 'student' && quizState.status !== 'revealed') {
     quizState = {
       ...quizState,
@@ -241,19 +245,19 @@ export async function getCanonicalClassroomSnapshot(
     fen: rawFen,
     initialFen: activePuzzle ? activePuzzle.fen : (activeGame ? activeGame.initialFen : DEFAULT_INITIAL_FEN),
     moves: rawMoves,
-    pgn: '',
+    pgn: buildPgnFromMoves(rawMoves),
     currentMoveIndex,
     sideToMove: getSideToMoveFromFen(rawFen),
     orientation: 'white',
     mode,
     isBoardLocked,
     allowIllegalMoves,
-    arrows: overlay.arrows,
-    highlights: overlay.highlights,
+    arrows: overlay.arrows || [],
+    highlights: overlay.highlights || [],
   };
 
   const permissions: PermissionsState = {
-    coachId: cls?.coach_id || '',
+    coachId: coachUserId || cls?.coach_id || '',
     boardControllers,
     studentPermissions,
     isBoardLocked,
@@ -442,8 +446,15 @@ async function executeClassroomMoveInternal(
   const nextVersion = currentVersion + 1;
   overlay.version = nextVersion;
 
+  const boardRowMoveIndex = boardRow.current_move_index ?? (currentMoves.length - 1);
+  const isHistoricalBranch = boardRowMoveIndex >= -1 && boardRowMoveIndex < currentMoves.length - 1;
+  const baseMoves = isHistoricalBranch
+    ? (boardRowMoveIndex === -1 ? [] : currentMoves.slice(0, boardRowMoveIndex + 1))
+    : currentMoves;
+
+  const nextMoveIndex = baseMoves.length;
   const newMoveData: MoveData = {
-    moveNumber: Math.floor(currentMoves.length / 2) + 1,
+    moveNumber: Math.floor(nextMoveIndex / 2) + 1,
     san: validation.san || '',
     from: validation.from || '',
     to: validation.to || '',
@@ -456,7 +467,7 @@ async function executeClassroomMoveInternal(
     timestamp: new Date().toISOString(),
   };
 
-  const updatedMoves = [...currentMoves, newMoveData];
+  const updatedMoves = [...baseMoves, newMoveData];
 
   // 4. Update Database atomically
   const { error: updateErr } = await admin

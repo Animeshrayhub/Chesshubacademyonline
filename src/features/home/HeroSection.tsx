@@ -134,7 +134,7 @@ export default function HeroSection() {
                     'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=40&h=40&fit=crop&q=80',
                   ].map((src, i) => (
                     <div key={i} className="w-7 h-7 rounded-full border-2 border-slate-700 overflow-hidden">
-                      <Image src={src} alt="" width={28} height={28} className="object-cover" />
+                      <Image src={src} alt={`ChessHub Academy Student ${i + 1}`} width={28} height={28} className="object-cover" />
                     </div>
                   ))}
                 </div>

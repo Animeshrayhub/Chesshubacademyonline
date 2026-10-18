@@ -7,6 +7,7 @@ import {
   ValidationError,
   DatabaseError,
   NotFoundError,
+  ForbiddenError,
   InternalServerError,
   type Result,
 } from '../errors';
@@ -584,8 +585,18 @@ export async function createBatchClasses(
  */
 export async function updateClass(id: string, data: UpdateClassInput): Promise<Result<DbClass>> {
   try {
-    await assertAdminOrCoach();
+    const caller = await assertAdminOrCoach();
     const admin = createSupabaseAdmin();
+
+    if (caller.role === 'COACH') {
+      const { data: coachProf } = await admin.from('coach_profiles').select('id').eq('user_id', caller.id).maybeSingle();
+      const { data: targetClass } = await admin.from('classes').select('coach_id').eq('id', id).maybeSingle();
+      if (!targetClass) return { success: false, error: new NotFoundError('Class not found') };
+      const coachIds = [coachProf?.id, caller.id].filter(Boolean);
+      if (!coachIds.includes(targetClass.coach_id)) {
+        return { success: false, error: new ForbiddenError('You can only update classes assigned to you.') };
+      }
+    }
 
     const updates: Record<string, unknown> = {
       updated_at: new Date().toISOString(),

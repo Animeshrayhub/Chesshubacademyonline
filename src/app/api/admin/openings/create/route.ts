@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
-import { assertAdminOrCoach } from '@/lib/permissions';
+import { assertAdmin } from '@/lib/permissions';
 import { Chess } from 'chess.js';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
-    await assertAdminOrCoach();
+    await assertAdmin();
     const body = await req.json();
     const {
       ecoCode,

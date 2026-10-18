@@ -13,6 +13,7 @@ import ActivityFeed from '@/components/dashboard/ui/ActivityFeed';
 import DailyLoginTrigger from '@/components/dashboard/ui/DailyLoginTrigger';
 import KidsPetCompanionCard from './KidsPetCompanionCard';
 import DailyStreakWidget from '@/components/dashboard/ui/DailyStreakWidget';
+import StudentSessionBalanceWidget from './StudentSessionBalanceWidget';
 import type { ActivityItem, TableColumn } from '@/types/dashboard';
 import type { TournamentItem } from '@/components/dashboard/ui/LichessTournamentManager';
 
@@ -436,6 +437,9 @@ export default function StudentDashboardClient({
               </div>
             </div>
           </div>
+
+          {/* 1.5 SESSION WALLET & BALANCE TOP-UP */}
+          <StudentSessionBalanceWidget />
 
           {/* 2. SIDE-BY-SIDE: COACH HOMEWORK & DAILY TACTICS */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

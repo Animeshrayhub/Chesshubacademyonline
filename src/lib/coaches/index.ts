@@ -4,6 +4,7 @@ import {
   BaseError,
   DatabaseError,
   NotFoundError,
+  ForbiddenError,
   InternalServerError,
   type Result,
 } from '../errors';
@@ -402,19 +403,8 @@ export async function getCoachDashboardStats(): Promise<Result<{
   nextClass: string;
 }>> {
   try {
+    const user = await assertCoach();
     const admin = createSupabaseAdmin();
-    let user: any = null;
-    try {
-      user = await assertCoach();
-    } catch {
-      const { data: defaultCoach } = await admin
-        .from('users')
-        .select('id, email, role')
-        .eq('role', 'COACH')
-        .limit(1)
-        .maybeSingle();
-      user = defaultCoach;
-    }
 
     if (!user) {
       return { success: true, data: { activeStudents: 0, classesToday: 0, pendingHomework: 0, weeklySessions: 0, nextClass: 'None' } };
@@ -529,19 +519,8 @@ export async function getCoachDashboardStats(): Promise<Result<{
  */
 export async function getCoachCohort(): Promise<Result<any[]>> {
   try {
+    const user = await assertCoach();
     const admin = createSupabaseAdmin();
-    let user: any = null;
-    try {
-      user = await assertCoach();
-    } catch {
-      const { data: defaultCoach } = await admin
-        .from('users')
-        .select('id, email, role')
-        .eq('role', 'COACH')
-        .limit(1)
-        .maybeSingle();
-      user = defaultCoach;
-    }
 
     if (!user) return { success: true, data: [] };
 
@@ -687,18 +666,18 @@ export async function getCoachClasses(): Promise<Result<any[]>> {
       profile = newProf;
     }
 
-    let { data: classes } = await admin
+    const coachIds = [profile?.id, user.id].filter(Boolean) as string[];
+    let classesQuery = admin
       .from('classes')
       .select('*')
       .is('archived_at', null)
       .order('scheduled_start', { ascending: true });
 
-    if (classes && classes.length > 0 && profile?.id) {
-      const unassigned = classes.filter((c: any) => !c.coach_id);
-      if (unassigned.length > 0) {
-        await admin.from('classes').update({ coach_id: profile.id }).in('id', unassigned.map((c: any) => c.id));
-      }
+    if (user.role !== 'ADMIN') {
+      classesQuery = classesQuery.in('coach_id', coachIds);
     }
+
+    let { data: classes } = await classesQuery;
 
     // Seed real database rows if database table is empty
     if (!classes || classes.length === 0) {
@@ -887,8 +866,30 @@ export async function saveStudentNoteAction(
   notes: string
 ): Promise<Result<{ studentProfileId: string }>> {
   try {
-    await assertCoach();
+    const user = await assertCoach();
     const admin = createSupabaseAdmin();
+
+    // Verify coach assignment if not admin
+    if (user.role !== 'ADMIN') {
+      const { data: coachProf } = await admin
+        .from('coach_profiles')
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      const coachIds = [coachProf?.id, user.id].filter(Boolean) as string[];
+      const { data: assignment } = await admin
+        .from('coach_student_assignments')
+        .select('id')
+        .in('coach_id', coachIds)
+        .eq('student_id', studentProfileId)
+        .is('archived_at', null)
+        .maybeSingle();
+
+      if (!assignment) {
+        return { success: false, error: new ForbiddenError('You can only update notes for students assigned to you.') };
+      }
+    }
 
     // Fetch existing profile notes to safely merge updates without erasing Lichess integration data
     const { data: profile, error: fetchErr } = await admin
@@ -1054,6 +1055,24 @@ export async function markClassAttendance(
 
     if (!profile) {
       return { success: false, error: new NotFoundError('Coach profile not found.') };
+    }
+
+    // Verify class ownership if not admin
+    const { data: targetClass } = await admin
+      .from('classes')
+      .select('id, coach_id')
+      .eq('id', classId)
+      .maybeSingle();
+
+    if (!targetClass) {
+      return { success: false, error: new NotFoundError('Class not found.') };
+    }
+
+    if (user.role !== 'ADMIN') {
+      const coachIds = [profile.id, user.id];
+      if (!coachIds.includes(targetClass.coach_id)) {
+        return { success: false, error: new ForbiddenError('You can only mark attendance for classes assigned to you.') };
+      }
     }
 
     // Check if class report exists

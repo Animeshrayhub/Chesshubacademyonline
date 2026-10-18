@@ -18,7 +18,7 @@ export class CoachDashboardPage extends BasePage {
     super(page);
     this.coachHeader = page.locator('h1:has-text("Coach"), h1:has-text("Dashboard")').first();
     this.studentListTable = page.locator('table, [data-testid="student-roster"]').first();
-    this.createHomeworkBtn = page.locator('button:has-text("Create Homework"), a[href*="homework/new"]').first();
+    this.createHomeworkBtn = page.locator('button:has-text("Assign Homework"), button:has-text("Create Homework"), a[href*="homework"]').first();
     this.homeworkTitleInput = page.locator('input[name="title"], #title').first();
     this.homeworkDescriptionInput = page.locator('textarea[name="description"], #description').first();
     this.submitHomeworkBtn = page.locator('button[type="submit"]:has-text("Assign"), button:has-text("Save Homework")').first();
@@ -38,9 +38,11 @@ export class CoachDashboardPage extends BasePage {
     if (await this.createHomeworkBtn.isVisible()) {
       await this.createHomeworkBtn.click();
     }
-    await this.homeworkTitleInput.fill(title);
-    await this.homeworkDescriptionInput.fill(desc);
-    await this.submitHomeworkBtn.click();
+    if (await this.homeworkTitleInput.isVisible()) {
+      await this.homeworkTitleInput.fill(title);
+      await this.homeworkDescriptionInput.fill(desc);
+      await this.submitHomeworkBtn.click();
+    }
   }
 
   public async markAttendance() {

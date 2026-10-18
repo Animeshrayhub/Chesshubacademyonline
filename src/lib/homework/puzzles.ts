@@ -227,6 +227,11 @@ export async function getChapterPuzzlesForStudent(
       .select('chapter_id, student_id').eq('id', assignmentId).maybeSingle();
     if (!assignment) return { success: false, error: new NotFoundError('Assignment not found') };
 
+    // IDOR Check: Students can only access their own assignments
+    if (user.role === 'STUDENT' && assignment.student_id !== profileId && assignment.student_id !== user.id) {
+      return { success: false, error: new ForbiddenError('Unauthorized to view this assignment') };
+    }
+
     // Get puzzles for the chapter via 3-tier fallback strategy
     let puzzlesData: any[] = [];
     const { data: chapPuzzles } = await admin
@@ -545,6 +550,13 @@ export async function requestHint(
       .select('id').eq('user_id', user.id).maybeSingle();
     if (!profile) return { success: false, error: new ForbiddenError('Student profile not found') };
 
+    // Verify assignment belongs to this student
+    const { data: assignment } = await admin.from('homework_assignments')
+      .select('student_id').eq('id', assignmentId).maybeSingle();
+    if (!assignment || (assignment.student_id !== profile.id && assignment.student_id !== user.id)) {
+      return { success: false, error: new ForbiddenError('Not your assignment') };
+    }
+
     // Load puzzle hints (sanitized)
     const { data: puzzle } = await admin.from('homework_puzzles')
       .select('hint_1,hint_2,hint_3').eq('id', puzzleId).maybeSingle();
@@ -601,6 +613,13 @@ export async function unlockSolution(
       .select('id').eq('user_id', user.id).maybeSingle();
     if (!profile) return { success: false, error: new ForbiddenError('Student profile not found') };
 
+    // Verify assignment belongs to this student
+    const { data: assignment } = await admin.from('homework_assignments')
+      .select('student_id').eq('id', assignmentId).maybeSingle();
+    if (!assignment || (assignment.student_id !== profile.id && assignment.student_id !== user.id)) {
+      return { success: false, error: new ForbiddenError('Not your assignment') };
+    }
+
     const { data: attempt } = await admin.from('student_puzzle_attempts')
       .select('id, status, attempts_used').eq('assignment_id', assignmentId).eq('puzzle_id', puzzleId).maybeSingle();
 
@@ -631,7 +650,23 @@ export async function getHomeworkProgress(
   assignmentId: string
 ): Promise<Result<DbHomeworkProgress | null>> {
   try {
+    const user = await getCurrentUser();
+    if (!user) return { success: false, error: new AuthenticationError('User is not authenticated.') };
+
     const admin = createSupabaseAdmin();
+
+    if (user.role === 'STUDENT') {
+      const { data: profile } = await admin.from('student_profiles')
+        .select('id').eq('user_id', user.id).maybeSingle();
+      const profileId = profile?.id || user.id;
+
+      const { data: assignment } = await admin.from('homework_assignments')
+        .select('student_id').eq('id', assignmentId).maybeSingle();
+      if (!assignment || (assignment.student_id !== profileId && assignment.student_id !== user.id)) {
+        return { success: false, error: new ForbiddenError('Not your assignment') };
+      }
+    }
+
     const { data, error } = await admin.from('homework_progress')
       .select('*').eq('assignment_id', assignmentId).maybeSingle();
     if (error) return { success: false, error: new DatabaseError('Failed to fetch progress', error) };
@@ -649,7 +684,23 @@ export async function getAssignmentAttempts(
   assignmentId: string
 ): Promise<Result<DbStudentPuzzleAttempt[]>> {
   try {
+    const user = await getCurrentUser();
+    if (!user) return { success: false, error: new AuthenticationError('User is not authenticated.') };
+
     const admin = createSupabaseAdmin();
+
+    if (user.role === 'STUDENT') {
+      const { data: profile } = await admin.from('student_profiles')
+        .select('id').eq('user_id', user.id).maybeSingle();
+      const profileId = profile?.id || user.id;
+
+      const { data: assignment } = await admin.from('homework_assignments')
+        .select('student_id').eq('id', assignmentId).maybeSingle();
+      if (!assignment || (assignment.student_id !== profileId && assignment.student_id !== user.id)) {
+        return { success: false, error: new ForbiddenError('Not your assignment') };
+      }
+    }
+
     const { data, error } = await admin.from('student_puzzle_attempts')
       .select('*').eq('assignment_id', assignmentId).order('puzzle_order', { ascending: true });
     if (error) return { success: false, error: new DatabaseError('Failed to fetch attempts', error) };
@@ -678,6 +729,22 @@ export async function coachUnlockNextChapter(
     const { data: asgn } = await admin.from('homework_assignments')
       .select('chapter_id, student_id').eq('id', assignmentId).maybeSingle();
     if (!asgn) return { success: false, error: new NotFoundError('Assignment not found') };
+
+    // If caller is COACH (not ADMIN), verify coach owns student
+    if (user.role !== 'ADMIN') {
+      const coachIds = [coachProfile.id, user.id];
+      const { data: assignment } = await admin
+        .from('coach_student_assignments')
+        .select('id')
+        .in('coach_id', coachIds)
+        .eq('student_id', asgn.student_id)
+        .is('archived_at', null)
+        .maybeSingle();
+
+      if (!assignment) {
+        return { success: false, error: new ForbiddenError('You can only unlock chapters for students assigned to you.') };
+      }
+    }
 
     // Get workbook
     const { data: chapter } = await admin.from('homework_chapters')

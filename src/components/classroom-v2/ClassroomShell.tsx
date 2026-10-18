@@ -337,6 +337,18 @@ export default function ClassroomShell({
     }
   }, [snapshot.status, isCoach]);
 
+  // Track server clock offset to compensate for client OS clock skew
+  const serverClockOffsetRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (snapshot.updatedAt) {
+      const serverTime = new Date(snapshot.updatedAt).getTime();
+      if (!isNaN(serverTime) && serverTime > 0) {
+        serverClockOffsetRef.current = serverTime - Date.now();
+      }
+    }
+  }, [snapshot.updatedAt]);
+
   // Calculate live elapsed session timer from snapshot.startedAt with sanity check
   useEffect(() => {
     const startMs = snapshot.startedAt ? new Date(snapshot.startedAt).getTime() : localMountTimeRef.current;
@@ -351,11 +363,12 @@ export default function ClassroomShell({
     }
 
     const updateTimer = () => {
-      const nowMs = Date.now();
+      // Compensate for client OS clock skew relative to server
+      const nowMs = Date.now() + serverClockOffsetRef.current;
       let diffSecs = Math.max(0, Math.floor((nowMs - startMs) / 1000));
       // Sanity check: If startedAt is older than 8 hours (e.g. reused old class) or NaN, clamp to local session duration
       if (diffSecs > 28800 || isNaN(diffSecs) || startMs <= 0) {
-        diffSecs = Math.max(0, Math.floor((nowMs - localMountTimeRef.current) / 1000));
+        diffSecs = Math.max(0, Math.floor((Date.now() - localMountTimeRef.current) / 1000));
       }
       setElapsedSeconds(diffSecs);
     };

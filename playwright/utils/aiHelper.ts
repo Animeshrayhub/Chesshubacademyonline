@@ -21,11 +21,24 @@ export class AIHelper {
    * AI Helper 1: Scans the DOM and CSS metrics to detect broken UI components, overlapping text/cards, and broken images
    */
   public async detectBrokenUI(): Promise<UIHealthReport> {
-    const report = await this.page.evaluate(() => {
-      const brokenImages: string[] = [];
+    const report = await this.page.evaluate(async () => {
       const images = Array.from(document.querySelectorAll('img'));
+      await Promise.all(
+        images
+          .filter((img) => !img.complete)
+          .map(
+            (img) =>
+              new Promise((resolve) => {
+                img.addEventListener('load', () => resolve(true), { once: true });
+                img.addEventListener('error', () => resolve(false), { once: true });
+                setTimeout(() => resolve(false), 3000);
+              })
+          )
+      );
+
+      const brokenImages: string[] = [];
       images.forEach((img) => {
-        if (!img.complete || img.naturalWidth === 0) {
+        if (img.complete && img.naturalWidth === 0) {
           brokenImages.push(img.src);
         }
       });

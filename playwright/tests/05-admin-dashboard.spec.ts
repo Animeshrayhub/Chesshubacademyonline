@@ -4,11 +4,11 @@ test.describe('Section 8: Admin Dashboard', () => {
   test.beforeEach(async ({ loginPage, adminDashboardPage }) => {
     await loginPage.navigate();
     await loginPage.login('admin@chesshubacademy.online', 'AdminPassword123!');
-    await adminDashboardPage.navigate();
+    await loginPage.verifyLoginSuccess(/\/dashboard\/admin/);
   });
 
   test('✓ Dashboard Loads', async ({ adminDashboardPage }) => {
-    await expect(adminDashboardPage.adminHeader.or(adminDashboardPage.page.locator('body'))).toBeVisible();
+    await expect(adminDashboardPage.adminHeader).toBeVisible();
   });
 
   test('✓ Create Student', async ({ adminDashboardPage }) => {
@@ -28,10 +28,10 @@ test.describe('Section 8: Admin Dashboard', () => {
   });
 
   test('✓ Analytics', async ({ adminDashboardPage }) => {
-    await expect(adminDashboardPage.analyticsWidget.or(adminDashboardPage.page.locator('body'))).toBeVisible();
+    await expect(adminDashboardPage.analyticsWidget).toBeVisible();
   });
 
   test('✓ Reports', async ({ adminDashboardPage }) => {
-    await expect(adminDashboardPage.reportsSection.or(adminDashboardPage.page.locator('body'))).toBeVisible();
+    await expect(adminDashboardPage.reportsSection).toBeVisible();
   });
 });

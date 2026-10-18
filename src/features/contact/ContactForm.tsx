@@ -5,6 +5,7 @@ import Input from '@/components/ui/Input';
 import Textarea from '@/components/ui/Textarea';
 import Select from '@/components/ui/Select';
 import Button from '@/components/ui/Button';
+import { submitContactQueryAction } from '@/actions/contact';
 
 const SUBJECT_OPTIONS = [
   { value: 'general', label: 'General Inquiry' },
@@ -39,6 +40,7 @@ export default function ContactForm() {
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState('');
 
   const validate = (): boolean => {
     const newErrors: FormErrors = {};
@@ -54,12 +56,29 @@ export default function ContactForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setApiError('');
     if (!validate()) return;
     setLoading(true);
-    // Simulate network request
-    await new Promise((r) => setTimeout(r, 1200));
-    setLoading(false);
-    setSubmitted(true);
+
+    try {
+      const res = await submitContactQueryAction({
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+        subject: form.subject || 'general',
+        message: form.message,
+      });
+
+      if (res.success) {
+        setSubmitted(true);
+      } else {
+        setApiError(res.error || 'Failed to send query. Please try again or WhatsApp us.');
+      }
+    } catch {
+      setApiError('An unexpected network error occurred. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (submitted) {
@@ -144,6 +163,11 @@ export default function ContactForm() {
         required
         rows={6}
       />
+      {apiError && (
+        <div className="p-3.5 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl font-medium" role="alert">
+          {apiError}
+        </div>
+      )}
       <Button type="submit" variant="primary" size="lg" loading={loading} className="w-full">
         {loading ? 'Sending...' : 'Send Message'}
       </Button>

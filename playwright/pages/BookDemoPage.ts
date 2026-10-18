@@ -27,9 +27,9 @@ export class BookDemoPage extends BasePage {
     this.datePicker = page.locator('input[type="date"], input[name="preferredDate"]').first();
     this.timeSelect = page.locator('select[name="preferredTime"], #demo-time').first();
     this.submitButton = page.locator('button[type="submit"]:has-text("Book"), button:has-text("Confirm Demo"), button:has-text("Book My Free Demo Class")').first();
-    this.successToast = page.locator('.toast-success, [data-testid="demo-success-toast"], text=Booked Successfully').first();
-    this.emailValidationMsg = page.locator('#email-error, text=invalid email').first();
-    this.mobileValidationMsg = page.locator('#mobile-error, text=invalid phone').first();
+    this.successToast = page.locator('.toast-success, [data-testid="demo-success-toast"], :has-text("Booked Successfully"), :has-text("Demo Booked Successfully")').first();
+    this.emailValidationMsg = page.locator('#demo-email-error, #email-error').first();
+    this.mobileValidationMsg = page.locator('#demo-phone-error, #demo-mobile-error, #phone-error, #mobile-error').first();
   }
 
   public async navigate() {

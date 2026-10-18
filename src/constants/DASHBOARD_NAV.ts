@@ -51,6 +51,7 @@ export const ADMIN_NAV: NavItem[] = [
   { label: '♟ AI Opening Teacher', href: '/dashboard/admin/openings', iconKey: 'brain',        roles: ['admin'] },
   { label: 'Blog',          href: '/dashboard/admin/blog',          iconKey: 'fileText',        roles: ['admin'], children: BLOG_CHILDREN },
   { label: 'Announcements', href: '/dashboard/admin/announcements', iconKey: 'megaphone',       roles: ['admin'] },
+  { label: 'Events & Tournaments', href: '/dashboard/admin/events', iconKey: 'calendarDays', roles: ['admin'] },
   { label: 'Website Reviews', href: '/dashboard/admin/reviews', iconKey: 'award',           roles: ['admin'] },
   { label: 'Photo Gallery',   href: '/dashboard/admin/gallery', iconKey: 'fileText',        roles: ['admin'] },
   { label: 'Puzzle Bank',     href: '/dashboard/admin/puzzles',       iconKey: 'award',           roles: ['admin'] },

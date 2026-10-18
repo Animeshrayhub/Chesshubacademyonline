@@ -164,6 +164,7 @@ export function ClassroomStateProvider({
   const [reactions, setReactions] = useState<Array<{ id: string; emoji: string; userName: string }>>([]);
   const [hasRaisedHand, setHasRaisedHand] = useState(false);
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set([userId]));
+  const [isAnyCoachOnline, setIsAnyCoachOnline] = useState(false);
   const [raisedHandUserIds, setRaisedHandUserIds] = useState<Set<string>>(new Set());
   const [connectionState, setConnectionState] = useState<'connecting' | 'connected' | 'reconnecting' | 'disconnected'>('connecting');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -187,6 +188,7 @@ export function ClassroomStateProvider({
   const moveQueueRef = useRef<Promise<any>>(Promise.resolve());
   const lastProcessedMoveIdRef = useRef<string | null>(null);
   const processedMoveIdsSet = useRef<Set<string>>(new Set());
+  const lastActivityTimestampRef = useRef<number>(Date.now());
 
   // Mutable callback and prop refs to keep Realtime channel subscription stable
   const reconcileSnapshotRef = useRef<() => Promise<void>>(() => Promise.resolve());
@@ -206,8 +208,16 @@ export function ClassroomStateProvider({
     try {
       const res = await getCanonicalClassroomSnapshotAction(classId, sessionId);
       if (res.success && res.data) {
-        // Only update board if server is at or ahead of local state
-        if (res.data.board.currentMoveIndex >= localCurrentMoveIndexRef.current) {
+        // Update board if:
+        // 1. Server version is ahead of local version, OR
+        // 2. Server move index is at or ahead of local, OR
+        // 3. FEN is different (e.g. coach reset board to initial FEN or navigated history)
+        const isServerAheadOrDifferent =
+          res.data.version > localVersionRef.current ||
+          res.data.board.currentMoveIndex >= localCurrentMoveIndexRef.current ||
+          res.data.board.fen !== localFenRef.current;
+
+        if (isServerAheadOrDifferent) {
           localFenRef.current = res.data.board.fen;
           localMovesRef.current = res.data.board.moves;
           localCurrentMoveIndexRef.current = res.data.board.currentMoveIndex;
@@ -289,6 +299,7 @@ export function ClassroomStateProvider({
           filter: `session_id=eq.${sessionId}`,
         },
         (changePayload: any) => {
+          lastActivityTimestampRef.current = Date.now();
           const row = changePayload?.new;
           if (!row) return;
           const rawMoves = Array.isArray(row.moves) ? row.moves : [];
@@ -358,6 +369,7 @@ export function ClassroomStateProvider({
       );
 
       channel.on('broadcast', { event: '*' }, (eventPayload: any) => {
+        lastActivityTimestampRef.current = Date.now();
         const payload = eventPayload?.payload;
         if (!payload) return;
 
@@ -593,15 +605,18 @@ export function ClassroomStateProvider({
         .on('presence', { event: 'sync' }, () => {
           const state = channel.presenceState();
           const online = new Set<string>();
+          let coachFound = false;
           for (const [key, presences] of Object.entries(state)) {
             if (key) online.add(key);
             if (Array.isArray(presences)) {
               for (const p of presences as any[]) {
                 if (p?.userId) online.add(p.userId);
+                if (p?.role === 'coach' || p?.role === 'admin') coachFound = true;
               }
             }
           }
           setOnlineUserIds(online);
+          setIsAnyCoachOnline(coachFound);
         })
         .on('presence', { event: 'join' }, ({ key, newPresences }: any) => {
           setOnlineUserIds((prev) => {
@@ -610,6 +625,7 @@ export function ClassroomStateProvider({
             if (Array.isArray(newPresences)) {
               for (const p of newPresences) {
                 if (p?.userId) next.add(p.userId);
+                if (p?.role === 'coach' || p?.role === 'admin') setIsAnyCoachOnline(true);
               }
             }
             return next;
@@ -675,8 +691,8 @@ export function ClassroomStateProvider({
     };
 
     const handleFocus = () => {
-      // Avoid full DB fetch on simple tab focus unless realtime channel is disconnected
-      if (activeChannelRef.current?.state !== 'joined') {
+      // Avoid stale board: reconcile if disconnected or inactive for > 8s
+      if (activeChannelRef.current?.state !== 'joined' || Date.now() - lastActivityTimestampRef.current > 8000) {
         reconcileSnapshotRef.current();
       }
     };
@@ -726,14 +742,12 @@ export function ClassroomStateProvider({
 
   const participants: ParticipantInfo[] = useMemo(() => {
     const coachId = snapshot.permissions.coachId || '';
-    // Coach is online if: (a) they are the current user, (b) their coachId is in the presence set,
-    // OR (c) presence hasn't synced yet (avoid false-positive banner on load).
-    const isCoachCurrentUser = (role === 'coach' || role === 'admin') && userId === coachId;
+    // Coach is online if: (a) current user is coach/admin, (b) coachId is in presence,
+    // or (c) any participant in presence has coach/admin role.
+    const isCoachCurrentUser = (role === 'coach' || role === 'admin');
     const isCoachInPresence = coachId ? onlineUserIds.has(coachId) : false;
-    // If no coachId available, fall back to checking any coach/admin presence key
-    const hasAnyCoachPresence = !coachId ? false :
-      Array.from(onlineUserIds).some(id => id === coachId);
-    const isCoachOnlineFromPresence = isCoachCurrentUser || isCoachInPresence || hasAnyCoachPresence;
+    const hasAnyCoachPresence = isAnyCoachOnline || isCoachInPresence;
+    const isCoachOnlineFromPresence = isCoachCurrentUser || hasAnyCoachPresence;
 
     const list: ParticipantInfo[] = [
       {
@@ -769,7 +783,7 @@ export function ClassroomStateProvider({
     }
 
     return list;
-  }, [students, coachName, onlineUserIds, snapshot.permissions.boardControllers, snapshot.permissions.studentPermissions, snapshot.permissions.coachId, raisedHandUserIds, role, userId]);
+  }, [students, coachName, onlineUserIds, snapshot.permissions.boardControllers, snapshot.permissions.studentPermissions, snapshot.permissions.coachId, raisedHandUserIds, role, userId, isAnyCoachOnline]);
 
   // ── Action Handlers ───────────────────────────────────────────────────────
 
@@ -820,7 +834,13 @@ export function ClassroomStateProvider({
         processedMoveIdsSet.current = new Set(items.slice(-100));
       }
 
-      const nextMoveIndex = localMovesRef.current.length;
+      // Historical branching: if currentMoveIndex is before the end of the move history, truncate future moves
+      const isHistoricalBranch = localCurrentMoveIndexRef.current >= -1 && localCurrentMoveIndexRef.current < localMovesRef.current.length - 1;
+      const baseMoves = isHistoricalBranch
+        ? (localCurrentMoveIndexRef.current === -1 ? [] : localMovesRef.current.slice(0, localCurrentMoveIndexRef.current + 1))
+        : localMovesRef.current;
+
+      const nextMoveIndex = baseMoves.length;
       const newMoveData: MoveData = {
         moveNumber: Math.floor(nextMoveIndex / 2) + 1,
         san: validation.san || '',
@@ -837,7 +857,7 @@ export function ClassroomStateProvider({
 
       // Advance synchronous local references immediately
       localFenRef.current = validation.newFen;
-      localMovesRef.current = [...localMovesRef.current, newMoveData];
+      localMovesRef.current = [...baseMoves, newMoveData];
       localCurrentMoveIndexRef.current = nextMoveIndex;
       localVersionRef.current = nextVersion;
 

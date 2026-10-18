@@ -31,7 +31,7 @@ test.describe('Section 15: Classroom Board Editor, Free Moves, and Move Notation
       await editorBtn.click();
       
       // Verify Board Position Editor drawer title is visible
-      const editorDrawer = page.locator('text=Board Position Editor, text=Stamp pieces');
+      const editorDrawer = page.locator(':has-text("Board Position Editor"), :has-text("Stamp pieces")');
       await expect(editorDrawer.first()).toBeVisible({ timeout: 5000 });
 
       // Verify Piece Stamp buttons (White Queen, Black King, Trash Tool)

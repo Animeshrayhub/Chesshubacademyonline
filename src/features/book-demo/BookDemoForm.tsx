@@ -88,6 +88,8 @@ export default function BookDemoForm({ onSuccess }: BookDemoFormProps) {
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email))
       e.email = 'Please enter a valid email address.';
     if (!form.phone.trim()) e.phone = 'Phone number is required.';
+    else if (!/^\+?[0-9\s\-()]{7,15}$/.test(form.phone.trim()))
+      e.phone = 'Please enter a valid phone number.';
     if (!form.childName.trim()) e.childName = "Child's name is required.";
     if (!form.childAge) e.childAge = "Child's age is required.";
     if (!form.experience) e.experience = 'Chess experience level is required.';

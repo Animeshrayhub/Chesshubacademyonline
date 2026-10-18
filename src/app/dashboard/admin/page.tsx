@@ -49,7 +49,7 @@ async function fetchRecentBookings() {
       .from('bookings')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(3);
+      .limit(6);
     return data ?? [];
   } catch {
     return [];
@@ -176,28 +176,61 @@ export default async function AdminOverviewPage() {
   }
 
   const bookingColumns: TableColumn[] = [
-    { key: 'student_name', label: 'Student' },
-    { key: 'parent_name', label: 'Parent' },
-    { key: 'preferred_time', label: 'Preferences' },
+    { key: 'student_name', label: 'Inquiry / Student' },
+    { key: 'parent_name', label: 'Sender / Parent' },
+    { key: 'preferred_time', label: 'Details / Preferences' },
     { key: 'status', label: 'Status' },
   ];
 
-  const bookingRows = (recentBookings || []).map((b: any) => ({
-    student_name: <span className="font-semibold text-text-primary">{b?.student_name || 'Student'}</span>,
-    parent_name: <span className="text-text-secondary">{b?.parent_name || 'N/A'}</span>,
-    preferred_time: <span className="text-xs text-text-secondary">{b?.preferred_time || b?.created_at || 'Flexible'}</span>,
-    status: (
-      <span
-        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${
-          b?.status === 'pending'
-            ? 'bg-amber-50 text-amber-700 border-amber-100'
-            : 'bg-green-50 text-green-700 border-green-100'
-        }`}
-      >
-        {b?.status || 'confirmed'}
-      </span>
-    ),
-  }));
+  const bookingRows = (recentBookings || []).map((b: any) => {
+    const isInquiry = b?.student_name?.startsWith('[Inquiry:') || b?.student_name?.includes('Inquiry:');
+    const inquirySubjectMatch = b?.student_name?.match(/\[Inquiry:\s*([^\]]+)\]/);
+    const subject = inquirySubjectMatch ? inquirySubjectMatch[1] : 'Inquiry';
+
+    return {
+      student_name: (
+        <div className="flex flex-col">
+          {isInquiry ? (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200 uppercase tracking-wide">
+                Query
+              </span>
+              <span className="font-semibold text-text-primary text-xs">
+                {subject}
+              </span>
+            </div>
+          ) : (
+            <span className="font-semibold text-text-primary text-xs">{b?.student_name || 'Student'}</span>
+          )}
+        </div>
+      ),
+      parent_name: (
+        <div className="flex flex-col">
+          <span className="text-text-primary text-xs font-semibold">{b?.parent_name || 'N/A'}</span>
+          <span className="text-[11px] text-text-secondary">{b?.parent_email || ''}</span>
+          {b?.parent_phone && b?.parent_phone !== 'N/A' && (
+            <span className="text-[10px] text-text-tertiary">{b?.parent_phone}</span>
+          )}
+        </div>
+      ),
+      preferred_time: (
+        <span className="text-xs text-text-secondary line-clamp-2 max-w-[260px]" title={b?.preferred_time}>
+          {b?.preferred_time || b?.created_at || 'Flexible'}
+        </span>
+      ),
+      status: (
+        <span
+          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${
+            b?.status === 'pending'
+              ? 'bg-amber-50 text-amber-700 border-amber-100'
+              : 'bg-green-50 text-green-700 border-green-100'
+          }`}
+        >
+          {b?.status || 'pending'}
+        </span>
+      ),
+    };
+  });
 
   return (
     <div className="space-y-6">
@@ -226,12 +259,17 @@ export default async function AdminOverviewPage() {
       {/* Recent Bookings & Activities */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-3">
-          <h2 className="text-sm font-bold text-text-primary">Recent Booking Requests</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold text-text-primary">Recent Inquiries & Demo Requests</h2>
+            <a href="/dashboard/admin/bookings" className="text-xs text-primary hover:underline font-semibold">
+              View All →
+            </a>
+          </div>
           <DashboardTable
             columns={bookingColumns}
             rows={bookingRows}
-            emptyTitle="No Bookings Yet"
-            emptyDescription="New demo class requests from the public site will show up here."
+            emptyTitle="No Inquiries or Bookings Yet"
+            emptyDescription="New demo class requests and contact queries will appear here."
             caption="Authorized Roles overview list"
           />
         </div>

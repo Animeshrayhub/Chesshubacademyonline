@@ -66,6 +66,7 @@ export async function GET(request: NextRequest) {
         lastName: 'Instructor',
         role: dbUser.role as any,
         isActive: true,
+        status: 'ACTIVE',
       };
     }
   }

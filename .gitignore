@@ -50,5 +50,12 @@ lichess_db_puzzle.csv.zst
 
 # IDE / Agent artifacts
 brain/
+.agents/
+.claude/
+agent/
+skills-lock.json
+
+# Supabase temp
+supabase/.temp/
 
 

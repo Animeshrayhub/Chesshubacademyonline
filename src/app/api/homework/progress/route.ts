@@ -25,9 +25,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: err.message }, { status: err.status });
     }
 
+    if (!attemptsRes.success) {
+      const err = attemptsRes.error as BaseError;
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
+
     return NextResponse.json({
       progress: progressRes.data,
-      attempts: attemptsRes.success ? attemptsRes.data : [],
+      attempts: attemptsRes.data,
     });
   } catch (err) {
     console.error('[GET /api/homework/progress]', err);

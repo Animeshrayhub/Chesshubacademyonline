@@ -5,6 +5,7 @@ import QuickActionCard from '@/components/dashboard/ui/QuickActionCard';
 import ActivityFeed from '@/components/dashboard/ui/ActivityFeed';
 import DashboardTable from '@/components/dashboard/ui/DashboardTable';
 import { getCoachDashboardStats, getCoachCohort } from '@/lib/coaches';
+import EventsWidget from '@/features/events/EventsWidget';
 import type { StatCardData, QuickAction, ActivityItem, TableColumn } from '@/types/dashboard';
 
 export const dynamic = 'force-dynamic';
@@ -150,7 +151,8 @@ export default async function CoachOverviewPage() {
             caption="Assigned Student Cohort Overview"
           />
         </div>
-        <div>
+        <div className="space-y-6">
+          <EventsWidget role="coach" />
           <ActivityFeed items={ACTIVITIES} />
         </div>
       </div>

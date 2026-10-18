@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS public.referrals (
   referred_name TEXT NOT NULL,
   referred_email TEXT NOT NULL,
   referred_phone TEXT,
-  demo_request_id UUID REFERENCES public.demo_requests(id) ON DELETE SET NULL,
+  demo_request_id UUID REFERENCES public.bookings(id) ON DELETE SET NULL,
   status TEXT NOT NULL DEFAULT 'pending_demo' CHECK (status IN ('pending_demo', 'demo_completed', 'enrolled', 'expired')),
   xp_awarded INT NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

@@ -1227,17 +1227,28 @@ export async function getCourseSyllabus(
 ): Promise<Result<any>> {
   try {
     const admin = createSupabaseAdmin();
+    const currentUser = await getCurrentUser();
+    if (!currentUser) {
+      return { success: false, error: new AuthenticationError('User is not authenticated.') };
+    }
+
     let targetStudentId = studentProfileId;
 
-    if (!targetStudentId) {
-      const user = await assertStudent();
+    if (currentUser.role === 'STUDENT') {
       const { data: profile } = await admin
         .from('student_profiles')
         .select('id')
-        .eq('user_id', user.id)
+        .eq('user_id', currentUser.id)
         .maybeSingle();
       if (!profile) return { success: false, error: new NotFoundError('Student profile not found') };
+
+      // If studentProfileId is specified, verify it matches the current student
+      if (targetStudentId && targetStudentId !== profile.id && targetStudentId !== currentUser.id) {
+        return { success: false, error: new ForbiddenError('Students can only access their own syllabus.') };
+      }
       targetStudentId = profile.id;
+    } else if (!targetStudentId) {
+      targetStudentId = undefined;
     }
 
     const { data: modules, error: mErr } = await admin
@@ -2757,12 +2768,35 @@ export async function assignPracticeGameToStudent(data: {
   coachNotes?: string;
 }): Promise<Result<{ count: number }>> {
   try {
-    await assertCoach();
+    const user = await assertCoach();
     const admin = createSupabaseAdmin();
+
+    const { data: coachProf } = await admin
+      .from('coach_profiles')
+      .select('id')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    const resolvedCoachProfileId = data.coachProfileId || coachProf?.id || null;
+
+    if (user.role !== 'ADMIN') {
+      const coachIds = [coachProf?.id, user.id].filter(Boolean) as string[];
+      const { data: assignment } = await admin
+        .from('coach_student_assignments')
+        .select('id')
+        .in('coach_id', coachIds)
+        .eq('student_id', data.studentProfileId)
+        .is('archived_at', null)
+        .maybeSingle();
+
+      if (!assignment) {
+        return { success: false, error: new ForbiddenError('You can only assign practice games to students assigned to you.') };
+      }
+    }
 
     const { error } = await admin.from('student_homework_assignments').insert({
       student_profile_id: data.studentProfileId,
-      coach_profile_id: data.coachProfileId ?? null,
+      coach_profile_id: resolvedCoachProfileId,
       status: 'assigned',
       coach_notes: data.coachNotes ? `[Practice Game: ${data.gameTitle}] ${data.coachNotes}` : `[Practice Game: ${data.gameTitle}] Play position against Bot or Lichess`,
       assigned_at: new Date().toISOString(),
