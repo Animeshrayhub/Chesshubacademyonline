@@ -26,6 +26,7 @@ export default function AdminEventDetailClient({ event }: { event: DbEvent }) {
   const toLocalInput = (iso: string | null) => {
     if (!iso) return '';
     const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
     return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   };
 
@@ -51,8 +52,8 @@ export default function AdminEventDetailClient({ event }: { event: DbEvent }) {
       event_type: eventType,
       time_control: timeControl.trim() || null,
       external_url: externalUrl.trim() || null,
-      start_at: startAt ? new Date(startAt).toISOString() : null,
-      end_at: endAt ? new Date(endAt).toISOString() : null,
+      start_at: startAt && !isNaN(new Date(startAt).getTime()) ? new Date(startAt).toISOString() : null,
+      end_at: endAt && !isNaN(new Date(endAt).getTime()) ? new Date(endAt).toISOString() : null,
       show_on_homepage: showOnHomepage,
       show_on_student_dashboard: showOnStudentDashboard,
       show_on_coach_dashboard: showOnCoachDashboard,

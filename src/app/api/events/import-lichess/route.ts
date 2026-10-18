@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { importLichessTournamentFromUrl } from '@/services/lichessEvents';
-import { createSupabaseAdmin } from '@/lib/supabase/admin';
+import { checkDuplicateEvent } from '@/lib/events';
 import { getCurrentUser } from '@/lib/supabase/auth';
 
 /**
@@ -38,21 +38,12 @@ export async function POST(req: NextRequest) {
     }
 
     // Check if this tournament ID is already imported
-    const admin = createSupabaseAdmin();
-    const { data: existing } = await admin
-      .from('events')
-      .select('id, title, status')
-      .eq('external_provider', 'LICHESS')
-      .eq('external_id', result.preview.tournamentId)
-      .is('archived_at', null)
-      .maybeSingle();
-
-    if (existing) {
+    const dup = await checkDuplicateEvent('LICHESS', result.preview.tournamentId);
+    if (dup.exists) {
       return NextResponse.json(
         {
-          error: 'This Lichess tournament is already connected to a ChessHub event.',
-          existingEventId: existing.id,
-          existingTitle: existing.title,
+          error: `This Lichess tournament is already connected to: "${dup.existingTitle || 'Existing Event'}"`,
+          existingTitle: dup.existingTitle,
         },
         { status: 409 } // Conflict
       );
