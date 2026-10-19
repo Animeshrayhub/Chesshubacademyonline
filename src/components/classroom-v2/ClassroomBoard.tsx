@@ -1,15 +1,17 @@
 'use client';
 
-import React, { useCallback, useMemo, useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { ChessboardAdapter } from '@/components/dashboard/ui/ChessboardWrapper';
 import {
   type BoardArrow,
   type BoardHighlight,
   type BoardOrientation,
   type StudentBoardColorPermission,
+  type CoachQuestion,
 } from '@/lib/classroom-v2/types';
 import { validateChessMove } from '@/lib/classroom-v2/validation';
 import { Chess } from 'chess.js';
+import { chessSounds } from '@/lib/classroom-v2/chessSounds';
 
 interface ClassroomBoardProps {
   fen: string;
@@ -30,6 +32,9 @@ interface ClassroomBoardProps {
   boardScale?: number;
   isCoach?: boolean;
   activeDrawColor?: string;
+  studentShowcaseMode?: boolean;
+  activeQuestion?: CoachQuestion | null;
+  onAnswerMove?: (san: string) => Promise<boolean>;
 }
 
 export default function ClassroomBoard({
@@ -51,10 +56,38 @@ export default function ClassroomBoard({
   boardScale = 1,
   isCoach = false,
   activeDrawColor = '#10b981',
+  studentShowcaseMode = false,
+  activeQuestion = null,
+  onAnswerMove,
 }: ClassroomBoardProps) {
   // Dual Mode: Student private local canvas (arrows & square highlights)
   const [localStudentArrows, setLocalStudentArrows] = useState<BoardArrow[]>([]);
   const [localStudentHighlights, setLocalStudentHighlights] = useState<BoardHighlight[]>([]);
+
+  // Interactive Play Move as Answer state for students
+  const [submittedAnswerMove, setSubmittedAnswerMove] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSubmittedAnswerMove(null);
+  }, [activeQuestion?.id]);
+
+  const isQuestionAnswerMode = Boolean(!isCoach && activeQuestion);
+
+  // Keyboard shortcut: Press 'C' or 'c' to instantly clear visual annotations
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
+      if (e.key === 'c' || e.key === 'C') {
+        if (isCoach || studentShowcaseMode) {
+          onDrawChange?.([], []);
+        }
+        setLocalStudentArrows([]);
+        setLocalStudentHighlights([]);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isCoach, studentShowcaseMode, onDrawChange]);
 
   // Automatically clear student private drawings on new move
   useEffect(() => {
@@ -63,6 +96,74 @@ export default function ClassroomBoard({
       setLocalStudentHighlights([]);
     }
   }, [fen, isCoach]);
+
+  // Track previous FEN to trigger audio sounds on piece moves, captures, checks, and castles
+  const prevFenRef = useRef<string>(fen);
+  const isInitialMount = useRef(true);
+
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      prevFenRef.current = fen;
+      return;
+    }
+
+    if (prevFenRef.current && fen && prevFenRef.current !== fen) {
+      try {
+        const currChess = new Chess(fen.trim());
+        const isCheck = currChess.inCheck();
+
+        // Count pieces to detect capture
+        const prevPieces = prevFenRef.current.split(' ')[0].replace(/[^a-zA-Z]/g, '');
+        const currPieces = fen.split(' ')[0].replace(/[^a-zA-Z]/g, '');
+        const isCapture = currPieces.length < prevPieces.length;
+
+        // Detect castling (king moved 2 squares)
+        let isCastle = false;
+        try {
+          const prevBoard = new Chess(prevFenRef.current.trim()).board();
+          const currBoard = currChess.board();
+          (['w', 'b'] as const).forEach((color) => {
+            let prevKingCol = -1;
+            let currKingCol = -1;
+            for (let r = 0; r < 8; r++) {
+              for (let c = 0; c < 8; c++) {
+                const p1 = prevBoard[r][c];
+                if (p1 && p1.type === 'k' && p1.color === color) prevKingCol = c;
+                const p2 = currBoard[r][c];
+                if (p2 && p2.type === 'k' && p2.color === color) currKingCol = c;
+              }
+            }
+            if (prevKingCol !== -1 && currKingCol !== -1 && Math.abs(currKingCol - prevKingCol) === 2) {
+              isCastle = true;
+            }
+          });
+        } catch {}
+
+        if (isCheck) {
+          chessSounds.playCheck();
+        } else if (isCastle) {
+          chessSounds.playCastle();
+        } else if (isCapture) {
+          chessSounds.playCapture();
+        } else {
+          chessSounds.playMove();
+        }
+      } catch {
+        chessSounds.playMove();
+      }
+    }
+    prevFenRef.current = fen;
+  }, [fen]);
+
+  // Alert student with celebratory chime when coach delegates board turn to them
+  const prevCanMoveRef = useRef(canMove);
+  useEffect(() => {
+    if (!prevCanMoveRef.current && canMove && !isCoach) {
+      chessSounds.playSuccess();
+    }
+    prevCanMoveRef.current = canMove;
+  }, [canMove, isCoach]);
 
   const effectiveArrows = useMemo(() => {
     if (isCoach) return arrows;
@@ -182,7 +283,31 @@ export default function ClassroomBoard({
         piece = typeof arg2 === 'string' ? arg2 : (arg2?.pieceType || '');
       }
 
-      if (!canMove || isLocked || allowedColor === 'none' || !sourceSquare || !targetSquare || sourceSquare === targetSquare) {
+      if (!sourceSquare || !targetSquare || sourceSquare === targetSquare) {
+        return false;
+      }
+
+      // ── Play Move as Answer for interactive coach question prompts ────────
+      if (isQuestionAnswerMode) {
+        const validation = validateChessMove(
+          fen,
+          { from: sourceSquare, to: targetSquare },
+          false
+        );
+        if (validation.valid && validation.san) {
+          const san = validation.san;
+          chessSounds.playMove();
+          setLocalStudentArrows([{ from: sourceSquare, to: targetSquare, color: '#10b981' }]);
+          setSubmittedAnswerMove(san);
+          onAnswerMove?.(san);
+        } else {
+          chessSounds.playFail();
+        }
+        // Always snap piece back to puzzle position on shared board
+        return false;
+      }
+
+      if (!canMove || isLocked || allowedColor === 'none') {
         return false;
       }
 
@@ -236,8 +361,8 @@ export default function ClassroomBoard({
       );
 
       if (!validation.valid || !validation.newFen) {
-        // Invalid move: return false silently.
-        // react-chessboard smoothly returns the piece to sourceSquare without state change.
+        // Invalid move: play subtle fail sound and return false smoothly
+        chessSounds.playFail();
         return false;
       }
 
@@ -249,10 +374,10 @@ export default function ClassroomBoard({
       // The piece stays cleanly at targetSquare with zero snap-back or re-animation glitch.
       return true;
     },
-    [canMove, isLocked, allowedColor, onMove, fen, allowIllegalMoves]
+    [canMove, isLocked, allowedColor, onMove, fen, allowIllegalMoves, isQuestionAnswerMode, onAnswerMove]
   );
 
-  const isDraggable = Boolean(canMove && !isLocked && allowedColor !== 'none');
+  const isDraggable = Boolean((canMove && !isLocked && allowedColor !== 'none') || isQuestionAnswerMode);
 
   const canDragPiece = useCallback(
     (args: any) => {
@@ -266,9 +391,13 @@ export default function ClassroomBoard({
       const isWhitePiece = pt.startsWith('w') || pt.startsWith('W');
       const isBlackPiece = pt.startsWith('b') || pt.startsWith('B');
 
+      const sideToMove = (fen.split(' ')[1] as 'w' | 'b') || 'w';
+      if (isQuestionAnswerMode) {
+        return sideToMove === 'w' ? isWhitePiece : isBlackPiece;
+      }
+
       // Strict turn enforcement: piece must match the active sideToMove in FEN
       if (!allowIllegalMoves) {
-        const sideToMove = (fen.split(' ')[1] as 'w' | 'b') || 'w';
         if (sideToMove === 'w' && !isWhitePiece) return false;
         if (sideToMove === 'b' && !isBlackPiece) return false;
       }
@@ -281,7 +410,7 @@ export default function ClassroomBoard({
       }
       return true;
     },
-    [isDraggable, allowedColor, fen, allowIllegalMoves]
+    [isDraggable, allowedColor, fen, allowIllegalMoves, isQuestionAnswerMode]
   );
 
   const maxBoardDimension = Math.round(620 * (boardScale || 1));
@@ -321,6 +450,46 @@ export default function ClassroomBoard({
         </div>
       )}
 
+      {/* Student Showcase Mode Banner */}
+      {studentShowcaseMode && (
+        <div className="absolute top-12 left-1/2 -translate-x-1/2 z-20 px-3.5 py-1 bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-black text-xs rounded-xl shadow-xl border border-indigo-400/60 flex items-center gap-1.5 animate-in fade-in slide-in-from-top-1 select-none">
+          <span>✨</span>
+          <span>{isCoach ? 'Showcase Active: Students can annotate live' : 'Showcase Active: Your arrows are live to the entire class!'}</span>
+        </div>
+      )}
+
+      {/* Interactive Question Answer Mode Banner for Students */}
+      {isQuestionAnswerMode && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 w-[92%] max-w-md px-3.5 py-2 bg-gradient-to-r from-blue-600/95 to-indigo-600/95 backdrop-blur-md text-white font-extrabold text-xs rounded-2xl shadow-2xl border border-blue-400/80 flex items-center justify-between gap-2 animate-in fade-in select-none">
+          <div className="flex items-center gap-2 truncate">
+            <span className="text-base animate-bounce">🎯</span>
+            <div className="truncate">
+              <span className="text-[10px] uppercase tracking-wider text-blue-200 block font-black">
+                {submittedAnswerMove ? 'Move Submitted to Coach' : 'Find the Move Prompt'}
+              </span>
+              <span className="text-xs font-bold text-white truncate block">
+                {submittedAnswerMove
+                  ? `Your answer: ${submittedAnswerMove} (Sent Privately)`
+                  : activeQuestion?.text || 'Drag your piece to play answer!'}
+              </span>
+            </div>
+          </div>
+          {submittedAnswerMove && (
+            <button
+              type="button"
+              onClick={() => {
+                setSubmittedAnswerMove(null);
+                setLocalStudentArrows([]);
+              }}
+              className="px-2 py-1 rounded-lg bg-blue-950/70 hover:bg-blue-900 text-blue-200 text-[10px] font-black border border-blue-400/50 transition-colors shrink-0 cursor-pointer"
+              title="Change your answer move"
+            >
+              Change
+            </button>
+          )}
+        </div>
+      )}
+
       <div
         id="classroom-board"
         data-can-move={String(isDraggable)}
@@ -357,7 +526,7 @@ export default function ClassroomBoard({
                 };
               });
             }
-            if (isCoach) {
+            if (isCoach || studentShowcaseMode) {
               onDrawChange?.(parsed, highlights);
             } else {
               const coachKeys = new Set(arrows.map((ca) => `${ca.from}-${ca.to}`));
@@ -377,7 +546,7 @@ export default function ClassroomBoard({
                   : 'rgba(16, 185, 129, 0.5)')
               : 'rgba(139, 92, 246, 0.5)';
 
-            if (isCoach) {
+            if (isCoach || studentShowcaseMode) {
               const exists = highlights.some((h) => h.square === square);
               const newHighlights = exists
                 ? highlights.filter((h) => h.square !== square)
@@ -468,6 +637,14 @@ export default function ClassroomBoard({
                 Cancel
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Student Active Turn Banner */}
+        {canMove && !isCoach && !isQuestionAnswerMode && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 text-white text-xs font-black shadow-xl shadow-emerald-950/80 border border-emerald-400/80 flex items-center gap-2 animate-bounce select-none pointer-events-none">
+            <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+            <span>🎯 IT&apos;S YOUR TURN TO MOVE! ({allowedColor === 'white' ? 'Playing White ⚪' : allowedColor === 'black' ? 'Playing Black ⚫' : 'Both Colors ⚔️'})</span>
           </div>
         )}
 

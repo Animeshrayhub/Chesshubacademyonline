@@ -162,7 +162,7 @@ export async function getAcademyLeaderboard(currentUserId?: string): Promise<Res
     });
 
     // Build raw aggregated records for each student
-    const rawList: Omit<LeaderboardEntry, 'rank'>[] = studentUsers.map((u: any) => {
+    const rawList: LeaderboardEntry[] = studentUsers.map((u: any) => {
       const profile = profileByUserId.get(u.id);
       const profileId = profile?.id || u.id;
       const bot = botByStudentId.get(u.id) || botByStudentId.get(profileId);
@@ -194,6 +194,7 @@ export async function getAcademyLeaderboard(currentUserId?: string): Promise<Res
         streak,
         botLevel,
         isYou,
+        rank: 1,
       };
     });
 
@@ -213,33 +214,11 @@ export async function getAcademyLeaderboard(currentUserId?: string): Promise<Res
         streak: 1,
         botLevel: 1,
         isYou: true,
+        rank: 1,
       });
     }
 
-    // Sort into the 4 categories
-    const sortedByXp = [...rawList]
-      .sort((a, b) => b.xp - a.xp || b.tacticsSolved - a.tacticsSolved)
-      .map((entry, idx) => ({ ...entry, rank: idx + 1 }));
-
-    const sortedByTactics = [...rawList]
-      .sort((a, b) => b.tacticsSolved - a.tacticsSolved || b.xp - a.xp)
-      .map((entry, idx) => ({ ...entry, rank: idx + 1 }));
-
-    const sortedByHomework = [...rawList]
-      .sort((a, b) => b.homeworkCompleted - a.homeworkCompleted || b.xp - a.xp)
-      .map((entry, idx) => ({ ...entry, rank: idx + 1 }));
-
-    const sortedByRating = [...rawList]
-      .sort((a, b) => b.rating - a.rating || b.botLevel - a.botLevel)
-      .map((entry, idx) => ({ ...entry, rank: idx + 1 }));
-
-    // Find current student standing across each category
-    const yourXpEntry = sortedByXp.find((e) => e.isYou);
-    const yourTacticsEntry = sortedByTactics.find((e) => e.isYou);
-    const yourHomeworkEntry = sortedByHomework.find((e) => e.isYou);
-    const yourRatingEntry = sortedByRating.find((e) => e.isYou);
-
-    // 3. Build Dynamic Academy Cohort with 4 Division Leagues & Live Ticker
+    // Build Dynamic Academy Cohort with 6 simulated peers
     const { cohort, divisions, tickerEvents, seasonInfo } = buildDynamicAcademyCohort(
       rawList.map((r) => ({
         id: r.id,
@@ -255,6 +234,56 @@ export async function getAcademyLeaderboard(currentUserId?: string): Promise<Res
       })),
       currentUserId
     );
+
+    // Merge simulated peers into full rankings so real students and active dummy students compete seamlessly
+    const mergedList: LeaderboardEntry[] = [...rawList];
+    const realUserIds = new Set(rawList.map((r) => r.userId));
+
+    cohort.forEach((peer) => {
+      if (!realUserIds.has(peer.userId) && !peer.isYou) {
+        const estTactics = Math.round(peer.points * 0.08);
+        const estHomework = Math.round(peer.points * 0.015);
+        mergedList.push({
+          id: peer.id,
+          userId: peer.userId,
+          name: peer.name,
+          username: peer.username,
+          avatar: peer.avatar,
+          level: peer.rating >= 1200 ? 'Advanced' : peer.rating >= 800 ? 'Intermediate' : 'Beginner',
+          xp: peer.points,
+          tacticsSolved: estTactics,
+          homeworkCompleted: estHomework,
+          rating: peer.rating,
+          streak: peer.streak,
+          botLevel: peer.bossLevel,
+          isYou: false,
+          rank: 1,
+        });
+      }
+    });
+
+    // Sort into the 4 categories
+    const sortedByXp = [...mergedList]
+      .sort((a, b) => b.xp - a.xp || b.tacticsSolved - a.tacticsSolved)
+      .map((entry, idx) => ({ ...entry, rank: idx + 1 }));
+
+    const sortedByTactics = [...mergedList]
+      .sort((a, b) => b.tacticsSolved - a.tacticsSolved || b.xp - a.xp)
+      .map((entry, idx) => ({ ...entry, rank: idx + 1 }));
+
+    const sortedByHomework = [...mergedList]
+      .sort((a, b) => b.homeworkCompleted - a.homeworkCompleted || b.xp - a.xp)
+      .map((entry, idx) => ({ ...entry, rank: idx + 1 }));
+
+    const sortedByRating = [...mergedList]
+      .sort((a, b) => b.rating - a.rating || b.botLevel - a.botLevel)
+      .map((entry, idx) => ({ ...entry, rank: idx + 1 }));
+
+    // Find current student standing across each category
+    const yourXpEntry = sortedByXp.find((e) => e.isYou);
+    const yourTacticsEntry = sortedByTactics.find((e) => e.isYou);
+    const yourHomeworkEntry = sortedByHomework.find((e) => e.isYou);
+    const yourRatingEntry = sortedByRating.find((e) => e.isYou);
 
     const currentUserDivisionPeer = cohort.find((c) => c.isYou);
     const currentUserDivision = currentUserDivisionPeer?.division || 'bronze';

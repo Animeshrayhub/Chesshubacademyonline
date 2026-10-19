@@ -4,23 +4,109 @@ import PageHeader from '@/components/dashboard/ui/PageHeader';
 import { COACHING_PACKAGES_LIST } from '@/constants/PRICING';
 import CashfreeCheckoutButton from '@/components/payment/CashfreeCheckoutButton';
 import StudentSessionBalanceWidget from '@/features/student/StudentSessionBalanceWidget';
+import { getCurrentUser } from '@/lib/supabase/auth';
+import { getStudentPaymentHistory } from '@/lib/reports';
+
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'Billing & Session Packages | Student Portal',
-  description: 'Manage coaching packages, session balances, and invoices.',
+  description: 'Manage coaching packages, session balances, and view your full payment history.',
 };
 
-export default function StudentBillingPage() {
+const STATUS_STYLES: Record<string, string> = {
+  PAID:      'bg-emerald-50 text-emerald-700 border-emerald-200',
+  PENDING:   'bg-amber-50  text-amber-700  border-amber-200',
+  FAILED:    'bg-red-50    text-red-700    border-red-200',
+  EXPIRED:   'bg-slate-50  text-slate-600  border-slate-200',
+  CANCELLED: 'bg-slate-50  text-slate-600  border-slate-200',
+};
+
+export default async function StudentBillingPage() {
+  const user = await getCurrentUser();
+  const paymentHistory = user ? await getStudentPaymentHistory(user.id) : [];
+
   return (
     <div className="space-y-8">
       <PageHeader
         title="Billing & Live Coaching Packages"
-        subtitle="Review remaining live session balance, add class entitlements, and view payment records."
+        subtitle="Review remaining live session balance, add class entitlements, and view your payment history."
       />
 
       {/* Session Wallet Overview */}
       <section aria-label="Your session balance">
         <StudentSessionBalanceWidget />
+      </section>
+
+      {/* Payment History */}
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-xl font-heading font-bold text-text-primary">Payment History</h2>
+          <p className="text-xs text-text-secondary">
+            All coaching package purchases associated with your account.
+          </p>
+        </div>
+
+        {paymentHistory.length === 0 ? (
+          <div className="rounded-2xl bg-white border border-border shadow-card p-8 text-center">
+            <div className="text-3xl mb-2">💳</div>
+            <p className="font-semibold text-text-primary text-sm">No Payment Records</p>
+            <p className="text-xs text-text-secondary mt-1">
+              Your coaching package purchases will appear here once you complete checkout.
+            </p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl border border-border shadow-card overflow-hidden">
+            <table className="w-full text-left text-xs" aria-label="Your payment history">
+              <thead>
+                <tr className="border-b border-border bg-surface-light">
+                  <th className="px-4 py-3 font-semibold text-text-secondary">Order ID</th>
+                  <th className="px-4 py-3 font-semibold text-text-secondary">Package</th>
+                  <th className="px-4 py-3 font-semibold text-text-secondary">Sessions</th>
+                  <th className="px-4 py-3 font-semibold text-text-secondary">Amount</th>
+                  <th className="px-4 py-3 font-semibold text-text-secondary">Status</th>
+                  <th className="px-4 py-3 font-semibold text-text-secondary">Date</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {paymentHistory.map((record) => (
+                  <tr key={record.orderId} className="hover:bg-surface-light/50 transition-colors">
+                    <td className="px-4 py-3">
+                      <span className="font-mono text-[10px] text-text-secondary">{record.orderId}</span>
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-text-primary">{record.packageName}</td>
+                    <td className="px-4 py-3">
+                      <span className="text-text-primary font-bold">{record.sessionsRemaining}</span>
+                      <span className="text-text-secondary"> / {record.sessionsPurchased} remaining</span>
+                    </td>
+                    <td className="px-4 py-3 font-bold text-text-primary">
+                      {record.currency === 'USD' ? '$' : '₹'}
+                      {record.amount.toLocaleString('en-IN')}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-bold border ${
+                          STATUS_STYLES[record.orderStatus] ?? STATUS_STYLES.PENDING
+                        }`}
+                      >
+                        {record.orderStatus}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-text-secondary">
+                      {record.createdAt
+                        ? new Date(record.createdAt).toLocaleDateString('en-IN', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                          })
+                        : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       {/* Available Coaching Packages */}

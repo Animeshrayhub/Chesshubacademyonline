@@ -29,6 +29,19 @@ export default async function ReportsRevenuePage() {
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50 border border-slate-200 rounded-2xl p-4">
+        <div>
+          <p className="text-xs font-bold text-text-primary">Need transaction-level order records?</p>
+          <p className="text-[11px] text-text-secondary">View all student Cashfree orders, session entitlements, and payment statuses.</p>
+        </div>
+        <a
+          href="/dashboard/admin/payments"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary hover:bg-primary-dark text-white text-xs font-bold transition-all shadow-sm w-fit"
+        >
+          <span>💳 Manage Payment Orders</span>
+          <span>→</span>
+        </a>
+      </div>
       <TableSearchBar placeholder="Filter revenue tracks..." className="max-w-md" />
       <div className="bg-white rounded-2xl border border-border overflow-hidden shadow-card">
         <DashboardTable

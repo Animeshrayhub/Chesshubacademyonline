@@ -1,13 +1,8 @@
-import { Route } from '@playwright/test';
 import { test, expect } from '../fixtures';
 
-test.describe('Section 11: Cashfree Payment & Coaching Packages', () => {
-  test.beforeEach(async ({ page }) => {
+test.describe('Section 11: Cashfree Payment, Guest Checkout & Coupon Management', () => {
+  test('✓ Coaching Packages Display Standard Integer Prices on Programs Page', async ({ page }) => {
     await page.goto('/programs');
-  });
-
-  test('✓ Coaching Packages Display Exact Integer Prices on Programs Page', async ({ page }) => {
-    // Packages section heading
     const packagesSection = page.locator('#packages');
     await expect(packagesSection).toBeVisible();
 
@@ -27,46 +22,75 @@ test.describe('Section 11: Cashfree Payment & Coaching Packages', () => {
     await expect(page.locator('text=48 Live Sessions')).toBeVisible();
   });
 
-  test('✓ Unauthenticated User is Redirected to Login with Package Preserved', async ({ page }) => {
+  test('✓ Part A & B: Public Guest and Student Checkout Opens Modal Directly without Login Redirect Loop', async ({ page }) => {
+    await page.goto('/programs');
     // Click Starter Package Enroll
     const enrollStarterBtn = page.locator('button:has-text("Enroll in Starter Package")').first();
     await expect(enrollStarterBtn).toBeVisible();
     await enrollStarterBtn.click();
 
-    // Expect redirection to login preserving the return package intent
-    await expect(page).toHaveURL(/\/login\?redirectTo=.+package%3Dstarter/);
+    // Verify modal dialog opens directly without being kicked to /login
+    const checkoutModal = page.getByRole('dialog', { name: 'Complete Your Enrollment' });
+    await expect(checkoutModal).toBeVisible();
+    await expect(page.locator('text=Complete Your Enrollment')).toBeVisible();
+    await expect(page.locator('text=Guest Checkout:')).toBeVisible();
+
+    // Required fields check
+    await expect(page.locator('input[placeholder="e.g. Aarav Sharma"]')).toBeVisible();
+    await expect(page.locator('input[placeholder="parent@example.com"]')).toBeVisible();
+    await expect(page.locator('input[placeholder="9876543210"]')).toBeVisible();
   });
 
-  test('✓ Intercept Server Create-Order Flow with Authoritative Pricing', async ({ page }) => {
-    await page.route('**/api/payment/create-order', async (route: Route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          success: true,
-          orderId: 'order_ch_test_mock',
-          paymentSessionId: 'session_mock_12345',
-          amount: 13800,
-          currency: 'INR',
-          packageName: 'Standard Package',
-          sessions: 24,
-        }),
-      });
-    });
+  test('✓ Part C & D: Applying Legacy Coupon LEGACY6600 Recalculates to Grandfathered Rate ₹6,600', async ({ page }) => {
+    await page.goto('/programs');
+    const enrollStarterBtn = page.locator('button:has-text("Enroll in Starter Package")').first();
+    await enrollStarterBtn.click();
 
-    const standardEnrollBtn = page.locator('button:has-text("Enroll in Standard Package")').first();
-    await expect(standardEnrollBtn).toBeVisible();
+    const checkoutModal = page.getByRole('dialog', { name: 'Complete Your Enrollment' });
+    await expect(checkoutModal).toBeVisible();
+
+    // Enter legacy code
+    const couponInput = page.locator('input[placeholder="Enter promo or legacy code"]');
+    await couponInput.fill('LEGACY6600');
+
+    // Click Apply
+    const applyBtn = page.locator('button:has-text("Apply")');
+    await applyBtn.click();
+
+    // Expect successful recalculation to ₹6,600
+    await expect(page.locator('text=LEGACY6600 applied successfully')).toBeVisible();
+    await expect(page.locator('button:has-text("Proceed to Pay ₹6,600")')).toBeVisible();
   });
 
-  test('✓ Billing Settings Navigation & Session Balance Wallet', async ({ page }) => {
+  test('✓ Invalid or Ineligible Coupon Code is Gracefully Rejected', async ({ page }) => {
+    await page.goto('/programs');
+    const enrollStarterBtn = page.locator('button:has-text("Enroll in Starter Package")').first();
+    await enrollStarterBtn.click();
+
+    const checkoutModal = page.getByRole('dialog', { name: 'Complete Your Enrollment' });
+    await expect(checkoutModal).toBeVisible();
+
+    const couponInput = page.locator('input[placeholder="Enter promo or legacy code"]');
+    await couponInput.fill('INVALIDCODE999');
+
+    const applyBtn = page.locator('button:has-text("Apply")');
+    await applyBtn.click();
+
+    // Expect server rejection message
+    await expect(page.locator('text=is invalid or does not exist')).toBeVisible();
+  });
+
+  test('✓ Authenticated Student Billing & Session Wallet Overview', async ({ loginPage, page }) => {
+    await loginPage.navigate();
+    await loginPage.login('student@chesshubacademy.online', 'StudentPassword123!');
+    await loginPage.verifyLoginSuccess(/\/dashboard\/student/);
+
     await page.goto('/dashboard/student/settings/billing');
 
     // Wallet overview
-    const walletHeading = page.locator('text=Your Session Wallet');
-    await expect(walletHeading.or(page.locator('body'))).toBeVisible();
+    await expect(page.locator('text=Your Session Wallet').or(page.locator('h1, h2, h3').first())).toBeVisible();
 
-    // Packages available on billing
-    const starterCard = page.locator('text=Starter Package');
-    await expect(starterCard.or(page.locator('body'))).toBeVisible();
+    // Coaching packages available on billing
+    await expect(page.getByRole('heading', { name: 'Starter Package' })).toBeVisible();
   });
 });

@@ -350,70 +350,58 @@ export function buildDynamicAcademyCohort(
     });
   }
 
-  // 2. Expand cohort with realistic synthetic peers if fewer than 24 students
-  // to ensure each of the 4 divisions has active, competitive rivals!
-  const targetPerDivision = 8;
-  const existingByDivision: Record<DivisionTier, number> = {
-    bronze: cohort.filter((c) => c.division === 'bronze').length,
-    silver: cohort.filter((c) => c.division === 'silver').length,
-    gold: cohort.filter((c) => c.division === 'gold').length,
-    diamond: cohort.filter((c) => c.division === 'diamond').length,
-  };
+  // 2. Expand cohort with 6 dedicated, realistic simulated academy peers
+  // authentically progressing with organic milestones (e.g., Aarav, Rohan, Priya, Vihaan, Anya, Ananya)
+  const DUMMY_STUDENT_PROFILES = [
+    { name: 'Aarav S.', username: 'aarav_chess', avatar: '🦁', title: 'Tactics Prodigy', baseRating: 980, basePoints: 480, streak: 6, botLevel: 4, badges: 5, opening: 'Italian Game (Giuoco Piano)' },
+    { name: 'Rohan P.', username: 'rohan_master', avatar: '⚡', title: 'Knight Crusher', baseRating: 1120, basePoints: 620, streak: 5, botLevel: 5, badges: 6, opening: "King's Indian Defense" },
+    { name: 'Priya M.', username: 'priya_tactics', avatar: '👑', title: 'Fried Liver Defier', baseRating: 840, basePoints: 390, streak: 4, botLevel: 3, badges: 4, opening: 'Caro-Kann Defense' },
+    { name: 'Vihaan K.', username: 'vihaan_attack', avatar: '🎯', title: 'Tactical Striker', baseRating: 720, basePoints: 310, streak: 3, botLevel: 3, badges: 3, opening: 'Ruy Lopez' },
+    { name: 'Anya R.', username: 'anya_chess', avatar: '🦅', title: 'Endgame Master', baseRating: 1240, basePoints: 740, streak: 7, botLevel: 6, badges: 7, opening: 'French Defense (Winawer)' },
+    { name: 'Ananya G.', username: 'ananya_knight', avatar: '🐉', title: 'Opening Explorer', baseRating: 660, basePoints: 240, streak: 2, botLevel: 2, badges: 3, opening: "Queen's Gambit Accepted" },
+  ];
 
-  const divisionRanges: Record<DivisionTier, { min: number; max: number; baseLvl: number }> = {
-    bronze: { min: 450, max: 780, baseLvl: 2 },
-    silver: { min: 820, max: 1180, baseLvl: 4 },
-    gold: { min: 1220, max: 1560, baseLvl: 6 },
-    diamond: { min: 1620, max: 2150, baseLvl: 8 },
-  };
+  // Dynamic day-of-year milestone progression (30 - 90 XP climb per day)
+  const now = new Date();
+  const dayOfYear = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24));
+  const hourOfDay = now.getHours();
 
-  let syntheticCounter = 1;
-  (Object.keys(divisionRanges) as DivisionTier[]).forEach((div) => {
-    const needed = Math.max(0, targetPerDivision - existingByDivision[div]);
-    const cfg = divisionRanges[div];
+  DUMMY_STUDENT_PROFILES.forEach((profile, idx) => {
+    // Unique deterministic variance per simulated student
+    const seed = (dayOfYear * 7 + idx * 31);
+    const rng = seededRandom(seed);
 
-    for (let i = 0; i < needed; i++) {
-      const seedVal = syntheticCounter * 997 + div.charCodeAt(0) * 31;
-      const rng = seededRandom(seedVal);
+    // Organic daily points growth (gains 35 to 85 XP per day based on elapsed hour of day)
+    const dailyProgression = Math.round((dayOfYear % 14) * 45 + (hourOfDay / 24) * 35 + rng() * 25);
+    const totalPoints = profile.basePoints + dailyProgression;
+    const weeklyPoints = Math.round(totalPoints * 0.45 + rng() * 40);
+    const ratingShift = Math.floor((dayOfYear % 10) * 4 - 15 + rng() * 10);
+    const currentRating = Math.max(450, profile.baseRating + ratingShift);
 
-      const fName = FIRST_NAMES[syntheticCounter % FIRST_NAMES.length];
-      const lInit = LAST_INITIALS[(syntheticCounter * 3) % LAST_INITIALS.length];
-      const name = `${fName} ${lInit}`;
-      const rating = Math.floor(cfg.min + rng() * (cfg.max - cfg.min));
-      const points = Math.floor(rating * 2.1 + rng() * 400);
-      const weeklyPoints = Math.round(points * (0.2 + rng() * 0.15));
-      const streak = Math.max(1, Math.floor(rng() * 14) + 1);
-      const bossLevel = Math.min(10, Math.max(1, cfg.baseLvl + Math.floor(rng() * 2) - 1));
-      const badges = Math.max(3, Math.floor(rating / 110) + Math.floor(rng() * 4));
-      const avatar = AVATARS[syntheticCounter % AVATARS.length];
-      const title = TITLES[syntheticCounter % TITLES.length];
-      const signatureOpening = SIGNATURE_OPENINGS[syntheticCounter % SIGNATURE_OPENINGS.length];
-      const delta = Math.floor(rng() * 5) - 2;
-      const rankDelta = delta > 0 ? `+${delta}` : delta < 0 ? `${delta}` : '0';
+    // Organic rank delta indicator
+    const deltaVal = Math.floor(rng() * 5) - 2;
+    const rankDelta = deltaVal > 0 ? `+${deltaVal}` : deltaVal < 0 ? `${deltaVal}` : '0';
 
-      cohort.push({
-        id: `synthetic-${div}-${syntheticCounter}`,
-        userId: `user-syn-${div}-${syntheticCounter}`,
-        name,
-        username: `${fName.toLowerCase()}${syntheticCounter}`,
-        avatar,
-        title,
-        rating,
-        points,
-        weeklyPoints,
-        streak,
-        bossLevel,
-        badges,
-        division: div,
-        rank: 1,
-        rankDelta,
-        winRate: Math.round(50 + rng() * 35),
-        isYou: false,
-        signatureOpening,
-      });
-
-      syntheticCounter++;
-    }
+    cohort.push({
+      id: `sim-student-${idx + 1}`,
+      userId: `user-sim-${idx + 1}`,
+      name: profile.name,
+      username: profile.username,
+      avatar: profile.avatar,
+      title: profile.title,
+      rating: currentRating,
+      points: totalPoints,
+      weeklyPoints,
+      streak: profile.streak,
+      bossLevel: profile.botLevel,
+      badges: profile.badges,
+      division: getDivisionForRating(currentRating),
+      rank: 1,
+      rankDelta,
+      winRate: Math.round(55 + rng() * 30),
+      isYou: false,
+      signatureOpening: profile.opening,
+    });
   });
 
   // 3. Group and sort by division (descending points)

@@ -11,8 +11,10 @@ import ClassroomResponses from './ClassroomResponses';
 import ClassroomZoom from './ClassroomZoom';
 import ClassroomPositionLoaderModal from './ClassroomPositionLoaderModal';
 import ClassroomEnginePanel from '@/components/dashboard/ui/ClassroomEnginePanel';
-import { type BoardOrientation, type CanonicalPuzzleState, type CanonicalCurriculumState } from '@/lib/classroom-v2/types';
+import { type BoardOrientation, type CanonicalPuzzleState, type CanonicalCurriculumState, type StudentBoardColorPermission } from '@/lib/classroom-v2/types';
 import { DEFAULT_INITIAL_FEN } from '@/lib/classroom-v2/constants';
+import { chessSounds } from '@/lib/classroom-v2/chessSounds';
+import { generateLessonPgn, downloadPgnFile } from '@/lib/classroom-v2/pgnExporter';
 import { getPuzzleBankAction } from '@/actions/puzzles';
 import { fetchCurriculumHierarchyAction } from '@/actions/curriculum';
 import { getAllHomeworkChaptersAction } from '@/actions/homework';
@@ -101,15 +103,22 @@ export default function ClassroomShell({
     onAskQuestion,
     puzzleAttemptResult,
     clearPuzzleAttemptResult,
+    studentShowcaseMode,
+    onToggleStudentShowcaseMode,
+    bookmarks,
+    onCreateBookmark,
     onEndClass,
   } = useClassroomState();
 
-  const [activeTab, setActiveTab] = useState<'moves' | 'chat' | 'response' | 'leaderboard' | 'participants' | 'engine'>('moves');
+  const [activeTab, setActiveTab] = useState<'moves' | 'chat' | 'response' | 'leaderboard' | 'participants' | 'moments' | 'engine'>('moves');
   const [orientation, setOrientation] = useState<BoardOrientation>('white');
   const [showCoords, setShowCoords] = useState(true);
   const [showSquareLabels, setShowSquareLabels] = useState(false);
   const [coachDrawColor, setCoachDrawColor] = useState<string>('#10b981');
   const [showPositionLoader, setShowPositionLoader] = useState(false);
+  const [showBookmarkModal, setShowBookmarkModal] = useState(false);
+  const [bookmarkNote, setBookmarkNote] = useState('');
+  const [isSavingBookmark, setIsSavingBookmark] = useState(false);
   const localMountTimeRef = useRef<number>(Date.now());
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
@@ -135,6 +144,24 @@ export default function ClassroomShell({
       setActiveTab('response');
     }
   }, [isCoach, snapshot.activeQuestion]);
+
+  // Audio chime when puzzle attempt results arrive
+  useEffect(() => {
+    if (puzzleAttemptResult) {
+      if (puzzleAttemptResult.solved) {
+        chessSounds.playSuccess();
+      } else {
+        chessSounds.playFail();
+      }
+    }
+  }, [puzzleAttemptResult]);
+
+  // Audio mute state
+  const [isSoundMuted, setIsSoundMuted] = useState(() => chessSounds.getMuted());
+  const handleToggleSound = useCallback(() => {
+    const next = chessSounds.toggleMuted();
+    setIsSoundMuted(next);
+  }, []);
 
   // ── Currently Displayed Position (Live or Navigated History) ─────────────
   const displayedFen = useMemo(() => {
@@ -272,6 +299,43 @@ export default function ClassroomShell({
       window.removeEventListener('mouseup', onUp);
     };
   }, [zoomPanelHeight]);
+
+  // ── Classroom Layout Presets ──────────────────────────────────────────────
+  const STORAGE_LAYOUT_KEY = 'classroom_layout_preset';
+  type ClassroomLayoutPreset = 'board-focus' | 'discussion' | 'theater';
+
+  const [layoutPreset, setLayoutPreset] = useState<ClassroomLayoutPreset>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(STORAGE_LAYOUT_KEY) as ClassroomLayoutPreset | null;
+      if (saved === 'board-focus' || saved === 'discussion' || saved === 'theater') return saved;
+    }
+    return 'board-focus';
+  });
+
+  const [theaterSidebarOpen, setTheaterSidebarOpen] = useState(false);
+
+  const handleSetLayoutPreset = useCallback((preset: ClassroomLayoutPreset) => {
+    setLayoutPreset(preset);
+    try {
+      localStorage.setItem(STORAGE_LAYOUT_KEY, preset);
+    } catch {}
+    if (preset === 'discussion') {
+      setZoomPanelHeight(380);
+      setSidebarWidth(460);
+    } else if (preset === 'board-focus') {
+      setZoomPanelHeight(DEFAULT_ZOOM_HEIGHT);
+      setSidebarWidth(380);
+    }
+  }, []);
+
+  // ── Play Move as Answer Callback for Students ─────────────────────────────
+  const handleAnswerMove = useCallback(
+    async (san: string) => {
+      if (!snapshot.activeQuestion) return false;
+      return await onSubmitResponse(snapshot.activeQuestion.text, san);
+    },
+    [snapshot.activeQuestion, onSubmitResponse]
+  );
 
   // ── Keyboard Navigation (Move History + Puzzle) ───────────────────────────
   // Handler defined below after handleLoadNextPuzzle is in scope
@@ -460,6 +524,64 @@ export default function ClassroomShell({
     }
     openPuzzleModal();
   }, [puzzlesList, snapshot.puzzle, handleSelectPuzzle, openPuzzleModal]);
+
+  // ── Active Student & 1-Click Pass Turn Rotation ───────────────────────────
+  const activeStudentWithControl = useMemo(
+    () => participants.find((p) => p.role === 'student' && p.hasBoardControl),
+    [participants]
+  );
+
+  const handlePassTurnToNextStudent = useCallback(() => {
+    const students = participants.filter((p) => p.role === 'student');
+    if (students.length === 0) return;
+
+    const currentIdx = students.findIndex((s) => s.hasBoardControl);
+    const nextIdx = currentIdx === -1 ? 0 : (currentIdx + 1) % students.length;
+    const nextStudent = students[nextIdx];
+
+    // Determine target color based on side to move
+    const sideToMove = snapshot.board.sideToMove || (displayedFen.split(' ')[1] === 'b' ? 'b' : 'w');
+    const colorPerm: StudentBoardColorPermission = sideToMove === 'b' ? 'black' : 'white';
+
+    // Revoke board control from previous student(s)
+    students.forEach((s) => {
+      if (s.userId !== nextStudent.userId && s.hasBoardControl) {
+        onToggleStudentPermission(s.userId, 'none');
+      }
+    });
+
+    // Grant board control to next student
+    onToggleStudentPermission(nextStudent.userId, colorPerm);
+    chessSounds.playSuccess();
+  }, [participants, snapshot.board.sideToMove, displayedFen, onToggleStudentPermission]);
+
+  const handleSaveBookmark = useCallback(async () => {
+    if (isSavingBookmark) return;
+    setIsSavingBookmark(true);
+    try {
+      const fen = displayedFen || snapshot.board.fen;
+      const moveIndex = snapshot.board.currentMoveIndex;
+      await onCreateBookmark(fen, moveIndex, bookmarkNote);
+      setBookmarkNote('');
+      setShowBookmarkModal(false);
+      setActiveTab('moments');
+      chessSounds.playSuccess();
+    } finally {
+      setIsSavingBookmark(false);
+    }
+  }, [isSavingBookmark, displayedFen, snapshot.board.fen, snapshot.board.currentMoveIndex, bookmarkNote, onCreateBookmark]);
+
+  const handleDownloadSessionPgn = useCallback(() => {
+    const pgn = generateLessonPgn({
+      className: snapshot.className || 'ChessHub Academy Live Class',
+      coachName: coachName || 'Coach',
+      moves: snapshot.board.moves,
+      initialFen: snapshot.board.initialFen,
+      bookmarks,
+    });
+    downloadPgnFile(`${snapshot.className || 'ChessHub_Lesson'}_${new Date().toISOString().split('T')[0]}`, pgn);
+    chessSounds.playSuccess();
+  }, [snapshot.className, snapshot.board.moves, snapshot.board.initialFen, coachName, bookmarks]);
 
   // ── Keyboard Navigation (Move History + Puzzle) ───────────────────────────
   useEffect(() => {
@@ -665,10 +787,20 @@ export default function ClassroomShell({
             )}
 
             {/* Action CTAs */}
-            <div className="flex items-center justify-center gap-3 pt-1">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 pt-1">
+              {snapshot.board.moves.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleDownloadSessionPgn}
+                  className="w-full sm:w-auto px-5 py-3 bg-slate-800 hover:bg-slate-750 text-white rounded-xl text-xs font-bold border border-slate-700 shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                >
+                  <span>📥</span>
+                  <span>Download Lesson PGN</span>
+                </button>
+              )}
               <a
                 href={isCoach ? '/dashboard/coach/classes' : '/dashboard/student/classes'}
-                className="w-full text-center px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-black shadow-xl shadow-blue-600/30 transition-all flex items-center justify-center gap-2"
+                className="w-full sm:flex-1 text-center px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-black shadow-xl shadow-blue-600/30 transition-all flex items-center justify-center gap-2"
               >
                 <span>{isCoach ? 'Return to Coach Dashboard' : 'Go to Completed Classes Now'}</span>
                 <span>→</span>
@@ -757,6 +889,49 @@ export default function ClassroomShell({
               <span className="font-semibold">{onlineCount} Online</span>
             </div>
           </div>
+        </div>
+
+        {/* Center: Layout Preset Switcher */}
+        <div className="hidden md:flex items-center p-0.5 bg-slate-900/90 border border-slate-800 rounded-xl shadow-inner">
+          <button
+            type="button"
+            onClick={() => handleSetLayoutPreset('board-focus')}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+              layoutPreset === 'board-focus'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+            title="Board Focus Layout: Maximized chessboard with compact video top strip"
+          >
+            <span>🎯</span>
+            <span>Board</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSetLayoutPreset('discussion')}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+              layoutPreset === 'discussion'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+            title="Interactive Discussion: Expanded video grid for active conversation"
+          >
+            <span>👥</span>
+            <span>Discussion</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSetLayoutPreset('theater')}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+              layoutPreset === 'theater'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+            title="Theater Mode: Full-viewport chessboard with floating PiP video"
+          >
+            <span>🎬</span>
+            <span>Theater</span>
+          </button>
         </div>
 
         {/* Right: Quick Action Controls */}
@@ -866,18 +1041,22 @@ export default function ClassroomShell({
 
       {/* ── Main Classroom Viewport (Stacked on Mobile, 2-Column Grid on Desktop) ── */}
       <div
-        className="flex-1 flex flex-col lg:grid p-2 sm:p-3 gap-3 overflow-y-auto lg:overflow-hidden min-h-0"
+        className="flex-1 flex flex-col lg:grid p-2 sm:p-3 gap-3 overflow-y-auto lg:overflow-hidden min-h-0 relative"
         style={
           {
             '--sidebar-w': `${sidebarWidth}px`,
             '--zoom-h': `${zoomPanelHeight}px`,
-            gridTemplateColumns: 'minmax(0, 1fr) var(--sidebar-w)',
-            gridTemplateRows: 'var(--zoom-h) minmax(0, 1fr)',
+            gridTemplateColumns: layoutPreset === 'theater'
+              ? (theaterSidebarOpen ? 'minmax(0, 1fr) var(--sidebar-w)' : 'minmax(0, 1fr)')
+              : 'minmax(0, 1fr) var(--sidebar-w)',
+            gridTemplateRows: layoutPreset === 'theater'
+              ? '1fr'
+              : 'var(--zoom-h) minmax(0, 1fr)',
           } as React.CSSProperties
         }
       >
         {/* Left Area / Center on Mobile: Chessboard & Controls (order-2 on phone) */}
-        <div className="order-2 lg:order-none lg:col-start-1 lg:row-start-1 lg:row-span-2 flex flex-col items-center justify-between w-full h-auto lg:h-full bg-slate-950/40 border border-slate-850 rounded-2xl p-2 sm:p-3 overflow-hidden">
+        <div className={`order-2 lg:order-none ${layoutPreset === 'theater' ? 'lg:col-start-1 lg:row-start-1' : 'lg:col-start-1 lg:row-start-1 lg:row-span-2'} flex flex-col items-center justify-between w-full h-auto lg:h-full bg-slate-950/40 border border-slate-850 rounded-2xl p-2 sm:p-3 overflow-hidden relative`}>
           <div ref={boardContainerRef} className="flex-1 w-full flex items-center justify-center p-2 overflow-hidden relative">
             {/* ── Coach Floating Hand-Raise Notification Banner ── */}
             {isCoach && raisedHandStudents.length > 0 && (
@@ -995,6 +1174,9 @@ export default function ClassroomShell({
               onDrawChange={(arrows, highlights) => onSetDrawing(arrows, highlights)}
               isCoach={isCoach}
               activeDrawColor={coachDrawColor}
+              studentShowcaseMode={studentShowcaseMode}
+              activeQuestion={snapshot.activeQuestion}
+              onAnswerMove={handleAnswerMove}
               className="w-full h-full"
             />
 
@@ -1123,6 +1305,58 @@ export default function ClassroomShell({
                   <span>{snapshot.board.allowIllegalMoves ? 'Free Move ON' : 'Strict Rules'}</span>
                 </button>
 
+                {/* 1-Click Openings & Endgame Studies Quick Loader */}
+                <button
+                  type="button"
+                  onClick={() => setShowPositionLoader(true)}
+                  className="px-3 py-1 rounded-lg text-xs font-bold bg-indigo-600/90 hover:bg-indigo-500 text-white border border-indigo-500 shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                  title="Openings & Positions Book: 1-click popular openings and endgame studies"
+                >
+                  <span>📖</span>
+                  <span>Openings & Endgames</span>
+                </button>
+
+                {/* 1-Click Pass Turn to Next Student */}
+                <button
+                  type="button"
+                  onClick={handlePassTurnToNextStudent}
+                  className="px-3 py-1 rounded-lg text-xs font-black bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                  title="Pass board turn to next student in roster (Auto-rotates active student)"
+                >
+                  <span>🎯</span>
+                  <span>Pass Turn {activeStudentWithControl ? `(${activeStudentWithControl.firstName} → Next)` : '(Assign Student)'}</span>
+                </button>
+
+                {/* 1-Click Instructive Position Bookmarker */}
+                <button
+                  type="button"
+                  onClick={() => setShowBookmarkModal(true)}
+                  className="px-3 py-1 rounded-lg text-xs font-bold bg-amber-600/90 hover:bg-amber-500 text-white border border-amber-500/80 shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                  title="Bookmark this instructive moment / position for class review"
+                >
+                  <span>🔖</span>
+                  <span>Bookmark Moment</span>
+                </button>
+
+                {/* Active Student Indicator for Coach & Class */}
+                {activeStudentWithControl && (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-950/80 border border-emerald-500/60 text-emerald-200 text-xs font-bold animate-in fade-in">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                    <span>Turn: {activeStudentWithControl.firstName} {activeStudentWithControl.lastName}</span>
+                    <span className="text-[10px] bg-emerald-900/90 text-emerald-300 px-1.5 py-0.2 rounded uppercase">
+                      {activeStudentWithControl.colorPermission === 'white' ? '⚪ White' : activeStudentWithControl.colorPermission === 'black' ? '⚫ Black' : '⚔️ Both'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onToggleStudentPermission(activeStudentWithControl.userId, 'none')}
+                      className="ml-1 text-slate-400 hover:text-rose-400 transition-colors"
+                      title="Revoke board control"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+
                 {/* Coach Interactive Drawing Color Palette & Clear Button */}
                 <div className="flex items-center gap-1 bg-slate-800/80 px-2 py-1 rounded-xl border border-slate-700">
                   <span className="text-[10px] text-slate-400 font-extrabold mr-0.5">Arrow:</span>
@@ -1149,19 +1383,55 @@ export default function ClassroomShell({
                     type="button"
                     onClick={() => onSetDrawing([], [])}
                     className="ml-1.5 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600 transition-colors flex items-center gap-1 cursor-pointer"
-                    title="Clear all arrows & highlights for the class"
+                    title="Clear all arrows & highlights for the class (or press 'C' on keyboard)"
                   >
                     <span>🧹</span> Clear
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onToggleStudentShowcaseMode(!studentShowcaseMode)}
+                    className={`ml-1 px-2.5 py-0.5 rounded-lg text-[10px] font-bold border transition-all flex items-center gap-1 cursor-pointer ${
+                      studentShowcaseMode
+                        ? 'bg-violet-600 text-white border-violet-400 shadow-md ring-2 ring-violet-400/50 animate-pulse'
+                        : 'bg-slate-700 hover:bg-slate-600 text-slate-300 border-slate-600'
+                    }`}
+                    title={
+                      studentShowcaseMode
+                        ? 'Disable Showcase Mode (Students return to private scratchpad)'
+                        : 'Enable Student Showcase Mode (Allows students to draw live arrows visible to whole class)'
+                    }
+                  >
+                    <span>✨</span>
+                    <span>Showcase: {studentShowcaseMode ? 'ON' : 'OFF'}</span>
                   </button>
                 </div>
               </>
             )}
 
-            {/* Student Right-Click Drawing Helper */}
+            {/* Student Drawing Status & Clear Button */}
             {!isCoach && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-purple-950/30 border border-purple-800/40 text-[10px] text-purple-300 font-semibold" title="Right-click and drag on the board to draw private calculation arrows only visible to you">
-                <span>✏️</span>
-                <span>Right-click board for private notes</span>
+              <div
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-semibold border ${
+                  studentShowcaseMode
+                    ? 'bg-violet-950/60 border-violet-500/60 text-violet-200 shadow-sm animate-pulse'
+                    : 'bg-purple-950/30 border-purple-800/40 text-purple-300'
+                }`}
+                title={
+                  studentShowcaseMode
+                    ? 'Showcase Mode is active! Your drawings broadcast live to the coach and classmates.'
+                    : 'Right-click and drag to draw private calculation arrows visible only to you (Press C to clear)'
+                }
+              >
+                <span>{studentShowcaseMode ? '✨' : '✏️'}</span>
+                <span>{studentShowcaseMode ? 'Showcase Live: Visible to all' : 'Private Notes (C to clear)'}</span>
+                <button
+                  type="button"
+                  onClick={() => onSetDrawing([], [])}
+                  className="ml-1 px-1.5 py-0.2 rounded bg-purple-900/60 hover:bg-purple-800 text-purple-200 text-[9px] font-bold transition-colors cursor-pointer"
+                  title="Clear drawings"
+                >
+                  Clear
+                </button>
               </div>
             )}
 
@@ -1245,6 +1515,21 @@ export default function ClassroomShell({
               )}
             </div>
 
+            {/* Audio Sound Mute/Unmute Toggle */}
+            <button
+              type="button"
+              onClick={handleToggleSound}
+              className={`px-2 py-1 rounded-lg text-xs font-bold border transition-colors flex items-center gap-1.5 cursor-pointer ${
+                isSoundMuted
+                  ? 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
+                  : 'bg-emerald-950/40 text-emerald-300 border-emerald-700/60 shadow-xs'
+              }`}
+              title={isSoundMuted ? 'Unmute Chessboard Audio Sounds' : 'Mute Chessboard Audio Sounds'}
+            >
+              <span>{isSoundMuted ? '🔇' : '🔊'}</span>
+              <span>{isSoundMuted ? 'Muted' : 'Sound'}</span>
+            </button>
+
             {/* Manual Board Sizing Controls */}
             <div className="flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700">
               <button
@@ -1302,21 +1587,46 @@ export default function ClassroomShell({
           </div>
         </div>
 
-        {/* Zoom Video Area (order-1 on mobile, top-right on desktop) — Never remounted */}
+        {/* Zoom Video Area (order-1 on mobile, top-right on desktop, floating PiP in theater mode) — Never remounted */}
         <div
-          className="order-1 lg:order-none lg:col-start-2 lg:row-start-1 relative w-full flex flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 shadow-xl shrink-0"
+          className={
+            layoutPreset === 'theater'
+              ? 'fixed bottom-5 right-5 z-40 w-80 sm:w-96 h-52 sm:h-64 rounded-2xl border-2 border-indigo-500/80 bg-slate-950 shadow-2xl flex flex-col overflow-hidden backdrop-blur-xl ring-4 ring-slate-950/80 transition-all duration-300'
+              : 'order-1 lg:order-none lg:col-start-2 lg:row-start-1 relative w-full flex flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 shadow-xl shrink-0'
+          }
           style={{
-            height: typeof window !== 'undefined' && window.innerWidth < 1024 ? '230px' : undefined,
+            height: layoutPreset === 'theater' ? undefined : (typeof window !== 'undefined' && window.innerWidth < 1024 ? '230px' : undefined),
           }}
         >
-          {/* Horizontal Resize Drag Handle on left edge of Zoom area (desktop only) */}
-          <div
-            onMouseDown={handleSidebarMouseDown}
-            className="hidden lg:block absolute -left-1.5 top-0 bottom-0 w-3 cursor-col-resize z-30 group select-none"
-            title="Drag horizontally to resize sidebar"
-          >
-            <div className="w-1 h-full mx-auto bg-transparent group-hover:bg-indigo-500/70 transition-colors" />
-          </div>
+          {layoutPreset === 'theater' && (
+            <div className="h-7 bg-slate-900/95 border-b border-indigo-500/30 px-2.5 flex items-center justify-between text-[11px] font-bold text-slate-200 select-none shrink-0">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-indigo-300 font-extrabold text-[10px] tracking-wide uppercase">Live Video PiP</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => handleSetLayoutPreset('board-focus')}
+                  className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold transition-colors"
+                  title="Dock Video back to grid"
+                >
+                  Dock ↗
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Horizontal Resize Drag Handle on left edge of Zoom area (desktop only, non-theater) */}
+          {layoutPreset !== 'theater' && (
+            <div
+              onMouseDown={handleSidebarMouseDown}
+              className="hidden lg:block absolute -left-1.5 top-0 bottom-0 w-3 cursor-col-resize z-30 group select-none"
+              title="Drag horizontally to resize sidebar"
+            >
+              <div className="w-1 h-full mx-auto bg-transparent group-hover:bg-indigo-500/70 transition-colors" />
+            </div>
+          )}
 
           <div className="flex-1 w-full min-h-0 overflow-hidden relative">
             <ClassroomZoom
@@ -1333,26 +1643,38 @@ export default function ClassroomShell({
             />
           </div>
 
-          {/* Drag Handle between Zoom and Tab Panel (Desktop only) */}
-          <div
-            onMouseDown={handleZoomDragStart}
-            className="hidden lg:flex shrink-0 w-full h-2.5 cursor-ns-resize items-center justify-center group select-none bg-slate-950/80 hover:bg-slate-900 border-t border-slate-800/80 transition-colors"
-            title="Drag vertically to resize video panel"
-          >
-            <div className="w-12 h-1 rounded-full bg-slate-700 group-hover:bg-blue-500/80 transition-colors" />
-          </div>
+          {/* Drag Handle between Zoom and Tab Panel (Desktop only, non-theater) */}
+          {layoutPreset !== 'theater' && (
+            <div
+              onMouseDown={handleZoomDragStart}
+              className="hidden lg:flex shrink-0 w-full h-2.5 cursor-ns-resize items-center justify-center group select-none bg-slate-950/80 hover:bg-slate-900 border-t border-slate-800/80 transition-colors"
+              title="Drag vertically to resize video panel"
+            >
+              <div className="w-12 h-1 rounded-full bg-slate-700 group-hover:bg-blue-500/80 transition-colors" />
+            </div>
+          )}
         </div>
 
-        {/* Tab Navigation & Panels (order-3 on mobile, bottom-right on desktop) */}
-        <div className="order-3 lg:order-none lg:col-start-2 lg:row-start-2 relative flex flex-col w-full h-[460px] sm:h-[500px] lg:h-full bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl min-h-0">
-          {/* Horizontal Resize Drag Handle on left edge of Tab area (desktop only) */}
-          <div
-            onMouseDown={handleSidebarMouseDown}
-            className="hidden lg:block absolute -left-1.5 top-0 bottom-0 w-3 cursor-col-resize z-30 group select-none"
-            title="Drag horizontally to resize sidebar"
-          >
-            <div className="w-1 h-full mx-auto bg-transparent group-hover:bg-indigo-500/70 transition-colors" />
-          </div>
+        {/* Tab Navigation & Panels (order-3 on mobile, bottom-right on desktop, collapsible in theater) */}
+        <div
+          className={
+            layoutPreset === 'theater'
+              ? theaterSidebarOpen
+                ? 'order-3 lg:order-none lg:col-start-2 lg:row-start-1 relative flex flex-col w-full h-[460px] sm:h-[500px] lg:h-full bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl min-h-0 z-30'
+                : 'order-3 lg:hidden relative flex flex-col w-full h-[460px] sm:h-[500px] bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl min-h-0'
+              : 'order-3 lg:order-none lg:col-start-2 lg:row-start-2 relative flex flex-col w-full h-[460px] sm:h-[500px] lg:h-full bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl min-h-0'
+          }
+        >
+          {/* Horizontal Resize Drag Handle on left edge of Tab area (desktop only, non-theater) */}
+          {layoutPreset !== 'theater' && (
+            <div
+              onMouseDown={handleSidebarMouseDown}
+              className="hidden lg:block absolute -left-1.5 top-0 bottom-0 w-3 cursor-col-resize z-30 group select-none"
+              title="Drag horizontally to resize sidebar"
+            >
+              <div className="w-1 h-full mx-auto bg-transparent group-hover:bg-indigo-500/70 transition-colors" />
+            </div>
+          )}
 
           <div className="h-9 bg-slate-950 border-b border-slate-800 px-1 flex items-center justify-between text-xs font-bold shrink-0">
             <div className="flex items-center gap-0.5 overflow-x-auto scrollbar-none">
@@ -1362,6 +1684,7 @@ export default function ClassroomShell({
                 'response',
                 'leaderboard',
                 'participants',
+                'moments',
                 ...(isCoach ? ['engine'] : []),
               ]) as const).map((tab) => {
                 let badge = null;
@@ -1390,6 +1713,12 @@ export default function ClassroomShell({
                       <span>{raisedHandsCount}</span>
                     </span>
                   );
+                } else if (tab === 'moments' && bookmarks.length > 0) {
+                  badge = (
+                    <span className="ml-1 px-1.5 py-0.5 rounded-full bg-amber-500/30 text-amber-300 text-[9px] font-black leading-none border border-amber-500/40">
+                      {bookmarks.length}
+                    </span>
+                  );
                 }
 
                 return (
@@ -1403,12 +1732,24 @@ export default function ClassroomShell({
                         : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    <span>{tab === 'engine' ? '⚙️ ENGINE' : tab}</span>
+                    <span>{tab === 'engine' ? '⚙️ ENGINE' : tab === 'moments' ? '🔖 MOMENTS' : tab}</span>
                     {badge}
                   </button>
                 );
               })}
             </div>
+
+            {layoutPreset === 'theater' && (
+              <button
+                type="button"
+                onClick={() => setTheaterSidebarOpen(false)}
+                className="hidden lg:flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] font-bold transition-colors"
+                title="Collapse Side Panel"
+              >
+                <span>✕</span>
+                <span>Close</span>
+              </button>
+            )}
           </div>
 
           {/* Tab Viewport */}
@@ -1419,6 +1760,10 @@ export default function ClassroomShell({
                 currentMoveIndex={snapshot.board.currentMoveIndex}
                 onNavigateMove={onNavigateMove}
                 isCoach={isCoach}
+                initialFen={snapshot.board.initialFen}
+                bookmarks={bookmarks}
+                gameTitle={snapshot.className}
+                coachName={coachName}
                 className="w-full h-full border-none rounded-none"
               />
             )}
@@ -1483,8 +1828,101 @@ export default function ClassroomShell({
                 isEnabled={activeTab === 'engine'}
               />
             )}
+
+            {activeTab === 'moments' && (
+              <div className="w-full h-full flex flex-col bg-slate-900 overflow-hidden">
+                <div className="p-3 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-amber-400 font-extrabold text-xs">🔖 Key Instructive Moments</span>
+                    <span className="text-[10px] text-slate-400 font-semibold">({bookmarks.length})</span>
+                  </div>
+                  {isCoach && (
+                    <button
+                      type="button"
+                      onClick={() => setShowBookmarkModal(true)}
+                      className="px-2.5 py-1 rounded-lg text-[10px] font-black bg-amber-600 hover:bg-amber-500 text-white transition-all shadow-sm flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>+</span>
+                      <span>Bookmark Current</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
+                  {bookmarks.length === 0 ? (
+                    <div className="h-48 flex flex-col items-center justify-center text-center p-4">
+                      <span className="text-3xl mb-2 opacity-40">🔖</span>
+                      <p className="text-xs font-semibold text-slate-400">No moments bookmarked yet</p>
+                      <p className="text-[11px] text-slate-500 mt-1 max-w-xs leading-relaxed">
+                        {isCoach
+                          ? 'Click "Bookmark Moment" on any critical move, tactical breakthrough, or endgame position to save it for review.'
+                          : 'Key tactical positions and instructive takeaways saved by the coach will appear here.'}
+                      </p>
+                    </div>
+                  ) : (
+                    bookmarks.map((bm, idx) => (
+                      <div
+                        key={bm.id || idx}
+                        className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 hover:border-amber-500/50 transition-all flex flex-col gap-2 group"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-mono text-[10px] font-black border border-amber-500/30">
+                              #{idx + 1}
+                            </span>
+                            <span className="text-xs font-bold text-slate-200">
+                              {bm.moveIndex >= 0 ? `Move ${Math.floor(bm.moveIndex / 2) + 1}` : 'Setup Position'}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-slate-500">
+                            {bm.createdAt ? new Date(bm.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-slate-300 font-medium leading-relaxed bg-slate-900/80 p-2 rounded-lg border border-slate-850">
+                          {bm.note}
+                        </p>
+
+                        <div className="flex items-center justify-between pt-1 text-[10px]">
+                          <span className="text-slate-500">By {bm.createdBy || 'Coach'}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (bm.moveIndex >= 0 && snapshot.board.moves.length > bm.moveIndex) {
+                                onNavigateMove(bm.moveIndex);
+                              } else if (bm.fen) {
+                                onLoadGame(bm.fen, `Moment #${idx + 1}`);
+                              }
+                              chessSounds.playMove();
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-indigo-600/90 hover:bg-indigo-500 text-white font-bold transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+                            title="Jump to this bookmarked position on the board"
+                          >
+                            <span>👁️</span>
+                            <span>Jump to Board</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Floating Side Panel Toggle in Theater Mode when collapsed */}
+        {layoutPreset === 'theater' && !theaterSidebarOpen && (
+          <button
+            type="button"
+            onClick={() => setTheaterSidebarOpen(true)}
+            className="hidden lg:flex fixed top-20 right-4 z-30 px-3 py-1.5 rounded-xl bg-slate-900/95 hover:bg-slate-800 text-indigo-300 border border-indigo-500/50 shadow-2xl backdrop-blur-md text-xs font-bold items-center gap-1.5 transition-all hover:scale-105 cursor-pointer"
+            title="Open Side Panel (Moves, Chat, Responses, Leaderboard)"
+          >
+            <span>💬</span>
+            <span>Side Panel</span>
+          </button>
+        )}
       </div>
 
       {/* ── End Class Confirmation & Review Modal ──────────────────────── */}
@@ -1871,6 +2309,62 @@ export default function ClassroomShell({
               {!isLoadingCurriculum && curriculumData.length === 0 && (
                 <div className="text-xs text-slate-500 text-center py-4">No curriculum programs currently published.</div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Bookmark Moment Note Modal ── */}
+      {showBookmarkModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in select-none">
+          <div className="bg-slate-900 border border-slate-700 w-full max-w-md rounded-2xl shadow-2xl p-5 flex flex-col gap-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🔖</span>
+                <h3 className="font-extrabold text-sm text-slate-100">Bookmark Instructive Moment</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBookmarkModal(false)}
+                className="text-slate-400 hover:text-slate-200 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                Key Lesson Note / Tactical Reason
+              </label>
+              <textarea
+                rows={3}
+                value={bookmarkNote}
+                onChange={(e) => setBookmarkNote(e.target.value)}
+                placeholder="e.g. White missed a winning knight fork on c7. Black's king was trapped!"
+                className="w-full bg-slate-950 border border-slate-750 focus:border-amber-500 rounded-xl p-2.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none resize-none"
+              />
+              <span className="text-[10px] text-slate-500">
+                Captures current position (Move {snapshot.board.currentMoveIndex >= 0 ? Math.floor(snapshot.board.currentMoveIndex / 2) + 1 : 'Initial'})
+              </span>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowBookmarkModal(false)}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isSavingBookmark}
+                onClick={handleSaveBookmark}
+                className="px-4 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>🔖</span>
+                <span>{isSavingBookmark ? 'Saving…' : 'Save Moment'}</span>
+              </button>
             </div>
           </div>
         </div>

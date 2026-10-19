@@ -70,6 +70,38 @@ export default function ClassroomChat({
     }
   };
 
+  const COACH_QUICK_PILLS = [
+    '🔥 Brilliant find!',
+    '💡 Check candidate moves',
+    '🛡️ Protect your King!',
+    '⚔️ Look for checks & captures',
+    '⏱️ Take your time to calculate',
+    '👏 Excellent technique!',
+    '👀 Careful of counterplay',
+  ];
+
+  const STUDENT_QUICK_PILLS = [
+    '🙋 Could you repeat that move?',
+    '🤔 What about a sacrifice?',
+    '💡 I see a tactic here!',
+    '👍 Understood coach!',
+    '⏱️ Calculating candidate moves...',
+  ];
+
+  const quickPills = isStudent ? STUDENT_QUICK_PILLS : COACH_QUICK_PILLS;
+
+  const handleQuickSend = async (text: string) => {
+    if (isSending) return;
+    setIsSending(true);
+    try {
+      const isPrivate = isStudent ? true : activeTab === 'private';
+      const recipientId = isStudent ? undefined : (isPrivate ? selectedRecipientId || undefined : undefined);
+      await onSendMessage(text, isPrivate, recipientId);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   return (
     <div className={`flex flex-col h-full bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden ${className}`}>
       {/* Tab Header */}
@@ -165,6 +197,22 @@ export default function ClassroomChat({
             );
           })
         )}
+      </div>
+
+      {/* Quick-Response & Praise Pills Bar */}
+      <div className="px-2 py-1.5 bg-slate-950/90 border-t border-slate-800/80 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+        <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider shrink-0 pl-0.5">Quick:</span>
+        {quickPills.map((pill) => (
+          <button
+            key={pill}
+            type="button"
+            disabled={isSending}
+            onClick={() => handleQuickSend(pill)}
+            className="shrink-0 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-850 hover:bg-slate-750 text-slate-300 hover:text-white border border-slate-750 hover:border-blue-500/50 transition-all active:scale-95 disabled:opacity-40"
+          >
+            {pill}
+          </button>
+        ))}
       </div>
 
       {/* Message Input Form */}

@@ -84,6 +84,22 @@ const POPULAR_OPENINGS: OpeningItem[] = [
     category: 'Hypermodern',
     description: 'Pinning the c3 knight to control the vital e4 square.',
   },
+  {
+    id: 'london-system',
+    name: 'London System',
+    eco: 'D00',
+    moves: '1. d4 d5 2. Bf4 Nf6 3. e3 c5 4. c3 Nc6 5. Nf3 e6',
+    category: 'Closed Games',
+    description: 'Ultra-reliable solid pyramid setup preferred by coaches worldwide.',
+  },
+  {
+    id: 'english-opening',
+    name: 'English Opening',
+    eco: 'A10',
+    moves: '1. c4 e5 2. Nc3 Nf6 3. Nf3 Nc6 4. g3 Bb4 5. Bg2 O-O',
+    category: 'Flank Openings',
+    description: 'Controlling the d5 square from the flank with flexible transpositions.',
+  },
 ];
 
 const CURRICULUM_STUDIES = [
@@ -102,6 +118,14 @@ const CURRICULUM_STUDIES = [
     difficulty: 'Intermediate',
     fen: '8/8/3k4/8/3K4/3R4/8/7r b - - 0 1',
     description: 'The quintessential 6th-rank cut-off and rear check drawing defense.',
+  },
+  {
+    id: 'study-kp-opposition',
+    title: 'King & Pawn Endgame (The Opposition)',
+    category: 'Endgames',
+    difficulty: 'Fundamental',
+    fen: '8/8/8/4k3/8/4K3/4P3/8 w - - 0 1',
+    description: 'Master the concept of direct opposition to escort a passed pawn to promotion.',
   },
   {
     id: 'study-3',
@@ -126,7 +150,7 @@ export default function ClassroomPositionLoaderModal({
   onClose,
   onLoadGame,
 }: ClassroomPositionLoaderModalProps) {
-  const [activeTab, setActiveTab] = useState<'paste' | 'openings' | 'curriculum' | 'lichess'>('paste');
+  const [activeTab, setActiveTab] = useState<'openings' | 'curriculum' | 'paste' | 'lichess'>('openings');
   const [customInput, setCustomInput] = useState('');
   const [gameTitle, setGameTitle] = useState('');
   const [lichessUrl, setLichessUrl] = useState('');

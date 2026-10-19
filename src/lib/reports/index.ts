@@ -608,6 +608,135 @@ export async function getRevenueReportRows(): Promise<RevenueReportRow[]> {
   });
 }
 
+// ─── Payment Management Data ───────────────────────────────────────────────────
+
+export interface AdminPaymentOrderRow {
+  id: string;
+  orderId: string;
+  studentName: string;
+  studentEmail: string;
+  customerPhone?: string;
+  parentName?: string;
+  packageName: string;
+  sessionCount: number;
+  amount: number;
+  currency: string;
+  orderStatus: string;
+  isGuest: boolean;
+  userId: string | null;
+  createdAt: string;
+}
+
+export interface StudentPaymentHistoryRow {
+  orderId: string;
+  packageName: string;
+  sessionsPurchased: number;
+  sessionsRemaining: number;
+  amount: number;
+  currency: string;
+  orderStatus: string;
+  createdAt: string;
+}
+
+/**
+ * Admin: all payment orders with student details, strictly from Supabase
+ */
+export async function getAdminPaymentRows(limit = 100): Promise<AdminPaymentOrderRow[]> {
+  const admin = createSupabaseAdmin();
+
+  const { data: orders } = await admin
+    .from('payment_orders')
+    .select('id, order_id, user_id, package_name, session_count, order_amount, order_currency, order_status, created_at, customer_name, customer_email, customer_phone, student_name, parent_name, is_guest')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (!orders || orders.length === 0) return [];
+
+  // Batch-resolve student names from users table for orders that lack customer_name
+  const missingUserIds = (orders as any[])
+    .filter((o: any) => !o.customer_name && o.user_id)
+    .map((o: any) => o.user_id);
+
+  const userNameMap = new Map<string, { name: string; email: string }>();
+  if (missingUserIds.length > 0) {
+    const { data: users } = await admin
+      .from('users')
+      .select('id, first_name, last_name, email')
+      .in('id', missingUserIds);
+    (users ?? []).forEach((u: any) => {
+      userNameMap.set(u.id, {
+        name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email,
+        email: u.email,
+      });
+    });
+  }
+
+  return (orders as any[]).map((o: any) => {
+    const resolved = userNameMap.get(o.user_id);
+    return {
+      id: o.id,
+      orderId: o.order_id,
+      studentName: o.student_name || o.customer_name || resolved?.name || 'Guest Student',
+      studentEmail: o.customer_email || resolved?.email || '—',
+      customerPhone: o.customer_phone || undefined,
+      parentName: o.parent_name || undefined,
+      packageName: o.package_name || 'Coaching Package',
+      sessionCount: Number(o.session_count) || 0,
+      amount: Number(o.order_amount) || 0,
+      currency: (o.order_currency || 'INR').toUpperCase(),
+      orderStatus: o.order_status || 'PENDING',
+      isGuest: Boolean(o.is_guest || !o.user_id),
+      userId: o.user_id || null,
+      createdAt: o.created_at,
+    };
+  });
+}
+
+/**
+ * Student: own payment history strictly from Supabase (used in student billing page)
+ */
+export async function getStudentPaymentHistory(studentUserId: string): Promise<StudentPaymentHistoryRow[]> {
+  const admin = createSupabaseAdmin();
+
+  const { data: orders } = await admin
+    .from('payment_orders')
+    .select('order_id, package_name, session_count, order_amount, order_currency, order_status, created_at')
+    .eq('user_id', studentUserId)
+    .order('created_at', { ascending: false })
+    .limit(50);
+
+  if (!orders || orders.length === 0) return [];
+
+  // Fetch entitlements to show sessions_remaining
+  const orderIds = (orders as any[]).map((o: any) => o.order_id);
+  const { data: entitlements } = await admin
+    .from('student_session_entitlements')
+    .select('order_id, sessions_remaining, sessions_purchased')
+    .in('order_id', orderIds);
+
+  const entitlementMap = new Map<string, { remaining: number; purchased: number }>();
+  (entitlements ?? []).forEach((e: any) => {
+    entitlementMap.set(e.order_id, {
+      remaining: Number(e.sessions_remaining) || 0,
+      purchased: Number(e.sessions_purchased) || 0,
+    });
+  });
+
+  return (orders as any[]).map((o: any) => {
+    const ent = entitlementMap.get(o.order_id);
+    return {
+      orderId: o.order_id,
+      packageName: o.package_name || 'Coaching Package',
+      sessionsPurchased: ent?.purchased ?? Number(o.session_count) ?? 0,
+      sessionsRemaining: ent?.remaining ?? 0,
+      amount: Number(o.order_amount) || 0,
+      currency: (o.order_currency || 'INR').toUpperCase(),
+      orderStatus: o.order_status || 'PENDING',
+      createdAt: o.created_at,
+    };
+  });
+}
+
 /**
  * KPI Analytics Data strictly computed from live database metrics
  */

@@ -58,6 +58,8 @@ export const ADMIN_NAV: NavItem[] = [
   { label: 'Site Media & Images', href: '/dashboard/admin/media', iconKey: 'fileText',       roles: ['admin'] },
   { label: 'Certificates',  href: '/dashboard/admin/certificates',  iconKey: 'award',           roles: ['admin'] },
   { label: '📥 Ingest Openings', href: '/dashboard/admin/openings/ingest', iconKey: 'bookOpen',     roles: ['admin'] },
+  { label: '💳 Payments',   href: '/dashboard/admin/payments',      iconKey: 'dollarSign',      roles: ['admin'] },
+  { label: '🎟️ Coupons',    href: '/dashboard/admin/coupons',       iconKey: 'award',           roles: ['admin'] },
   { label: 'Reports',       href: '/dashboard/admin/reports',       iconKey: 'barChart',        roles: ['admin'], children: REPORTS_CHILDREN },
   { label: 'Settings',      href: '/dashboard/admin/settings',      iconKey: 'settings',        roles: ['admin'], children: ADMIN_SETTINGS_CHILDREN },
 ];
@@ -139,6 +141,7 @@ export const STUDENT_NAV: NavItem[] = [
   { label: 'Progress',            href: '/dashboard/student/progress',         iconKey: 'trendingUp',      roles: ['student'] },
   { label: 'Certificates',        href: '/dashboard/student/certificates',     iconKey: 'award',           roles: ['student'] },
   { label: 'Recordings',          href: '/dashboard/student/recordings',       iconKey: 'playCircle',      roles: ['student'], children: STUDENT_RECORDINGS_CHILDREN },
+  { label: '💳 Billing & Sessions', href: '/dashboard/student/settings/billing', iconKey: 'dollarSign',    roles: ['student'] },
   { label: 'Profile',             href: '/dashboard/student/settings/profile', iconKey: 'user',            roles: ['student'] },
   { label: 'Settings',            href: '/dashboard/student/settings',         iconKey: 'settings',        roles: ['student'], children: STUDENT_SETTINGS_CHILDREN },
 ];

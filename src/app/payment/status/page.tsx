@@ -13,6 +13,7 @@ interface VerificationResult {
   packageName?: string;
   amount?: number;
   currency?: string;
+  isGuest?: boolean;
   error?: string;
 }
 
@@ -161,14 +162,28 @@ function PaymentStatusContent() {
                 <span className="font-mono font-bold text-text-primary text-[11px]">{orderId}</span>
               </div>
 
-              {result?.sessionsGranted && (
+              {result?.packageName && (
+                <div className="flex justify-between items-center">
+                  <span className="text-text-secondary">Package</span>
+                  <span className="font-bold text-text-primary">{result.packageName}</span>
+                </div>
+              )}
+
+              {result?.sessionsGranted ? (
                 <div className="flex justify-between items-center">
                   <span className="text-text-secondary">Sessions Credited</span>
                   <span className="font-extrabold text-emerald-600 text-sm">
                     +{result.sessionsGranted} Live Coaching Sessions
                   </span>
                 </div>
-              )}
+              ) : result?.isGuest ? (
+                <div className="flex justify-between items-center">
+                  <span className="text-text-secondary">Account Assignment</span>
+                  <span className="font-extrabold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full text-[10px]">
+                    Pending Admin Assignment
+                  </span>
+                </div>
+              ) : null}
 
               <div className="flex justify-between items-center">
                 <span className="text-text-secondary">Official Receipt</span>
@@ -177,15 +192,30 @@ function PaymentStatusContent() {
             </div>
 
             {isSuccess ? (
-              <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl text-xs text-emerald-900 flex items-start gap-3">
-                <span className="text-lg">✨</span>
-                <div className="space-y-1">
-                  <p className="font-bold">What happens next?</p>
-                  <p className="text-emerald-800/90 leading-relaxed text-[11px]">
-                    Your head coach will review your personalized learning plan. You can view your session balance and schedule upcoming classes directly from your student portal.
+              result?.isGuest ? (
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl text-xs text-blue-900 space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-blue-950">
+                    <span>📋</span>
+                    <span>Guest Payment Recorded Successfully</span>
+                  </div>
+                  <p className="text-blue-800 leading-relaxed text-[11px]">
+                    Your payment is safely registered under order <strong>{orderId}</strong>. Our academy administration will verify your contact details and assign the coaching sessions to your student account.
+                  </p>
+                  <p className="text-[11px] text-blue-700 font-medium">
+                    You can share your Order ID with us on WhatsApp to expedite onboarding!
                   </p>
                 </div>
-              </div>
+              ) : (
+                <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl text-xs text-emerald-900 flex items-start gap-3">
+                  <span className="text-lg">✨</span>
+                  <div className="space-y-1">
+                    <p className="font-bold">What happens next?</p>
+                    <p className="text-emerald-800/90 leading-relaxed text-[11px]">
+                      Your head coach will review your personalized learning plan. You can view your session balance and schedule upcoming classes directly from your student portal.
+                    </p>
+                  </div>
+                </div>
+              )
             ) : (
               <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 space-y-2">
                 <p className="font-bold">Need help with your payment?</p>
@@ -199,30 +229,43 @@ function PaymentStatusContent() {
             <div className="space-y-3 pt-2">
               {isSuccess ? (
                 <>
-                  <Link
-                    href="/dashboard/student"
-                    className="block w-full py-3.5 px-6 rounded-xl bg-primary hover:bg-primary-dark text-white font-extrabold text-xs text-center shadow-md transition-all"
-                  >
-                    Go to Student Dashboard →
-                  </Link>
-                  <div className="flex gap-3">
-                    <button
-                      type="button"
-                      onClick={() => window.print()}
-                      className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 hover:bg-slate-100 text-text-primary font-bold text-xs text-center transition-colors"
-                    >
-                      🖨️ Print Receipt
-                    </button>
+                  {!result?.isGuest ? (
                     <Link
-                      href="/programs"
-                      className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 hover:bg-slate-100 text-text-secondary hover:text-text-primary font-semibold text-xs text-center transition-colors"
+                      href="/dashboard/student"
+                      className="block w-full py-3.5 px-6 rounded-xl bg-primary hover:bg-primary-dark text-white font-extrabold text-xs text-center shadow-md transition-all"
                     >
-                      Back to Programs
+                      Go to Student Dashboard →
                     </Link>
-                  </div>
-                </>
-              ) : (
-                <div className="flex flex-col sm:flex-row gap-3">
+                  ) : (
+                    <a
+                      href={`https://wa.me/917008665245?text=${encodeURIComponent(
+                        `Hello ChessHub Academy! I just completed enrollment for order ${orderId}. Please assign the sessions to my student account.`
+                      )}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block w-full py-3.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs text-center shadow-md transition-all"
+                    >
+                      💬 Notify Academy on WhatsApp →
+                    </a>
+                  )}
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => window.print()}
+                        className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 hover:bg-slate-100 text-text-primary font-bold text-xs text-center transition-colors"
+                      >
+                        🖨️ Print Receipt
+                      </button>
+                      <Link
+                        href="/programs"
+                        className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 hover:bg-slate-100 text-text-secondary hover:text-text-primary font-semibold text-xs text-center transition-colors"
+                      >
+                        Back to Programs
+                      </Link>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex flex-col sm:flex-row gap-3">
                   <button
                     type="button"
                     onClick={() => router.refresh()}

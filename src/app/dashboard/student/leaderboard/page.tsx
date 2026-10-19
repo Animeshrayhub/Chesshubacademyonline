@@ -35,11 +35,6 @@ export default async function StudentLeaderboardPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Academy Leaderboard"
-        subtitle="Track your standing among fellow academy peers across XP, tactics solves, workbook completions, and chess rating."
-      />
-
       <StudentLeaderboardHub
         initialData={data}
         currentUserId={user.id}

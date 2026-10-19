@@ -123,6 +123,9 @@ export interface ClassroomContextValue {
   onSendReaction: (emoji: string) => Promise<boolean>;
   /** Coach broadcasts a question prompt to all students */
   onAskQuestion: (question: CoachQuestion) => Promise<boolean>;
+  /** When enabled by coach, student drawings broadcast live to entire class */
+  studentShowcaseMode: boolean;
+  onToggleStudentShowcaseMode: (enabled: boolean) => void;
   onEndClass: (
     attendanceRecords?: any[],
     reviewNotes?: string,
@@ -176,6 +179,7 @@ export function ClassroomStateProvider({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [puzzleAttemptResult, setPuzzleAttemptResult] = useState<PuzzleAttemptResult | null>(null);
   const clearPuzzleAttemptResult = useCallback(() => setPuzzleAttemptResult(null), []);
+  const [studentShowcaseMode, setStudentShowcaseMode] = useState(false);
 
   const isCoach = role === 'coach' || role === 'admin';
   const canMove = canUserMoveBoard(role, userId, snapshot.permissions) && connectionState !== 'disconnected';
@@ -390,6 +394,23 @@ export function ClassroomStateProvider({
                 highlights: Array.isArray(payload.highlights) ? payload.highlights : [],
               },
             }));
+          }
+          return;
+        }
+
+        // Live student drawing showcase mode toggle
+        if (payload.type === 'STUDENT_SHOWCASE_MODE') {
+          setStudentShowcaseMode(Boolean(payload.enabled));
+          return;
+        }
+
+        // Live classroom bookmark created
+        if (payload.type === 'CLASSROOM_BOOKMARK_CREATED') {
+          if (payload.bookmark) {
+            setBookmarks((prev) => {
+              if (prev.some((b) => b.id === payload.bookmark.id)) return prev;
+              return [payload.bookmark, ...prev];
+            });
           }
           return;
         }
@@ -1267,6 +1288,28 @@ export function ClassroomStateProvider({
     [sessionId, userId]
   );
 
+  const onToggleStudentShowcaseMode = useCallback(
+    (enabled: boolean) => {
+      setStudentShowcaseMode(enabled);
+      try {
+        activeChannelRef.current?.send({
+          type: 'broadcast',
+          event: 'STUDENT_SHOWCASE_MODE',
+          payload: {
+            type: 'STUDENT_SHOWCASE_MODE',
+            enabled,
+            sessionId,
+            senderId: userId,
+            timestamp: new Date().toISOString(),
+          },
+        });
+      } catch (err) {
+        console.warn('[onToggleStudentShowcaseMode Broadcast Error]', err);
+      }
+    },
+    [sessionId, userId]
+  );
+
   const onStartQuiz = useCallback(
     async (question: string, options: string[], correctIndex: number, explanation: string): Promise<boolean> => {
       const res = await mutateClassroomStartQuizAction(sessionId, question, options, correctIndex, explanation, snapshotRef.current.version);
@@ -1433,10 +1476,38 @@ export function ClassroomStateProvider({
 
   const onCreateBookmark = useCallback(
     async (fen: string, moveIndex: number, note: string): Promise<boolean> => {
-      const res = await mutateClassroomCreateBookmarkAction(classId, sessionId, fen, moveIndex, note);
+      const cleanNote = note.trim() || `Instructive moment on move ${Math.max(1, Math.floor(moveIndex / 2) + 1)}`;
+      const newBookmark: ClassroomBookmark = {
+        id: `bm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        classId,
+        sessionId,
+        createdBy: userName,
+        fen,
+        moveIndex,
+        note: cleanNote,
+        createdAt: new Date().toISOString(),
+      };
+
+      // 1. Optimistic local update
+      setBookmarks((prev) => [newBookmark, ...prev]);
+
+      // 2. Direct broadcast over Realtime
+      try {
+        activeChannelRef.current?.send({
+          type: 'broadcast',
+          event: 'CLASSROOM_BOOKMARK_CREATED',
+          payload: {
+            type: 'CLASSROOM_BOOKMARK_CREATED',
+            bookmark: newBookmark,
+          },
+        });
+      } catch {}
+
+      // 3. Persist to DB
+      const res = await mutateClassroomCreateBookmarkAction(classId, sessionId, fen, moveIndex, cleanNote);
       return res.success;
     },
-    [classId, sessionId]
+    [classId, sessionId, userName]
   );
 
   const onToggleRaiseHand = useCallback(
@@ -1672,6 +1743,8 @@ export function ClassroomStateProvider({
       onCoachLowerAllHands,
       onSendReaction,
       onAskQuestion,
+      studentShowcaseMode,
+      onToggleStudentShowcaseMode,
       onEndClass,
     }),
     [
@@ -1696,6 +1769,8 @@ export function ClassroomStateProvider({
       clearError,
       puzzleAttemptResult,
       clearPuzzleAttemptResult,
+      studentShowcaseMode,
+      onToggleStudentShowcaseMode,
       onMakeMove,
       onUndoMove,
       onResetBoard,
