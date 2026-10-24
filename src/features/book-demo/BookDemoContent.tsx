@@ -3,7 +3,7 @@
 import { useState, Suspense } from 'react';
 import Link from 'next/link';
 import Container from '@/components/ui/Container';
-import BookDemoForm from '@/features/book-demo/BookDemoForm';
+import BookDemoForm, { type BookingSuccessInfo } from '@/features/book-demo/BookDemoForm';
 
 const TRUST_ITEMS = [
   {
@@ -90,49 +90,121 @@ const NEXT_STEPS = [
   },
 ];
 
-function SuccessState({ name }: { name: string }) {
+function SuccessState({ info }: { info: BookingSuccessInfo }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(info.bookingRef);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
   return (
-    <div className="text-center py-12 px-6">
-      <div className="w-24 h-24 rounded-full bg-green-50 border-4 border-green-200 flex items-center justify-center mx-auto mb-8">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" className="text-green-500" aria-hidden="true">
-          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          <polyline points="22 4 12 14.01 9 11.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <div className="text-center py-8 px-4 sm:px-6">
+      <div className="w-20 h-20 rounded-full bg-amber-50 border-4 border-amber-200 flex items-center justify-center mx-auto mb-6 shadow-sm">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" className="text-amber-600" aria-hidden="true">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+          <polyline points="12 6 12 12 16 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
         </svg>
       </div>
+
+      <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold uppercase tracking-wider mb-4 border border-amber-200">
+        <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+        Request Pending Admin Approval
+      </div>
+
       <h2 className="font-heading text-3xl font-bold text-text-primary mb-3">
-        Demo Booked Successfully! 🎉
+        Demo Request Received! ♟️
       </h2>
-      <p className="text-text-secondary text-lg mb-10 max-w-lg mx-auto">
-        Thank you, <strong>{name}</strong>! Your free demo class request has been received. Our team will send a confirmation email within 2 hours.
+
+      <p className="text-text-secondary text-base mb-6 max-w-lg mx-auto">
+        Thank you, <strong>{info.parentName}</strong>! We have received your booking request for{' '}
+        <strong>{info.studentName}</strong>. A receipt has been sent to your email.
       </p>
+
+      {/* Booking Reference Pill */}
+      <div className="max-w-md mx-auto bg-surface-light border border-border rounded-2xl p-4 mb-8 flex items-center justify-between shadow-sm">
+        <div className="text-left">
+          <div className="text-xs text-text-secondary uppercase tracking-wider font-semibold">Booking Reference</div>
+          <div className="font-mono font-bold text-lg text-primary">{info.bookingRef}</div>
+        </div>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-white border border-border hover:bg-slate-50 transition-colors"
+        >
+          {copied ? '✓ Copied' : 'Copy Ref'}
+        </button>
+      </div>
+
+      <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-200/60 max-w-lg mx-auto text-left text-xs text-blue-900 leading-relaxed mb-8">
+        <strong>Important Note on Confirmation:</strong> To ensure high-quality learning, demo slots are not confirmed automatically. Our admissions team matches each student with a qualified coach and emails the official confirmation with your Google Meet link once approved.
+      </div>
+
       <div className="max-w-xl mx-auto text-left mb-10">
         <h3 className="font-heading font-bold text-text-primary text-xl mb-6 text-center">
           What Happens Next
         </h3>
         <div className="space-y-4">
-          {NEXT_STEPS.map((s) => (
-            <div key={s.step} className="flex gap-4 p-5 bg-surface-light rounded-2xl border border-border">
-              <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center flex-shrink-0 text-white font-bold text-sm">
-                {s.step}
+          {[
+            {
+              step: 1,
+              title: 'Request Logged (Pending Approval)',
+              description: 'Your request and preferred slot are safely stored with reference ' + info.bookingRef + '.',
+              status: 'done',
+            },
+            {
+              step: 2,
+              title: 'Instructor Assignment',
+              description: "We verify coach availability and assign a FIDE-rated instructor matched to your child's level.",
+              status: 'active',
+            },
+            {
+              step: 3,
+              title: 'Confirmation Email & Google Meet Link',
+              description: 'You will receive an official confirmation email containing the confirmed time and meeting link.',
+              status: 'pending',
+            },
+            {
+              step: 4,
+              title: 'Live 1-on-1 Demo Class',
+              description: 'Join the live interactive class on Google Meet. No setup or chess board software required.',
+              status: 'pending',
+            },
+          ].map((s) => (
+            <div key={s.step} className="flex gap-4 p-4 bg-surface-light rounded-2xl border border-border">
+              <div
+                className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 font-bold text-sm ${
+                  s.status === 'done'
+                    ? 'bg-green-600 text-white'
+                    : s.status === 'active'
+                    ? 'bg-amber-500 text-white animate-pulse'
+                    : 'bg-primary text-white'
+                }`}
+              >
+                {s.status === 'done' ? '✓' : s.step}
               </div>
               <div>
-                <div className="font-semibold text-text-primary mb-1">{s.title}</div>
-                <div className="text-text-secondary text-sm leading-relaxed">{s.description}</div>
+                <div className="font-semibold text-text-primary text-sm mb-0.5">{s.title}</div>
+                <div className="text-text-secondary text-xs leading-relaxed">{s.description}</div>
               </div>
             </div>
           ))}
         </div>
       </div>
+
       <div className="flex flex-col sm:flex-row gap-4 justify-center">
         <Link
           href="/"
-          className="inline-flex items-center justify-center px-8 py-4 bg-primary hover:bg-primary-dark text-white font-semibold rounded-xl transition-colors"
+          className="inline-flex items-center justify-center px-8 py-3.5 bg-primary hover:bg-primary-dark text-white font-semibold rounded-xl transition-colors text-sm"
         >
           Back to Home
         </Link>
         <Link
           href="/blog"
-          className="inline-flex items-center justify-center px-8 py-4 border-2 border-border text-text-secondary hover:border-primary hover:text-primary font-semibold rounded-xl transition-colors"
+          className="inline-flex items-center justify-center px-8 py-3.5 border-2 border-border text-text-secondary hover:border-primary hover:text-primary font-semibold rounded-xl transition-colors text-sm"
         >
           Read Chess Tips
         </Link>
@@ -142,8 +214,7 @@ function SuccessState({ name }: { name: string }) {
 }
 
 export default function BookDemoContent() {
-  const [submitted, setSubmitted] = useState(false);
-  const [parentName, setParentName] = useState('');
+  const [submittedInfo, setSubmittedInfo] = useState<BookingSuccessInfo | null>(null);
 
   return (
     <>
@@ -173,8 +244,8 @@ export default function BookDemoContent() {
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-12 items-start">
             {/* Form */}
             <div className="bg-white rounded-3xl border border-border shadow-card p-8 lg:p-10">
-              {submitted ? (
-                <SuccessState name={parentName} />
+              {submittedInfo ? (
+                <SuccessState info={submittedInfo} />
               ) : (
                 <>
                   <h2 className="font-heading text-2xl font-bold text-text-primary mb-2">
@@ -185,9 +256,8 @@ export default function BookDemoContent() {
                   </p>
                   <Suspense fallback={<div className="p-8 text-center text-text-secondary">Loading form...</div>}>
                     <BookDemoForm
-                      onSuccess={(name) => {
-                        setParentName(name);
-                        setSubmitted(true);
+                      onSuccess={(info) => {
+                        setSubmittedInfo(info);
                       }}
                     />
                   </Suspense>

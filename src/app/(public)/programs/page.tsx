@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import Container from '@/components/ui/Container';
@@ -99,7 +100,9 @@ export default function ProgramsPage() {
       </section>
 
       {/* Coaching Packages & Pricing Section with Dual Currency Toggle & Geo-detection */}
-      <ProgramsPricingSection />
+      <Suspense fallback={<div className="py-20 text-center text-text-secondary">Loading pricing packages...</div>}>
+        <ProgramsPricingSection />
+      </Suspense>
 
       {/* Programs Detail */}
       <section className="py-20 bg-surface-light" aria-label="Program details">

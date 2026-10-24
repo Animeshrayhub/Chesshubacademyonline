@@ -21,13 +21,44 @@ export async function assignCoachToBookingAction(bookingId: string, coachId: str
   return JSON.parse(JSON.stringify(result));
 }
 
+export async function confirmBookingAction(params: {
+  bookingId: string;
+  coachUserId: string;
+  confirmedTime: string;
+  timeZone?: string;
+  googleMeetUrl?: string;
+}) {
+  const result = await bookingsService.confirmBooking(params);
+  if (result.success) {
+    revalidatePath('/dashboard/admin/bookings');
+    revalidatePath('/dashboard/admin');
+  }
+  return JSON.parse(JSON.stringify(result));
+}
+
+export async function updateBookingMeetingUrlAction(bookingId: string, meetingUrl: string) {
+  const result = await bookingsService.updateBookingMeetingUrl(bookingId, meetingUrl);
+  if (result.success) {
+    revalidatePath('/dashboard/admin/bookings');
+  }
+  return JSON.parse(JSON.stringify(result));
+}
+
+export async function cancelBookingAction(bookingId: string, reason?: string) {
+  const result = await bookingsService.cancelBooking(bookingId, reason);
+  if (result.success) {
+    revalidatePath('/dashboard/admin/bookings');
+    revalidatePath('/dashboard/admin');
+  }
+  return JSON.parse(JSON.stringify(result));
+}
+
 export async function convertBookingToStudentAction(bookingId: string, passwordConfirm: string) {
   const result = await bookingsService.convertBookingToStudent(bookingId, passwordConfirm);
   if (result.success) {
     revalidatePath('/dashboard/admin/bookings');
     revalidatePath('/dashboard/admin/students');
     revalidatePath('/dashboard/admin');
-    // Revalidate the student dashboard so the new student starts with real (empty) data
     revalidatePath('/dashboard/student');
   }
   return JSON.parse(JSON.stringify(result));
@@ -38,9 +69,12 @@ export async function createBookingAction(bookingData: {
   parent_email: string;
   parent_phone: string;
   student_name: string;
-  student_age: number;
+  student_age: number | string;
   preferred_time: string;
   referral_code?: string;
+  experience?: string;
+  timezone?: string;
+  message?: string;
 }) {
   const result = await bookingsService.createBooking(bookingData);
   if (result.success) {
@@ -50,8 +84,12 @@ export async function createBookingAction(bookingData: {
   return JSON.parse(JSON.stringify(result));
 }
 
-export async function rescheduleBookingAction(bookingId: string, newPreferredTime: string) {
-  const result = await bookingsService.rescheduleBooking(bookingId, newPreferredTime);
+export async function rescheduleBookingAction(
+  bookingId: string,
+  newPreferredTime: string,
+  timeZone?: string
+) {
+  const result = await bookingsService.rescheduleBooking(bookingId, newPreferredTime, timeZone);
   if (result.success) {
     revalidatePath('/dashboard/admin/bookings');
     revalidatePath('/dashboard/admin/reports/bookings');
