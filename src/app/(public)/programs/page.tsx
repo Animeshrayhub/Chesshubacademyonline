@@ -11,8 +11,6 @@ import { PROGRAMS } from '@/constants/PROGRAMS';
 import ProgramsPricingSection from '@/features/programs/ProgramsPricingSection';
 import { SITE_URL, SITE_OG_IMAGE } from '@/constants/SITE';
 
-export const dynamic = 'force-dynamic';
-
 export const metadata: Metadata = {
   title: 'Programs',
   description:

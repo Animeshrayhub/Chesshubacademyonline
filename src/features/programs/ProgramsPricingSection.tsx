@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Container from '@/components/ui/Container';
 import CashfreeCheckoutButton from '@/components/payment/CashfreeCheckoutButton';
@@ -11,22 +11,38 @@ import {
   type CurrencyCode,
 } from '@/constants/PRICING';
 
-export default function ProgramsPricingSection() {
+/**
+ * Dedicated isolated client component whose sole responsibility is reading URL search parameters.
+ * Wrapped in a React Suspense boundary to prevent Next.js SSR / static prerender CSR bailouts.
+ */
+function UrlCurrencyParamSync({
+  onCurrencyParam,
+}: {
+  onCurrencyParam: (currency: CurrencyCode) => void;
+}) {
   const searchParams = useSearchParams();
-  const urlCurrency = searchParams.get('currency')?.toUpperCase() as CurrencyCode | undefined;
 
+  useEffect(() => {
+    const raw = searchParams.get('currency')?.toUpperCase();
+    if (raw === 'USD' || raw === 'INR') {
+      onCurrencyParam(raw as CurrencyCode);
+    }
+  }, [searchParams, onCurrencyParam]);
+
+  return null;
+}
+
+export default function ProgramsPricingSection() {
   const [currency, setCurrency] = useState<CurrencyCode>('INR');
   const [detectedGeo, setDetectedGeo] = useState<string>('Detecting location...');
 
-  useEffect(() => {
-    // 1. Honor explicit URL currency if provided
-    if (urlCurrency === 'USD' || urlCurrency === 'INR') {
-      setCurrency(urlCurrency);
-      setDetectedGeo(urlCurrency === 'USD' ? 'Selected: International (USD)' : 'Selected: India (INR)');
-      return;
-    }
+  const handleCurrencyParam = useCallback((paramCurrency: CurrencyCode) => {
+    setCurrency(paramCurrency);
+    setDetectedGeo(paramCurrency === 'USD' ? 'Selected: International (USD)' : 'Selected: India (INR)');
+  }, []);
 
-    // 2. Intelligent Geo-detection based on browser timezone and locale
+  useEffect(() => {
+    // Intelligent Geo-detection based on browser timezone and locale
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
       const isIndia =
@@ -36,20 +52,23 @@ export default function ProgramsPricingSection() {
         tz === 'IST';
 
       if (isIndia) {
-        setCurrency('INR');
-        setDetectedGeo('Auto-detected: India (INR)');
+        setCurrency((prev) => (prev ? prev : 'INR'));
+        setDetectedGeo((prev) => (prev.startsWith('Selected:') ? prev : 'Auto-detected: India (INR)'));
       } else {
-        setCurrency('USD');
-        setDetectedGeo(`Auto-detected: International (${tz.split('/')[0] || 'Global'})`);
+        setCurrency((prev) => (prev ? prev : 'USD'));
+        setDetectedGeo((prev) => (prev.startsWith('Selected:') ? prev : `Auto-detected: International (${tz.split('/')[0] || 'Global'})`));
       }
     } catch {
-      setCurrency('INR');
-      setDetectedGeo('Default: India (INR)');
+      setCurrency((prev) => (prev ? prev : 'INR'));
+      setDetectedGeo((prev) => (prev.startsWith('Selected:') ? prev : 'Default: India (INR)'));
     }
-  }, [urlCurrency]);
+  }, []);
 
   return (
     <section id="packages" className="py-20 bg-slate-950 text-white relative overflow-hidden" aria-label="Coaching packages">
+      <Suspense fallback={null}>
+        <UrlCurrencyParamSync onCurrencyParam={handleCurrencyParam} />
+      </Suspense>
       <div className="absolute inset-0 chess-bg opacity-40 pointer-events-none" aria-hidden="true" />
       <Container className="relative z-10">
         {/* Header */}
