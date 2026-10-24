@@ -9,13 +9,35 @@ import Button from '@/components/ui/Button';
 import type { BookDemoFormData } from '@/types';
 import { createBookingAction } from '@/actions/bookings';
 
-const EXPERIENCE_OPTIONS = [
-  { value: 'none', label: 'No experience — complete beginner' },
-  { value: 'basics', label: 'Knows the rules, limited play' },
-  { value: 'club', label: 'Club player (no FIDE rating)' },
-  { value: 'rated-below-1000', label: 'FIDE rated below 1000' },
-  { value: 'rated-1000-1500', label: 'FIDE rated 1000–1500' },
-  { value: 'rated-above-1500', label: 'FIDE rated above 1500' },
+const EXPERIENCE_LEVELS = [
+  {
+    value: 'Complete Beginner (Never played before)',
+    badge: 'Beginner',
+    icon: '🌱',
+    title: 'Complete Beginner',
+    description: 'Never played before or just starting with the board',
+  },
+  {
+    value: 'Knows Basic Rules (Casual player)',
+    badge: 'Casual',
+    icon: '♞',
+    title: 'Knows Basic Rules',
+    description: 'Understands piece moves and basic checkmate concepts',
+  },
+  {
+    value: 'Online Player (Chess.com / Lichess)',
+    badge: 'Intermediate',
+    icon: '⚔️',
+    title: 'Online Player',
+    description: 'Plays on Chess.com / Lichess, solves daily puzzles',
+  },
+  {
+    value: 'Tournament / Rated Player (Club or FIDE)',
+    badge: 'Advanced',
+    icon: '🏆',
+    title: 'Rated / Tournament Player',
+    description: 'Competes in club tournaments or holds a FIDE rating',
+  },
 ];
 
 const TIME_OPTIONS = [
@@ -314,16 +336,56 @@ export default function BookDemoForm({ onSuccess }: BookDemoFormProps) {
             required
           />
           <div className="sm:col-span-2">
-            <Select
-              id="demo-experience"
-              label="Chess Experience Level"
-              options={EXPERIENCE_OPTIONS}
-              placeholder="Select experience level"
-              value={form.experience}
-              onChange={setField('experience')}
-              error={errors.experience}
-              required
-            />
+            <label className="block text-sm font-semibold text-text-primary mb-2">
+              Chess Experience Level <span className="text-error" aria-hidden="true">*</span>
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" role="radiogroup" aria-label="Chess Experience Level">
+              {EXPERIENCE_LEVELS.map((level) => {
+                const isSelected = form.experience === level.value;
+                return (
+                  <button
+                    key={level.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={isSelected}
+                    onClick={() => {
+                      setForm((prev) => ({ ...prev, experience: level.value }));
+                      if (errors.experience) {
+                        setErrors((prev) => ({ ...prev, experience: undefined }));
+                      }
+                    }}
+                    className={`relative p-3.5 rounded-xl border-2 text-left transition-all duration-200 cursor-pointer flex flex-col justify-between ${
+                      isSelected
+                        ? 'border-accent bg-accent/5 ring-2 ring-accent/30 shadow-sm'
+                        : 'border-border bg-white hover:border-slate-300 hover:bg-slate-50/50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl" role="img" aria-hidden="true">{level.icon}</span>
+                        <span className="font-heading font-bold text-sm text-text-primary">{level.title}</span>
+                      </div>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                        isSelected
+                          ? 'bg-accent text-surface-dark'
+                          : 'bg-slate-100 text-slate-600'
+                      }`}>
+                        {isSelected ? '✓ Selected' : level.badge}
+                      </span>
+                    </div>
+                    <p className="text-xs text-text-secondary leading-relaxed">{level.description}</p>
+                  </button>
+                );
+              })}
+            </div>
+            {errors.experience && (
+              <p className="text-xs text-error mt-2 flex items-center gap-1" role="alert">
+                <svg className="w-3.5 h-3.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                {errors.experience}
+              </p>
+            )}
           </div>
         </div>
       </div>
