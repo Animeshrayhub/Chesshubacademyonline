@@ -4,6 +4,8 @@ import JsonLd from '@/components/seo/JsonLd';
 import BookDemoContent from '@/features/book-demo/BookDemoContent';
 import { SITE_URL, SITE_OG_IMAGE } from '@/constants/SITE';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Book a Free Demo Class',
   description:
