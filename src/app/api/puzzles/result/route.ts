@@ -80,6 +80,26 @@ export async function POST(req: NextRequest) {
 
     const studentProfileId = profile.id;
 
+    // Anti-Cheat: Check if this puzzle was already solved previously by this student
+    let alreadySolvedPreviously = false;
+    if (body.solved) {
+      try {
+        const { data: previousSolves } = await admin
+          .from('puzzle_results')
+          .select('id')
+          .eq('student_id', studentProfileId)
+          .eq('puzzle_id', body.puzzleId)
+          .eq('solved', true)
+          .limit(1);
+
+        if (previousSolves && previousSolves.length > 0) {
+          alreadySolvedPreviously = true;
+        }
+      } catch (checkErr) {
+        console.warn('Could not check previous puzzle solve:', checkErr);
+      }
+    }
+
     const result = await withRetry(async () => {
       const res = await savePuzzleResult(studentProfileId, body);
       if (!res.success) {
@@ -112,12 +132,6 @@ export async function POST(req: NextRequest) {
         const currentRating = typeof stats.tacticalRating === 'number' && stats.tacticalRating >= 400 ? stats.tacticalRating : 1200;
         const puzzleRating = typeof body.puzzleRating === 'number' && body.puzzleRating > 0 ? body.puzzleRating : currentRating;
 
-        // Server-Side Elo Calculation (Anti-Cheat Single Source of Truth)
-        const kFactor = 32;
-        const expectedScore = 1 / (1 + Math.pow(10, (puzzleRating - currentRating) / 400));
-        const actualScore = body.solved ? 1 : 0;
-        ratingDelta = Math.round(kFactor * (actualScore - expectedScore));
-
         const hintsUsed = typeof (body as any).hintsUsed === 'number' ? (body as any).hintsUsed : 0;
 
         const todayStr = new Date().toISOString().split('T')[0];
@@ -127,33 +141,46 @@ export async function POST(req: NextRequest) {
           stats.lastPuzzleDate = todayStr;
         }
 
-        let isDailyGoalJustCompleted = false;
-
         if (body.solved) {
-          if (hintsUsed > 0) {
-            ratingDelta = Math.max(2, Math.round(ratingDelta * 0.5));
-            xpGain = 5;
+          if (alreadySolvedPreviously) {
+            // Anti-Cheat: Student already solved this puzzle previously.
+            // Do not award new Elo, XP, or streak. Only clear from mistake review queue.
+            ratingDelta = 0;
+            xpGain = 0;
+            stats.reviewMistakes = (stats.reviewMistakes || []).filter((id) => id !== body.puzzleId);
           } else {
-            if (ratingDelta < 5) ratingDelta = 5;
-            xpGain = 10;
+            // Server-Side Elo Calculation (Anti-Cheat Single Source of Truth)
+            const kFactor = 32;
+            const expectedScore = 1 / (1 + Math.pow(10, (puzzleRating - currentRating) / 400));
+            ratingDelta = Math.round(kFactor * (1 - expectedScore));
+
+            if (hintsUsed > 0) {
+              ratingDelta = Math.max(2, Math.round(ratingDelta * 0.5));
+              xpGain = 5;
+            } else {
+              if (ratingDelta < 5) ratingDelta = 5;
+              xpGain = 10;
+            }
+
+            stats.todayPuzzlesSolved = (stats.todayPuzzlesSolved || 0) + 1;
+
+            // 5 Puzzles Daily Quota: Award Daily Master badge & bonus 50 XP
+            if (stats.todayPuzzlesSolved === 5 && !stats.dailyGoalAchieved) {
+              stats.dailyGoalAchieved = true;
+              xpGain += 50; // Daily Master bonus
+              stats.dailyMasterCount = (stats.dailyMasterCount || 0) + 1;
+              stats.puzzleStreak = (stats.puzzleStreak || 0) + 1;
+            }
+
+            stats.xp += xpGain;
+            stats.puzzlesSolved = (stats.puzzlesSolved || 0) + 1;
+            stats.reviewMistakes = (stats.reviewMistakes || []).filter((id) => id !== body.puzzleId);
           }
-
-          stats.todayPuzzlesSolved = (stats.todayPuzzlesSolved || 0) + 1;
-
-          // 5 Puzzles Daily Quota: Award Daily Master badge & bonus 50 XP
-          if (stats.todayPuzzlesSolved === 5 && !stats.dailyGoalAchieved) {
-            stats.dailyGoalAchieved = true;
-            isDailyGoalJustCompleted = true;
-            xpGain += 50; // Daily Master bonus
-            stats.dailyMasterCount = (stats.dailyMasterCount || 0) + 1;
-            stats.puzzleStreak = (stats.puzzleStreak || 0) + 1;
-          }
-
-          stats.xp += xpGain;
-          stats.puzzlesSolved = (stats.puzzlesSolved || 0) + 1;
-          stats.reviewMistakes = (stats.reviewMistakes || []).filter((id) => id !== body.puzzleId);
         } else {
           // Failed or forfeited
+          const kFactor = 32;
+          const expectedScore = 1 / (1 + Math.pow(10, (puzzleRating - currentRating) / 400));
+          ratingDelta = Math.round(kFactor * (0 - expectedScore));
           if (ratingDelta > -5) ratingDelta = -5;
           if (ratingDelta < -20) ratingDelta = -20;
           if (!stats.reviewMistakes) stats.reviewMistakes = [];
@@ -162,9 +189,13 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        stats.puzzlesAttempted = (stats.puzzlesAttempted || 0) + 1;
-        serverTacticalRating = Math.max(400, currentRating + ratingDelta);
-        stats.tacticalRating = serverTacticalRating;
+        if (!alreadySolvedPreviously) {
+          stats.puzzlesAttempted = (stats.puzzlesAttempted || 0) + 1;
+          serverTacticalRating = Math.max(400, currentRating + ratingDelta);
+          stats.tacticalRating = serverTacticalRating;
+        } else {
+          serverTacticalRating = currentRating;
+        }
 
         newStreak = stats.puzzleStreak || 0;
         totalSolved = stats.puzzlesSolved || 0;
@@ -189,6 +220,7 @@ export async function POST(req: NextRequest) {
       tacticalRating: serverTacticalRating,
       ratingDelta,
       xpGain,
+      alreadySolved: alreadySolvedPreviously,
       streak: newStreak,
       puzzlesSolved: totalSolved,
       puzzlesAttempted: totalAttempted,

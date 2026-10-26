@@ -68,6 +68,26 @@ const nextConfig = {
         destination: '/book-demo',
         permanent: true,
       },
+      {
+        source: '/dashboard/student/homework',
+        destination: '/dashboard/student/learning',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/student/homework/workbooks',
+        destination: '/dashboard/student/learning',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/student/homework/puzzles',
+        destination: '/dashboard/student/puzzles',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/student/studies',
+        destination: '/dashboard/student/learning',
+        permanent: false,
+      },
     ];
   },
   async headers() {

@@ -12,6 +12,7 @@ import {
   hydrateStatsFromDb,
 } from '@/lib/puzzles/progress';
 import ChessCoachAvatar, { CoachAvatarState } from '@/components/dashboard/ui/ChessCoachAvatar';
+import { customChessPieces } from '@/components/dashboard/ui/ChessPieces';
 
 const ChessboardComponent = dynamic(
   () => import('react-chessboard').then((mod) => wrapChessboard(mod.Chessboard)),
@@ -125,10 +126,48 @@ function buildSolutionFens(initialFen: string, solutionMoves: string[]): string[
   }
 }
 
+export type TrainerMode = 'daily' | 'unlimited' | 'theme' | 'rating' | 'mistakes';
+
+export const THEME_LIST = [
+  { id: 'ALL', label: 'All Motifs', icon: '⚡' },
+  { id: 'fork', label: 'Fork Tactics', icon: '🍴' },
+  { id: 'pin', label: 'Pin Tactics', icon: '📌' },
+  { id: 'skewer', label: 'Skewer', icon: '🍢' },
+  { id: 'mateIn1', label: 'Mate in 1', icon: '⚡' },
+  { id: 'mateIn2', label: 'Mate in 2', icon: '👑' },
+  { id: 'mateIn3', label: 'Mate in 3', icon: '🏆' },
+  { id: 'discoveredAttack', label: 'Discovered Attack', icon: '🔍' },
+  { id: 'doubleCheck', label: 'Double Check', icon: '⚔️' },
+  { id: 'sacrifice', label: 'Sacrifice', icon: '💥' },
+  { id: 'deflection', label: 'Deflection', icon: '🔀' },
+  { id: 'hangingPiece', label: 'Hanging Piece', icon: '🎯' },
+  { id: 'endgame', label: 'Endgame', icon: '🏁' },
+  { id: 'backRankMate', label: 'Back Rank Mate', icon: '🏰' },
+  { id: 'interference', label: 'Interference', icon: '🛑' },
+  { id: 'attraction', label: 'Attraction', icon: '🧲' },
+  { id: 'clearance', label: 'Clearance', icon: '🧹' },
+  { id: 'overload', label: 'Overloaded Piece', icon: '⚖️' },
+  { id: 'trappedPiece', label: 'Trapped Piece', icon: '🕸️' },
+  { id: 'quietMove', label: 'Quiet Move', icon: '🤫' },
+  { id: 'zugzwang', label: 'Zugzwang', icon: '⏳' },
+];
+
+export const DIFFICULTY_TIERS = [
+  { id: 'AUTO', label: 'Adaptive (My Rating)', icon: '🎯' },
+  { id: 'BEGINNER', label: 'Beginner (<1000)', icon: '🌱' },
+  { id: 'INTERMEDIATE', label: 'Intermediate (1000-1400)', icon: '⚔️' },
+  { id: 'ADVANCED', label: 'Advanced (1400-1800)', icon: '🔥' },
+  { id: 'EXPERT', label: 'Expert (1800-2200)', icon: '💎' },
+  { id: 'MASTER', label: 'Master (2200+)', icon: '👑' },
+];
+
 export default function StudentPuzzleTrainer() {
-  const [practiceMode, setPracticeMode] = useState<'daily' | 'unlimited' | 'mistakes'>('daily');
+  const [practiceMode, setPracticeMode] = useState<TrainerMode>('daily');
   const [selectedCategory, setSelectedCategory] = useState<PuzzleCategory>('TACTICS');
+  const [selectedTheme, setSelectedTheme] = useState<string>('ALL');
+  const [difficultyTier, setDifficultyTier] = useState<'AUTO' | 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'EXPERT' | 'MASTER'>('AUTO');
   const [categoryIndex, setCategoryIndex] = useState(0);
+  const seenPuzzlesRef = useRef<string[]>([]);
 
   const [currentPuzzle, setCurrentPuzzle] = useState<LichessPuzzle | null>(null);
   const [loading, setLoading] = useState(true);
@@ -162,6 +201,131 @@ export default function StudentPuzzleTrainer() {
   const [showForfeitModal, setShowForfeitModal] = useState(false);
   const [petReaction, setPetReaction] = useState<string>('Ready to calculate tactics? Look for checks and captures!');
   const [customSquareStyles, setCustomSquareStyles] = useState<Record<string, React.CSSProperties>>({});
+  const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
+  const [lastMoveSquares, setLastMoveSquares] = useState<{ from?: string; to?: string }>({});
+
+  // Dynamic 2D Board highlight resolver: combines last move, selected piece, check, and legal dots
+  const getCustomSquareStyles = useCallback(() => {
+    const styles: Record<string, React.CSSProperties> = { ...customSquareStyles };
+
+    // 1. Last move highlights (soft gold/yellow)
+    if (lastMoveSquares.from) {
+      styles[lastMoveSquares.from] = {
+        ...(styles[lastMoveSquares.from] || {}),
+        backgroundColor: 'rgba(255, 255, 0, 0.28)',
+      };
+    }
+    if (lastMoveSquares.to) {
+      styles[lastMoveSquares.to] = {
+        ...(styles[lastMoveSquares.to] || {}),
+        backgroundColor: 'rgba(255, 255, 0, 0.38)',
+      };
+    }
+
+    // 2. Selected square highlight
+    if (selectedSquare) {
+      styles[selectedSquare] = {
+        ...(styles[selectedSquare] || {}),
+        backgroundColor: 'rgba(212, 175, 55, 0.55)',
+      };
+    }
+
+    // 3. Check highlight on King
+    try {
+      if (chessRef.current.inCheck()) {
+        const turn = chessRef.current.turn();
+        const board = chessRef.current.board();
+        for (let r = 0; r < 8; r++) {
+          for (let c = 0; c < 8; c++) {
+            const piece = board[r][c];
+            if (piece && piece.type === 'k' && piece.color === turn) {
+              const file = String.fromCharCode(97 + c);
+              const rank = 8 - r;
+              const sq = `${file}${rank}`;
+              styles[sq] = {
+                ...(styles[sq] || {}),
+                backgroundColor: 'rgba(239, 68, 68, 0.65)',
+                boxShadow: 'inset 0 0 10px rgba(220, 38, 38, 0.9)',
+              };
+            }
+          }
+        }
+      }
+    } catch {}
+
+    return styles;
+  }, [customSquareStyles, lastMoveSquares, selectedSquare]);
+
+  // Click-to-move handler
+  const handleSquareClick = (squareOrObj: any) => {
+    if (isSolved || isFailed || isReplayingSolution || loading || !currentPuzzle) return;
+
+    const square = typeof squareOrObj === 'string' ? squareOrObj : (squareOrObj?.square || '');
+    if (!square) return;
+
+    // 1. If nothing is selected, try selecting player piece
+    if (!selectedSquare) {
+      const piece = chessRef.current.get(square as any);
+      if (piece && piece.color === chessRef.current.turn()) {
+        setSelectedSquare(square);
+        const moves = chessRef.current.moves({ square: square as any, verbose: true });
+        const dots: Record<string, React.CSSProperties> = {};
+        for (const m of moves) {
+          if (m.captured) {
+            dots[m.to] = {
+              background: 'radial-gradient(circle, rgba(239, 68, 68, 0.7) 22%, transparent 23%)',
+              boxShadow: 'inset 0 0 0 3px rgba(239, 68, 68, 0.6)',
+              borderRadius: '50%',
+            };
+          } else {
+            dots[m.to] = {
+              background: 'radial-gradient(circle, rgba(16, 185, 129, 0.65) 24%, transparent 25%)',
+              borderRadius: '50%',
+            };
+          }
+        }
+        setCustomSquareStyles(dots);
+      }
+      return;
+    }
+
+    // 2. If clicking same square, deselect
+    if (square === selectedSquare) {
+      setSelectedSquare(null);
+      setCustomSquareStyles({});
+      return;
+    }
+
+    // 3. If clicking another piece of player's color, switch selection
+    const clickedPiece = chessRef.current.get(square as any);
+    if (clickedPiece && clickedPiece.color === chessRef.current.turn()) {
+      setSelectedSquare(square);
+      const moves = chessRef.current.moves({ square: square as any, verbose: true });
+      const dots: Record<string, React.CSSProperties> = {};
+      for (const m of moves) {
+        if (m.captured) {
+          dots[m.to] = {
+            background: 'radial-gradient(circle, rgba(239, 68, 68, 0.7) 22%, transparent 23%)',
+            boxShadow: 'inset 0 0 0 3px rgba(239, 68, 68, 0.6)',
+            borderRadius: '50%',
+          };
+        } else {
+          dots[m.to] = {
+            background: 'radial-gradient(circle, rgba(16, 185, 129, 0.65) 24%, transparent 25%)',
+            borderRadius: '50%',
+          };
+        }
+      }
+      setCustomSquareStyles(dots);
+      return;
+    }
+
+    // 4. Try making move from selectedSquare to square
+    const moveUci = `${selectedSquare}${square}`;
+    setSelectedSquare(null);
+    setCustomSquareStyles({});
+    checkMoveUci(moveUci);
+  };
 
   // Interactive solution step review state
   const [solutionFens, setSolutionFens] = useState<string[]>([]);
@@ -183,14 +347,46 @@ export default function StudentPuzzleTrainer() {
 
   const chessRef = useRef<Chess>(new Chess());
 
-  // Fetch puzzle from proxy route with adaptive matchmaking & mistakes queue support
+  // Retry currently displayed puzzle from scratch
+  const handleRetryCurrentPuzzle = () => {
+    if (!currentPuzzle) return;
+    clearAnimationInterval();
+    setIsSolved(false);
+    setIsFailed(false);
+    setIsReplayingSolution(false);
+    setSolutionStep(0);
+    setAttempts(1);
+    setLives(MAX_CHANCES);
+    setUserMoveInput('');
+    setHintLevel(0);
+    setCustomSquareStyles({});
+    setStepReviewIndex(0);
+    setBoardFen(currentPuzzle.fen);
+    try {
+      chessRef.current = new Chess(currentPuzzle.fen);
+    } catch {
+      chessRef.current = new Chess();
+    }
+    setFeedback({
+      type: 'neutral',
+      text: `Try again! Find the best move for ${currentPuzzle.sideToMove === 'white' ? 'White ⚪' : 'Black ⬛'}! (${MAX_CHANCES} chances remaining)`,
+    });
+    setPetReaction('Calculate all responses before making your move!');
+  };
+
+  // Fetch puzzle from proxy route with adaptive matchmaking, theme filters, & mistakes queue support
   const fetchPuzzle = useCallback(
     async (
-      mode: 'daily' | 'unlimited' | 'mistakes',
+      mode: TrainerMode,
       category: PuzzleCategory,
       idx: number,
-      currentRating: number
+      currentRating: number,
+      themeOverride?: string,
+      tierOverride?: 'AUTO' | 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'EXPERT' | 'MASTER'
     ) => {
+      // 'theme' and 'rating' modes behave like 'unlimited' server-side
+      const resolvedMode: 'daily' | 'unlimited' | 'mistakes' =
+        mode === 'theme' || mode === 'rating' ? 'unlimited' : mode;
       setLoading(true);
       setIsSolved(false);
       setIsFailed(false);
@@ -205,9 +401,9 @@ export default function StudentPuzzleTrainer() {
 
       try {
         let url = '';
-        if (mode === 'daily') {
+        if (resolvedMode === 'daily') {
           url = '/api/puzzles/lichess?type=daily';
-        } else if (mode === 'mistakes') {
+        } else if (resolvedMode === 'mistakes') {
           const currentStats = getStudentPuzzleStats();
           const mistakes = currentStats.reviewMistakes || [];
           if (mistakes.length === 0) {
@@ -223,8 +419,19 @@ export default function StudentPuzzleTrainer() {
           const targetId = mistakes[idx % mistakes.length];
           url = `/api/puzzles/lichess?puzzleId=${targetId}`;
         } else {
-          // Adaptive: pass rating for difficulty matching
-          url = `/api/puzzles/lichess?category=${category}&index=${idx}&rating=${currentRating}`;
+          const activeTier = tierOverride || difficultyTier;
+          let targetRating = currentRating;
+          if (activeTier === 'BEGINNER')     targetRating = 900;
+          else if (activeTier === 'INTERMEDIATE') targetRating = 1300;
+          else if (activeTier === 'ADVANCED')    targetRating = 1700;
+          else if (activeTier === 'EXPERT')      targetRating = 2000;
+          else if (activeTier === 'MASTER')      targetRating = 2200;
+
+          const activeTheme = themeOverride !== undefined ? themeOverride : selectedTheme;
+          const themeQuery = activeTheme && activeTheme !== 'ALL' ? `&theme=${encodeURIComponent(activeTheme)}` : '';
+          const excludeQuery = seenPuzzlesRef.current.length > 0 ? `&exclude=${seenPuzzlesRef.current.slice(-25).join(',')}` : '';
+
+          url = `/api/puzzles/lichess?category=${category}&index=${idx}&rating=${targetRating}${themeQuery}${excludeQuery}`;
         }
 
         const res = await fetch(url);
@@ -237,6 +444,10 @@ export default function StudentPuzzleTrainer() {
           const fens = buildSolutionFens(p.fen, p.solution || []);
           setSolutionFens(fens);
           setStepReviewIndex(0);
+
+          if (p.id && !seenPuzzlesRef.current.includes(p.id)) {
+            seenPuzzlesRef.current.push(p.id);
+          }
 
           try {
             chessRef.current = new Chess(p.fen);
@@ -254,6 +465,11 @@ export default function StudentPuzzleTrainer() {
               ? '♟️ Academy Curated Lesson Puzzle! Find the coach-assigned tactical sequence.'
               : '⚡ Rated tactical position loaded! Calculate all defensive replies.'
           );
+        } else {
+          setFeedback({
+            type: 'warn',
+            text: data.error || 'No matching puzzles found for this theme/tier. Try another filter.',
+          });
         }
       } catch (err) {
         setFeedback({
@@ -264,7 +480,7 @@ export default function StudentPuzzleTrainer() {
         setLoading(false);
       }
     },
-    []
+    [difficultyTier, selectedTheme]
   );
 
   // Initial load & Hydration from Database
@@ -300,8 +516,15 @@ export default function StudentPuzzleTrainer() {
 
   // Fetch puzzle when mode, category, or index changes
   useEffect(() => {
-    fetchPuzzle(practiceMode, selectedCategory, categoryIndex, studentRating);
-  }, [practiceMode, selectedCategory, categoryIndex, fetchPuzzle]);
+    const r = Math.max(400, studentRating);
+    if (practiceMode === 'theme') {
+      fetchPuzzle('theme', selectedCategory, categoryIndex, r, selectedTheme);
+    } else if (practiceMode === 'rating') {
+      fetchPuzzle('rating', selectedCategory, categoryIndex, r, undefined, difficultyTier);
+    } else {
+      fetchPuzzle(practiceMode, selectedCategory, categoryIndex, r);
+    }
+  }, [practiceMode, selectedCategory, categoryIndex, studentRating, fetchPuzzle, selectedTheme, difficultyTier]);
 
   // Handle move validation with universal SAN & UCI recognition
   const checkMoveUci = (rawMove: string): boolean => {
@@ -311,8 +534,23 @@ export default function StudentPuzzleTrainer() {
     const expectedMoveStr = currentPuzzle.solution[solutionStep];
     if (!expectedMoveStr) return false;
 
+    // Auto-complete pawn promotion if student omitted promotion letter
+    let testMove = rawMove.trim();
+    if (testMove.length === 4) {
+      const fromSq = testMove.substring(0, 2);
+      const toSq = testMove.substring(2, 4);
+      const piece = chessRef.current.get(fromSq as any);
+      if (piece && piece.type === 'p') {
+        const destRank = toSq[1];
+        if (destRank === '8' || destRank === '1') {
+          const promoChar = expectedMoveStr && expectedMoveStr.length >= 5 ? expectedMoveStr[4].toLowerCase() : 'q';
+          testMove = `${testMove}${promoChar}`;
+        }
+      }
+    }
+
     // Resolve user's move and expected move on current board
-    const userMatched = findMatchingLegalMove(chessRef.current, rawMove);
+    const userMatched = findMatchingLegalMove(chessRef.current, testMove) || findMatchingLegalMove(chessRef.current, rawMove);
     const expectedMatched = findMatchingLegalMove(chessRef.current, expectedMoveStr);
 
     let isCorrect = false;
@@ -325,13 +563,14 @@ export default function StudentPuzzleTrainer() {
         (userMatched.promotion || '') === (expectedMatched.promotion || '');
     } else {
       // Fallback string comparisons for edge-cases
-      const cleanUser = rawMove.trim().toLowerCase().replace(/[\s\-\#\+\!\?\=x]/g, '');
+      const cleanUser = testMove.toLowerCase().replace(/[\s\-\#\+\!\?\=x]/g, '');
       const cleanExp = expectedMoveStr.trim().toLowerCase().replace(/[\s\-\#\+\!\?\=x]/g, '');
       isCorrect = cleanUser === cleanExp;
     }
 
     if (isCorrect && (userMatched || expectedMatched)) {
       const moveToPlay = userMatched || expectedMatched!;
+      setLastMoveSquares({ from: moveToPlay.from, to: moveToPlay.to });
       // Execute move on chess engine
       try {
         chessRef.current.move({
@@ -362,6 +601,7 @@ export default function StudentPuzzleTrainer() {
           try {
             const oppMatched = findMatchingLegalMove(chessRef.current, opponentReply);
             if (oppMatched) {
+              setLastMoveSquares({ from: oppMatched.from, to: oppMatched.to });
               chessRef.current.move({
                 from: oppMatched.from as any,
                 to: oppMatched.to as any,
@@ -596,12 +836,20 @@ export default function StudentPuzzleTrainer() {
             });
             setFeedback({
               type: 'success',
-              text: `🎉 PUZZLE SOLVED in ${durationSec}s! (${sData.ratingDelta >= 0 ? '+' : ''}${sData.ratingDelta} ⭐, +${sData.xpGain} XP)`,
+              text: sData.alreadySolved
+                ? `🎉 PUZZLE SOLVED in ${durationSec}s! (Review practice: no duplicate XP)`
+                : `🎉 PUZZLE SOLVED in ${durationSec}s! (${sData.ratingDelta >= 0 ? '+' : ''}${sData.ratingDelta} ⭐, +${sData.xpGain} XP)`,
             });
           }
+        } else if (syncRes.status === 401) {
+          // Gracefully continue in guest/offline mode
+          setFeedback({
+            type: 'success',
+            text: `🎉 PUZZLE SOLVED in ${durationSec}s! (+${recordRes.ratingDelta} ⭐, +${recordRes.xpGain} XP saved locally)`,
+          });
         }
       } catch (err) {
-        console.error('Failed to sync puzzle result to database:', err);
+        console.warn('Could not sync puzzle result to database (offline/guest):', err);
       }
     }
   };
@@ -845,64 +1093,117 @@ export default function StudentPuzzleTrainer() {
     : 'puzzle_start';
 
   return (
-    <div className="space-y-6">
-      {/* Mode & Category Bar */}
-      <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4">
-        {/* Mode Selector */}
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setPracticeMode('daily');
-              fetchPuzzle('daily', selectedCategory, 0, Math.max(400, studentRating + ladderOffset));
-            }}
-            className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1.5 ${
-              practiceMode === 'daily'
-                ? 'bg-amber-500 text-slate-950 shadow-gold'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-            }`}
-          >
-            <span>⭐</span>
-            <span>Daily Puzzle</span>
-          </button>
+    <div className="space-y-5">
+      {/* ── Mode Navigation Bar ── */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 flex flex-wrap items-center gap-2">
+        {[
+          { id: 'daily',    label: 'Daily Challenge', icon: '⭐', color: 'amber'   },
+          { id: 'unlimited', label: 'Random Practice', icon: '♾️', color: 'purple' },
+          { id: 'theme',    label: 'By Theme',         icon: '🎯', color: 'blue'   },
+          { id: 'rating',   label: 'By Difficulty',    icon: '📊', color: 'emerald'},
+          { id: 'mistakes', label: `Review Mistakes${mistakesQueue.length > 0 ? ` (${mistakesQueue.length})` : ''}`, icon: '🔁', color: 'red' },
+        ].map((m) => {
+          const active = practiceMode === m.id;
+          const colorMap: Record<string, string> = {
+            amber:   'bg-amber-500 text-slate-950 shadow-gold border-amber-400',
+            purple:  'bg-purple-600 text-white border-purple-500',
+            blue:    'bg-blue-600 text-white border-blue-500',
+            emerald: 'bg-emerald-600 text-white border-emerald-500',
+            red:     'bg-red-600 text-white border-red-500',
+          };
+          return (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => {
+                const newMode = m.id as TrainerMode;
+                setPracticeMode(newMode);
+                setCategoryIndex(0);
+                const r = Math.max(400, studentRating + ladderOffset);
+                if (newMode === 'daily')    fetchPuzzle('daily',     selectedCategory, 0, r);
+                if (newMode === 'unlimited') fetchPuzzle('unlimited', selectedCategory, 0, r);
+                if (newMode === 'theme')    fetchPuzzle('unlimited', selectedCategory, 0, r, selectedTheme);
+                if (newMode === 'rating')   fetchPuzzle('unlimited', selectedCategory, 0, r, undefined, difficultyTier);
+                if (newMode === 'mistakes') fetchPuzzle('mistakes',  selectedCategory, 0, r);
+              }}
+              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1.5 border ${
+                active ? colorMap[m.color] : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border-slate-700'
+              }`}
+            >
+              <span>{m.icon}</span>
+              <span>{m.label}</span>
+            </button>
+          );
+        })}
+      </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              setPracticeMode('unlimited');
-              fetchPuzzle('unlimited', selectedCategory, categoryIndex, Math.max(400, studentRating + ladderOffset));
-            }}
-            className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1.5 ${
-              practiceMode === 'unlimited'
-                ? 'bg-purple-600 text-white shadow-lg'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-            }`}
-          >
-            <span>♾️</span>
-            <span>Unlimited Practice</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setPracticeMode('mistakes');
-              setCategoryIndex(0);
-              fetchPuzzle('mistakes', selectedCategory, 0, Math.max(400, studentRating + ladderOffset));
-            }}
-            className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1.5 ${
-              practiceMode === 'mistakes'
-                ? 'bg-red-600 text-white shadow-lg'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-            }`}
-          >
-            <span>🔁</span>
-            <span>Review Mistakes ({mistakesQueue.length})</span>
-          </button>
+      {/* ── Theme Grid (shown when mode === 'theme') ── */}
+      {practiceMode === 'theme' && (
+        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-3">
+          <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Choose a Tactical Theme:</p>
+          <div className="flex flex-wrap gap-2">
+            {THEME_LIST.map((th) => {
+              const active = selectedTheme === th.id;
+              return (
+                <button
+                  key={th.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedTheme(th.id);
+                    setCategoryIndex(0);
+                    fetchPuzzle('unlimited', selectedCategory, 0, Math.max(400, studentRating + ladderOffset), th.id);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
+                    active
+                      ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border-slate-700'
+                  }`}
+                >
+                  <span>{th.icon}</span>
+                  <span>{th.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
+      )}
 
-        {/* Category Selector (Only active in Unlimited mode) */}
-        {practiceMode === 'unlimited' && (
+      {/* ── Difficulty Tier Cards (shown when mode === 'rating') ── */}
+      {practiceMode === 'rating' && (
+        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-3">
+          <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Choose Your Difficulty Level:</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+            {DIFFICULTY_TIERS.map((tier) => {
+              const active = difficultyTier === tier.id;
+              return (
+                <button
+                  key={tier.id}
+                  type="button"
+                  onClick={() => {
+                    setDifficultyTier(tier.id as any);
+                    setCategoryIndex(0);
+                    fetchPuzzle('unlimited', selectedCategory, 0, Math.max(400, studentRating + ladderOffset), undefined, tier.id as any);
+                  }}
+                  className={`p-3 rounded-xl text-center transition-all border flex flex-col items-center gap-1 ${
+                    active
+                      ? 'bg-emerald-600 text-white border-emerald-500 shadow-md'
+                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border-slate-700'
+                  }`}
+                >
+                  <span className="text-xl">{tier.icon}</span>
+                  <span className="text-[10px] font-extrabold leading-tight">{tier.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Unlimited mode category + theme dropdown ── */}
+      {practiceMode === 'unlimited' && (
+        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-3 flex flex-wrap items-center gap-3">
           <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Category:</span>
             {(['TACTICS', 'CHECKMATE', 'CALCULATION', 'ENDGAME', 'MIXED'] as PuzzleCategory[]).map((cat) => (
               <button
                 key={cat}
@@ -912,18 +1213,35 @@ export default function StudentPuzzleTrainer() {
                   setCategoryIndex(0);
                   fetchPuzzle('unlimited', cat, 0, Math.max(400, studentRating + ladderOffset));
                 }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all border ${
                   selectedCategory === cat
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'bg-slate-800 text-slate-400 hover:text-white'
+                    ? 'bg-blue-600 text-white border-blue-500'
+                    : 'bg-slate-800 text-slate-400 hover:text-white border-slate-700'
                 }`}
               >
                 {cat}
               </button>
             ))}
           </div>
-        )}
-      </div>
+          <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1">
+            <span className="text-[10px] text-slate-400 font-bold uppercase">Theme:</span>
+            <select
+              value={selectedTheme}
+              onChange={(e) => {
+                const t = e.target.value;
+                setSelectedTheme(t);
+                setCategoryIndex(0);
+                fetchPuzzle('unlimited', selectedCategory, 0, Math.max(400, studentRating + ladderOffset), t);
+              }}
+              className="bg-transparent text-xs font-semibold text-amber-300 focus:outline-none cursor-pointer"
+            >
+              {THEME_LIST.map((th) => (
+                <option key={th.id} value={th.id} className="bg-slate-900 text-white">{th.icon} {th.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
 
       {/* Daily Tactical Quota Progress Banner */}
       <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm">
@@ -1057,9 +1375,18 @@ export default function StudentPuzzleTrainer() {
             <ChessboardComponent
               position={boardFen}
               onPieceDrop={handlePieceDrop}
+              onSquareClick={handleSquareClick}
               boardOrientation={currentPuzzle?.sideToMove === 'black' ? 'black' : 'white'}
-              customSquareStyles={customSquareStyles}
-              customBoardStyle={{ borderRadius: '0.75rem', boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }}
+              customDarkSquareStyle={{ backgroundColor: '#b58863' }}
+              customLightSquareStyle={{ backgroundColor: '#f0d9b5' }}
+              customPieces={customChessPieces}
+              customSquareStyles={getCustomSquareStyles()}
+              customBoardStyle={{
+                borderRadius: '0.75rem',
+                boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+              }}
+              animationDuration={250}
+              arePiecesDraggable={!isSolved && !isFailed && !isReplayingSolution && !loading}
             />
           </div>
 
@@ -1277,17 +1604,32 @@ export default function StudentPuzzleTrainer() {
 
           {/* Action Buttons */}
           <div className="pt-4 border-t border-slate-800 space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={handleRequestHint}
-                disabled={isSolved || isFailed || isReplayingSolution || hintLevel > 0}
-                className="px-3.5 py-2 bg-purple-950/40 hover:bg-purple-900/60 disabled:opacity-40 text-purple-300 border border-purple-800/60 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
-                title="Get an AI Coach conceptual clue without revealing board coordinates"
-              >
-                <span>🧠</span>
-                <span>{hintLevel > 0 ? 'Coach Clue Received' : 'AI Coach Clue'}</span>
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleRequestHint}
+                  disabled={isSolved || isFailed || isReplayingSolution || hintLevel > 0}
+                  className="px-3 py-2 bg-purple-950/40 hover:bg-purple-900/60 disabled:opacity-40 text-purple-300 border border-purple-800/60 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+                  title="Get an AI Coach conceptual clue without revealing board coordinates"
+                >
+                  <span>🧠</span>
+                  <span>{hintLevel > 0 ? 'Coach Clue' : 'AI Hint'}</span>
+                </button>
+
+                {(isSolved || isFailed || attempts > 1) && (
+                  <button
+                    type="button"
+                    onClick={handleRetryCurrentPuzzle}
+                    disabled={loading || isReplayingSolution}
+                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+                    title="Try solving this puzzle again from the start"
+                  >
+                    <span>🔄</span>
+                    <span>Retry</span>
+                  </button>
+                )}
+              </div>
 
               {!canAdvance && (
                 <button

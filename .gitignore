@@ -38,6 +38,8 @@ next-env.d.ts
 
 # Lichess puzzle database (large binary — do not commit)
 lichess_db_puzzle.csv.zst
+*.sqlite3
+/puzzles_dist/
 
 # Generated puzzle JSON files (run `npm run extract-puzzles` to regenerate)
 /public/puzzles/

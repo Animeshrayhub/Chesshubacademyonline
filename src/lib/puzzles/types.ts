@@ -15,6 +15,9 @@ export interface PuzzleData {
   /** FEN position BEFORE the first puzzle move (position to solve from) */
   initialFen: string;
 
+  /** Raw FEN position before opponent's setup move */
+  preMoveFen?: string;
+
   /** Ordered solution moves in UCI format e.g. ['e2e4', 'e7e5'] */
   solution: string[];
 

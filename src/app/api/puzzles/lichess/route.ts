@@ -1,6 +1,15 @@
 import { NextResponse } from 'next/server';
 import { Chess } from 'chess.js';
 import { getPuzzleBank } from '@/lib/puzzles/puzzleBankService';
+import {
+  isR2Configured,
+  getPuzzleById,
+  getPuzzlesByTheme,
+  getPuzzlesByRatingBand,
+  getRatingBandKey,
+} from '@/lib/r2/puzzles';
+
+export const dynamic = 'force-dynamic';
 
 export interface LichessPuzzleResponse {
   id: string;
@@ -178,14 +187,45 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const type = searchParams.get('type') || '';
     const category = (searchParams.get('category') || 'MIXED').toUpperCase();
+    const explicitTheme = searchParams.get('theme') || '';
     const indexStr = searchParams.get('index') || '0';
     const index = parseInt(indexStr, 10) || 0;
     const targetRatingStr = searchParams.get('rating');
     const targetRating = targetRatingStr ? parseInt(targetRatingStr, 10) : undefined;
     const requestedPuzzleId = searchParams.get('puzzleId');
+    const excludeRaw = searchParams.get('exclude') || '';
+    const excludeIds = excludeRaw ? excludeRaw.split(',') : [];
 
     // 0. Specific puzzle lookup (e.g. for "Review Mistakes" queue)
     if (requestedPuzzleId) {
+      if (isR2Configured()) {
+        try {
+          const r2Puzzle = await getPuzzleById(requestedPuzzleId);
+          if (r2Puzzle) {
+            return NextResponse.json({
+              success: true,
+              puzzle: {
+                id: r2Puzzle.id,
+                rating: r2Puzzle.rating,
+                fen: r2Puzzle.initialFen,
+                solution: r2Puzzle.solution,
+                themes: r2Puzzle.themes,
+                category: r2Puzzle.difficulty || category,
+                sideToMove: r2Puzzle.playerToMove,
+                source: 'LICHESS',
+                opponentMove: r2Puzzle.opponentMoveUci ? {
+                  from: r2Puzzle.opponentMoveUci.substring(0, 2),
+                  to: r2Puzzle.opponentMoveUci.substring(2, 4),
+                  san: r2Puzzle.opponentMoveSan,
+                } : undefined,
+              },
+            });
+          }
+        } catch (r2Err) {
+          console.warn('[Puzzles Route] Error fetching puzzle from R2 by ID:', r2Err);
+        }
+      }
+
       const allPool = VERIFIED_CATEGORY_PUZZLES.MIXED;
       const foundInPool = allPool.find((p) => p.id === requestedPuzzleId);
       if (foundInPool) {
@@ -337,7 +377,59 @@ export async function GET(req: Request) {
       console.warn('[Puzzles Route] Error querying Academy Puzzle Bank:', e);
     }
 
-    // 3. Smooth Fallback to Verified Category Puzzles with adaptive rating proximity
+    // 3. Cloudflare R2 Category & Rating Pool
+    if (isR2Configured()) {
+      try {
+        const categoryThemeMap: Record<string, string> = {
+          CHECKMATE: 'mateIn2',
+          TACTICS: 'fork',
+          ENDGAME: 'endgame',
+          CALCULATION: 'long',
+        };
+        const targetTheme = explicitTheme || categoryThemeMap[category];
+        let r2List: any[] = [];
+        if (targetTheme && targetTheme !== 'ALL') {
+          r2List = await getPuzzlesByTheme(targetTheme, {
+            targetRating,
+            count: 10,
+            excludeIds,
+          });
+        } else {
+          const bandKey = targetRating ? getRatingBandKey(targetRating) : 'band_1200_1399';
+          r2List = await getPuzzlesByRatingBand(bandKey, {
+            count: 10,
+            excludeIds,
+          });
+        }
+        if (r2List && r2List.length > 0) {
+          const p = r2List[Math.floor(Math.random() * r2List.length)];
+          return NextResponse.json({
+            success: true,
+            puzzle: {
+              id: p.id,
+              rating: p.rating,
+              fen: p.initialFen,
+              solution: p.solution,
+              themes: p.themes,
+              category: explicitTheme || category,
+              sideToMove: p.playerToMove,
+              source: 'LICHESS',
+              opponentMove: p.opponentMoveUci ? {
+                from: p.opponentMoveUci.substring(0, 2),
+                to: p.opponentMoveUci.substring(2, 4),
+                san: p.opponentMoveSan,
+              } : undefined,
+            },
+            totalInCategory: 1000,
+            nextIndex: index + 1,
+          });
+        }
+      } catch (e) {
+        console.warn('[Puzzles Route] Error querying R2 category bank:', e);
+      }
+    }
+
+    // 4. Smooth Fallback to Verified Category Puzzles with adaptive rating proximity
     const pool = VERIFIED_CATEGORY_PUZZLES[category] || VERIFIED_CATEGORY_PUZZLES.MIXED;
     let sortedPool = pool;
     if (targetRating) {

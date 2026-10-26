@@ -224,6 +224,24 @@ export default function PuzzleBoard({ puzzle, onSolveComplete, token }: PuzzleBo
     startTimeRef.current = null;
 
     // 1. Play opponent's move on intro
+    const playerTurnChar = currentPuzzle.playerToMove === 'white' ? 'w' : 'b';
+    const isAlreadyPlayerTurn = initialGame.turn() === playerTurnChar;
+
+    if (isAlreadyPlayerTurn) {
+      setMessage({
+        text: `Your turn! Find the best move for ${currentPuzzle.playerToMove}.`,
+        type: 'info',
+      });
+      setStatus('solving');
+      startTimeRef.current = Date.now();
+      timerRef.current = setInterval(() => {
+        if (startTimeRef.current) {
+          setElapsedTime(Math.floor((Date.now() - startTimeRef.current) / 1000));
+        }
+      }, 1000);
+      return;
+    }
+
     setMessage({ text: 'Opponent is making their move...', type: 'info' });
     
     const introTimeout = setTimeout(() => {
@@ -603,13 +621,16 @@ export default function PuzzleBoard({ puzzle, onSolveComplete, token }: PuzzleBo
     setHintTargetSquare(null);
     setHintText(null);
     
-    if (currentPuzzle.opponentMoveUci) {
-      const from = currentPuzzle.opponentMoveUci.substring(0, 2);
-      const to = currentPuzzle.opponentMoveUci.substring(2, 4);
-      const promotion = currentPuzzle.opponentMoveUci.substring(4, 5) || undefined;
-      initialGame.move({ from, to, promotion });
-      setFen(initialGame.fen());
-      setHistory(initialGame.history());
+    const playerTurnChar = currentPuzzle.playerToMove === 'white' ? 'w' : 'b';
+    if (currentPuzzle.opponentMoveUci && initialGame.turn() !== playerTurnChar) {
+      try {
+        const from = currentPuzzle.opponentMoveUci.substring(0, 2);
+        const to = currentPuzzle.opponentMoveUci.substring(2, 4);
+        const promotion = currentPuzzle.opponentMoveUci.substring(4, 5) || undefined;
+        initialGame.move({ from, to, promotion });
+        setFen(initialGame.fen());
+        setHistory(initialGame.history());
+      } catch (e) {}
     }
     setStatus('solving');
     startTimeRef.current = Date.now();

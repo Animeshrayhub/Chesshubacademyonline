@@ -3,6 +3,12 @@ import { createServerClient } from '@/utils/supabaseServer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { fetchLichessDailyPuzzle } from '@/lib/puzzles/lichess';
 import type { PuzzleData } from '@/lib/puzzles/types';
+import {
+  isR2Configured,
+  getPuzzlesByRatingBand,
+  getPuzzlesByTheme,
+  mapDifficultyToBandKey,
+} from '@/lib/r2/puzzles';
 
 export const dynamic = 'force-dynamic';
 
@@ -322,35 +328,75 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = createServerClient();
     
-    // Auth check
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    // Optional student auth check: if authenticated, personalize by profile level; otherwise use requestedLevel/default
+    let user: any = null;
+    try {
+      const { data } = await supabase.auth.getUser();
+      user = data?.user || null;
+    } catch {}
 
     const searchParams = req.nextUrl.searchParams;
     const requestedLevel = searchParams.get('level'); // Beginner, Intermediate, Advanced, Expert, Master
     const requestedTheme = searchParams.get('theme'); // mateIn1, mateIn2, fork, pin, skewer, sacrifice, discoveredAttack, etc.
+    const excludeRaw = searchParams.get('exclude') || '';
+    const excludeIds = excludeRaw ? excludeRaw.split(',') : [];
 
     let targetDifficulty = requestedLevel;
 
-    if (!targetDifficulty) {
-      const admin = createSupabaseAdmin();
-      const { data: student } = await admin
-        .from('student_profiles')
-        .select('level')
-        .eq('user_id', user.id)
-        .maybeSingle();
+    if (!targetDifficulty && user) {
+      try {
+        const admin = createSupabaseAdmin();
+        const { data: student } = await admin
+          .from('student_profiles')
+          .select('level')
+          .eq('user_id', user.id)
+          .maybeSingle();
 
-      const studentLevel = student?.level || 'BEGINNER';
-      targetDifficulty = studentLevel === 'BEGINNER' 
-        ? 'Beginner' 
-        : studentLevel === 'INTERMEDIATE' 
-        ? 'Intermediate' 
-        : 'Advanced';
+        const studentLevel = student?.level || 'BEGINNER';
+        targetDifficulty = studentLevel === 'BEGINNER' 
+          ? 'Beginner' 
+          : studentLevel === 'INTERMEDIATE' 
+          ? 'Intermediate' 
+          : 'Advanced';
+      } catch {}
     }
 
-    // Strict Theme-First Filtering
+    if (!targetDifficulty) {
+      targetDifficulty = 'Intermediate';
+    }
+
+    // 1. Try Cloudflare R2 Live Catalog First
+    if (isR2Configured()) {
+      try {
+        const bandKey = mapDifficultyToBandKey(targetDifficulty || 'Intermediate');
+        let r2Results: PuzzleData[] = [];
+
+        if (requestedTheme && requestedTheme !== 'ALL') {
+          r2Results = await getPuzzlesByTheme(requestedTheme, {
+            ratingBand: bandKey,
+            count: 5,
+            excludeIds,
+          });
+        } else {
+          r2Results = await getPuzzlesByRatingBand(bandKey, {
+            count: 5,
+            excludeIds,
+          });
+        }
+
+        if (r2Results && r2Results.length > 0) {
+          const chosen = r2Results[Math.floor(Math.random() * r2Results.length)];
+          return NextResponse.json({
+            ...chosen,
+            id: `${chosen.id}-${Date.now()}`,
+          });
+        }
+      } catch (r2Err) {
+        console.warn('[/api/puzzles/next] R2 fetch warning, using static fallback:', r2Err);
+      }
+    }
+
+    // 2. Strict Theme-First Filtering Fallback
     let pool = FALLBACK_PUZZLES;
 
     if (requestedTheme && requestedTheme !== 'ALL') {
